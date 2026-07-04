@@ -54,6 +54,35 @@ const near = ( a, b, eps, msg ) => assert.ok( Math.abs( a - b ) <= ( eps || 1e-6
    assert.strictEqual( back.front, false );
 }
 
+// --- observer-frame astronomy (alt-az) ---
+{
+   // vector round-trip
+   const v = M.raDecToVec( 274.65, -13.86 );
+   const rd = M.vecToRaDec( v );
+   near( rd.ra, 274.65, 1e-9, "vec RA round-trip" );
+   near( rd.dec, -13.86, 1e-9, "vec Dec round-trip" );
+
+   // alt-az <-> ra-dec round-trip
+   const lst = 120.0, lat = 43.6;
+   const aa = M.raDecToAltAz( 200, 30, lst, lat );
+   const back = M.altAzToRaDec( aa.alt, aa.az, lst, lat );
+   near( back.ra, 200, 1e-6, "altaz round-trip RA" );
+   near( back.dec, 30, 1e-6, "altaz round-trip Dec" );
+
+   // zenith (alt 90) maps to (ra=lst, dec=lat)
+   const z = M.altAzToRaDec( 90, 0, lst, lat );
+   near( z.dec, lat, 1e-6, "zenith dec = latitude" );
+
+   // REAL DATA: M 16 from lat 43.597 N, long 5.480 E at DATE-OBS
+   // 2026-06-17T21:47:01.5 UTC. Headers recorded CENTALT 24.09, CENTAZ 141.99.
+   const epoch = Date.UTC( 2026, 5, 17, 21, 47, 1 )/1000 + 0.5;
+   const jd = M.julianDate( epoch );
+   const st = M.lstDeg( jd, 5.479892 );
+   const altaz = M.raDecToAltAz( 274.65, -13.862, st, 43.596928 );
+   assert.ok( Math.abs( altaz.alt - 24.09 ) < 1.0, "M16 altitude ~24.09, got " + altaz.alt.toFixed( 2 ) );
+   assert.ok( Math.abs( altaz.az - 141.99 ) < 1.5, "M16 azimuth ~141.99, got " + altaz.az.toFixed( 2 ) );
+}
+
 // --- camera path ---
 {
    const target = { centerRA: 100, centerDec: 20, fovDeg: 1.07, rollDeg: 12 };

@@ -117,6 +117,10 @@ var DEFAULT_CONFIG = {
    ovStarNames:     true,        // draw the brightest named stars in the field
    ovShowHorizon:   true,        // artificial horizon for scale at wide fields
    ovShowGrid:      true,        // equatorial coordinate grid at wide fields
+   locationEnabled: true,        // simulate the shoot location (real alt-az opening)
+   observerLat:     999,         // observer latitude (deg); 999 = read from headers
+   observerLong:    999,         // observer longitude east (deg); 999 = from headers
+   observerDateUtc: "",          // shoot time (ISO UTC); "" = read DATE-OBS
    hipsEnabled:     true,        // bridge star field -> photo with a real survey image
    hipsSurvey:      "CDS/P/DSS2/color"  // Aladin/CDS hips2fits HiPS id
 };
@@ -210,6 +214,12 @@ var STRINGS = {
       "zoom.horizon":      "Horizon",
       "zoom.grid":         "Coordinate grid",
       "zoom.hips":         "Real-sky survey bridge",
+      "zoom.location.opt": "Simulate shoot location",
+      "zoom.location.hint": "Open from the real sky as seen from the shoot site (SITELAT/SITELONG/DATE-OBS), with a true horizon and cardinal points.",
+      "zoom.lat":          "Lat:",
+      "zoom.lon":          "Lon:",
+      "zoom.date":         "UTC:",
+      "zoom.date.hint":    "blank = DATE-OBS from headers",
       "overlay.subtitle":  "Subtitle:",
       "overlay.subtitle.hint": "e.g. the constellation",
       "overlay.distance":  "Distance:",
@@ -260,6 +270,8 @@ var STRINGS = {
       "run.styleStacking": "progressive stack",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Plate solve read: field %1, center RA %2° Dec %3°.",
+      "zoom.location":     "Shoot location: target %1° above the %2 horizon, from lat %3° lon %4°.",
+      "zoom.belowHorizon": "Target was below the horizon at the given site/time — using the equatorial opening.",
       "zoom.revealFrom":   "Reveal image: %1 (%2×%3).",
       "zoom.errReveal":    "Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Downloading real-sky survey (CDS/Aladin hips2fits)…",
@@ -369,6 +381,12 @@ var STRINGS = {
       "zoom.horizon":      "Horizon",
       "zoom.grid":         "Grille de coordonnées",
       "zoom.hips":         "Pont imagerie réelle du ciel",
+      "zoom.location.opt": "Simuler le lieu du shoot",
+      "zoom.location.hint": "Ouvre sur le ciel réel vu depuis le site de prise (SITELAT/SITELONG/DATE-OBS), avec un vrai horizon et les points cardinaux.",
+      "zoom.lat":          "Lat :",
+      "zoom.lon":          "Lon :",
+      "zoom.date":         "UTC :",
+      "zoom.date.hint":    "vide = DATE-OBS des en-têtes",
       "overlay.subtitle":  "Sous-titre :",
       "overlay.subtitle.hint": "ex. la constellation",
       "overlay.distance":  "Distance :",
@@ -419,6 +437,8 @@ var STRINGS = {
       "run.styleStacking": "empilement progressif",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Solve astrométrique lu : champ %1, centre AD %2° Déc %3°.",
+      "zoom.location":     "Lieu du shoot : cible à %1° au-dessus de l'horizon %2, depuis lat %3° lon %4°.",
+      "zoom.belowHorizon": "La cible était sous l'horizon au lieu/heure donnés — ouverture équatoriale utilisée.",
       "zoom.revealFrom":   "Image révélée : %1 (%2×%3).",
       "zoom.errReveal":    "Impossible de charger l'image à révéler. Vérifiez le fichier (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Téléchargement de l'imagerie réelle du ciel (CDS/Aladin hips2fits)…",
@@ -765,8 +785,13 @@ function resolveTitle( cfg, frames )
 // Extract the frame metadata Session Cinema needs from a raw keyword map.
 function frameMetaFromKeywords( map )
 {
-   var meta = { dateObs: null, exposure: 0, object: "", filter: "", cfa: false };
+   var meta = { dateObs: null, exposure: 0, object: "", filter: "", cfa: false,
+                siteLat: null, siteLong: null };
    meta.dateObs = parseDateObs( kwValue( map[ "DATE-OBS" ] ) );
+   var la = parseFloat( kwValue( map[ "SITELAT" ] || map[ "LAT-OBS" ] || map[ "OBSGEO-B" ] || "" ) );
+   if ( isFinite( la ) ) meta.siteLat = la;
+   var lo = parseFloat( kwValue( map[ "SITELONG" ] || map[ "LONG-OBS" ] || map[ "OBSGEO-L" ] || "" ) );
+   if ( isFinite( lo ) ) meta.siteLong = lo;
    var exp = parseFloat( kwValue( map[ "EXPTIME" ] || map[ "EXPOSURE" ] || "" ) );
    if ( isFinite( exp ) && exp > 0 )
       meta.exposure = exp;
@@ -854,25 +879,51 @@ function wcsImageFraming( wcs, width, height )
    };
 }
 
-// Camera: looking at (ra0,dec0), showing fovDeg across the width, rolled by
-// rollDeg, onto a WxH frame. RA increases to the left (sky-chart convention),
-// north is up.
+// --- 3D vector helpers (equatorial Cartesian: x=cosδcosα, y=cosδsinα, z=sinδ)
+function raDecToVec( ra, dec )
+{
+   var a = deg2rad( ra ), d = deg2rad( dec );
+   return [ Math.cos( d )*Math.cos( a ), Math.cos( d )*Math.sin( a ), Math.sin( d ) ];
+}
+function vecToRaDec( v )
+{
+   return { ra: ( rad2deg( Math.atan2( v[1], v[0] ) ) + 360 ) % 360,
+            dec: rad2deg( Math.atan2( v[2], Math.sqrt( v[0]*v[0] + v[1]*v[1] ) ) ) };
+}
+function vdot( a, b ) { return a[0]*b[0] + a[1]*b[1] + a[2]*b[2]; }
+function vcross( a, b ) { return [ a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0] ]; }
+function vnorm( a ) { var m = Math.sqrt( vdot( a, a ) ) || 1; return [ a[0]/m, a[1]/m, a[2]/m ]; }
+
+// Camera as an orthonormal basis (forward=look, up, right=east-ish), a FOV and
+// an in-plane roll. Works for both the equatorial framing and an arbitrary
+// alt-az orientation (used to open from the observer's local horizon).
+function makeCameraFromBasis( forward, up, fovDeg, rollDeg, W, H )
+{
+   var f = vnorm( forward );
+   var u = vnorm( [ up[0] - f[0]*vdot( up, f ), up[1] - f[1]*vdot( up, f ), up[2] - f[2]*vdot( up, f ) ] );
+   var r = vnorm( vcross( u, f ) );   // east when up is celestial north
+   return { f: f, u: u, r: r, fovDeg: fovDeg, rollDeg: rollDeg || 0, W: W, H: H };
+}
+
+// Camera looking at (ra0,dec0), north up (before roll). RA increases to the
+// left, north is up — identical outputs to the previous spherical formulation.
 function makeCamera( ra0, dec0, fovDeg, rollDeg, W, H )
 {
-   return { ra0: ra0, dec0: dec0, fovDeg: fovDeg, rollDeg: rollDeg, W: W, H: H };
+   var f = raDecToVec( ra0, dec0 );
+   var zproj = [ -f[0]*f[2], -f[1]*f[2], 1 - f[2]*f[2] ];   // celestial north perp to f
+   if ( vdot( zproj, zproj ) < 1e-12 )
+      zproj = [ 1, 0, 0 ];                                   // at a pole: arbitrary up
+   return makeCameraFromBasis( f, zproj, fovDeg, rollDeg, W, H );
 }
 
 // Stereographic projection of a sky point to screen pixels — stable from an
 // all-sky view down to a fraction of a degree. Returns { x, y, front }.
 function projectToScreen( cam, ra, dec )
 {
-   var a0 = deg2rad( cam.ra0 ), d0 = deg2rad( cam.dec0 );
-   var a = deg2rad( ra ), d = deg2rad( dec );
-   var da = a - a0;
-   var cosc = Math.sin( d0 )*Math.sin( d ) + Math.cos( d0 )*Math.cos( d )*Math.cos( da );
-   var k = 2/( 1 + cosc );
-   var xp = k*Math.cos( d )*Math.sin( da );                                          // east +
-   var yp = k*( Math.cos( d0 )*Math.sin( d ) - Math.sin( d0 )*Math.cos( d )*Math.cos( da ) ); // north +
+   var v = raDecToVec( ra, dec );
+   var x = vdot( v, cam.r ), y = vdot( v, cam.u ), z = vdot( v, cam.f );
+   var k = 2/( 1 + z );
+   var xp = k*x, yp = k*y;
    var rEdge = 2*Math.tan( deg2rad( cam.fovDeg/2 )/2 );
    var s = ( cam.W/2 )/rEdge;
    var cr = Math.cos( deg2rad( cam.rollDeg ) ), sr = Math.sin( deg2rad( cam.rollDeg ) );
@@ -881,8 +932,56 @@ function projectToScreen( cam, ra, dec )
    return {
       x: cam.W/2 - s*rx,     // higher RA (east) to the left
       y: cam.H/2 - s*ry,     // north up
-      front: cosc > -0.2
+      front: z > -0.2
    };
+}
+
+// --- Observer-frame astronomy (for the "you are here on Earth" opening) ------
+
+// Julian Date from epoch seconds (UTC).
+function julianDate( epochSeconds )
+{
+   return epochSeconds/86400 + 2440587.5;
+}
+
+// Greenwich mean sidereal time (degrees) for a Julian Date.
+function gmstDeg( jd )
+{
+   var T = ( jd - 2451545.0 )/36525;
+   var g = 280.46061837 + 360.98564736629*( jd - 2451545.0 ) + 0.000387933*T*T - T*T*T/38710000;
+   return ( ( g % 360 ) + 360 ) % 360;
+}
+
+// Local sidereal time (degrees) at an east-positive longitude.
+function lstDeg( jd, longEastDeg )
+{
+   return ( ( gmstDeg( jd ) + longEastDeg ) % 360 + 360 ) % 360;
+}
+
+// (ra,dec) -> local horizontal (alt,az) — az from North through East, degrees.
+function raDecToAltAz( ra, dec, lst, latDeg )
+{
+   var H = deg2rad( ( ( lst - ra ) % 360 + 360 ) % 360 );
+   var d = deg2rad( dec ), lat = deg2rad( latDeg );
+   var sinAlt = Math.sin( d )*Math.sin( lat ) + Math.cos( d )*Math.cos( lat )*Math.cos( H );
+   sinAlt = Math.max( -1, Math.min( 1, sinAlt ) );
+   var alt = Math.asin( sinAlt );
+   var az = Math.atan2( -Math.cos( d )*Math.sin( H ),
+                        Math.sin( d )*Math.cos( lat ) - Math.cos( d )*Math.sin( lat )*Math.cos( H ) );
+   return { alt: rad2deg( alt ), az: ( rad2deg( az ) + 360 ) % 360 };
+}
+
+// local horizontal (alt,az) -> (ra,dec), the inverse of raDecToAltAz.
+function altAzToRaDec( alt, az, lst, latDeg )
+{
+   var a = deg2rad( alt ), A = deg2rad( az ), lat = deg2rad( latDeg );
+   var sinDec = Math.sin( a )*Math.sin( lat ) + Math.cos( a )*Math.cos( lat )*Math.cos( A );
+   sinDec = Math.max( -1, Math.min( 1, sinDec ) );
+   var dec = Math.asin( sinDec );
+   var H = Math.atan2( -Math.sin( A )*Math.cos( a ),
+                       Math.sin( a )*Math.cos( lat ) - Math.cos( a )*Math.sin( lat )*Math.cos( A ) );
+   var ra = ( ( lst - rad2deg( H ) ) % 360 + 360 ) % 360;
+   return { ra: ra, dec: rad2deg( dec ) };
 }
 
 // Camera along the zoom at normalized time t in [0,1]: center fixed on the
@@ -893,6 +992,38 @@ function zoomCameraAt( t, target, startFovDeg, W, H )
    var e = smoothstep01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
    return makeCamera( target.centerRA, target.centerDec, fov, 0, W, H );
+}
+
+// Spherical linear interpolation between two unit vectors.
+function slerpVec( a, b, t )
+{
+   var d = Math.max( -1, Math.min( 1, vdot( a, b ) ) );
+   var om = Math.acos( d );
+   if ( om < 1e-6 )
+      return vnorm( [ a[0] + ( b[0]-a[0] )*t, a[1] + ( b[1]-a[1] )*t, a[2] + ( b[2]-a[2] )*t ] );
+   var so = Math.sin( om ), c0 = Math.sin( ( 1-t )*om )/so, c1 = Math.sin( t*om )/so;
+   return vnorm( [ c0*a[0]+c1*b[0], c0*a[1]+c1*b[1], c0*a[2]+c1*b[2] ] );
+}
+
+// Camera along the LOCATION path: opens looking at the observer's horizon in
+// the target's direction (up = local zenith), then slews and zooms up to the
+// equatorial target framing (up = celestial north) so the reveal still lands
+// aligned. obs = { lst, lat, targetAlt, targetAz }.
+function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
+{
+   var e = smoothstep01( t );
+   var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
+
+   var fEnd = raDecToVec( target.centerRA, target.centerDec );
+   var upEnd = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );  // celestial north
+
+   var horizon = altAzToRaDec( 0, obs.targetAz, obs.lst, obs.lat );   // horizon under the target
+   var fStart = raDecToVec( horizon.ra, horizon.dec );
+   var zenith = raDecToVec( obs.lst, obs.lat );                        // local vertical
+
+   var f = slerpVec( fStart, fEnd, e );
+   var up = slerpVec( zenith, upEnd, e );
+   return makeCameraFromBasis( f, up, fov, 0, W, H );
 }
 
 // Opacity of the real-image reveal as the FOV approaches the image field. The
@@ -2183,6 +2314,32 @@ Engine.prototype.runZoom = function()
 
    var P = framing.fovDeg;
 
+   // Observer location: simulate the real sky from the shoot site (SITELAT/
+   // SITELONG/DATE-OBS, or manual overrides). obs != null only when the target
+   // was actually above the horizon at that place and time.
+   var obs = null;
+   if ( cfg.locationEnabled )
+   {
+      var lat = ( cfg.observerLat != 999 ) ? cfg.observerLat : meta.siteLat;
+      var lon = ( cfg.observerLong != 999 ) ? cfg.observerLong : meta.siteLong;
+      var epoch = ( cfg.observerDateUtc && cfg.observerDateUtc.length )
+                  ? parseDateObs( cfg.observerDateUtc ) : meta.dateObs;
+      if ( lat != null && lon != null && epoch != null && isFinite( lat ) && isFinite( lon ) )
+      {
+         var st = lstDeg( julianDate( epoch ), lon );
+         var aa = raDecToAltAz( framing.centerRA, framing.centerDec, st, lat );
+         if ( aa.alt > 3 )
+         {
+            obs = { lst: st, lat: lat, targetAlt: aa.alt, targetAz: aa.az };
+            var card = ( ( gLanguage == "fr" ) ? CARDINALS_FR : CARDINALS_EN )[ Math.round( aa.az/45 )*45 % 360 ];
+            console.noteln( tr( "zoom.location", aa.alt.toFixed( 0 ), card,
+                                lat.toFixed( 2 ), lon.toFixed( 2 ) ) );
+         }
+         else
+            console.warningln( tr( "zoom.belowHorizon" ) );
+      }
+   }
+
    // Real-sky survey bridge (CDS/Aladin hips2fits): a near cutout ~2.5x the
    // image field (so the photo reveals as a zoom-IN within it, never a
    // side-by-side comparison) and a wide one, fetched once at high resolution.
@@ -2220,7 +2377,7 @@ Engine.prototype.runZoom = function()
 
    var fmt = OUTPUT_FORMATS[ cfg.formatIndex ];
    var W = fmt.w, H = fmt.h, unit = H/1080;
-   var startFov = Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
+   var startFov = obs ? 140 : Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
    var N = Math.max( 2, Math.round( cfg.fps*cfg.targetDuration ) );
    var outIndex = 0;
 
@@ -2229,7 +2386,8 @@ Engine.prototype.runZoom = function()
       if ( this.checkAbort() )
          break;
       var t = i/( N - 1 );
-      var cam = zoomCameraAt( t, framing, startFov, W, H );
+      var cam = obs ? zoomCameraLocation( t, framing, startFov, W, H, obs )
+                    : zoomCameraAt( t, framing, startFov, W, H );
       var fov = cam.fovDeg;
 
       var out = new Bitmap( W, H );
@@ -2239,7 +2397,9 @@ Engine.prototype.runZoom = function()
       try { g.textAntialiasing = true; } catch ( e ) {}
 
       // Wide-field cues, then catalog star dots — all UNDER the survey images.
-      if ( cfg.ovShowHorizon )
+      if ( obs )
+         drawLocationHorizon( g, cam, obs, unit );
+      else if ( cfg.ovShowHorizon )
          drawZoomHorizon( g, cam, unit );
       if ( cfg.ovShowGrid )
          drawEquatorialGrid( g, cam, unit );
@@ -2542,6 +2702,81 @@ function drawZoomHorizon( g, cam, unit )
    // Bright horizon line.
    g.pen = new Pen( argb( 0.85, 0x6FC7DA ), Math.max( 2, 2.5*unit ) );
    g.drawLine( 0, y0, W, y0 );
+   g.opacity = prevOp;
+}
+
+var CARDINALS_EN = { 0:"N", 45:"NE", 90:"E", 135:"SE", 180:"S", 225:"SW", 270:"W", 315:"NW" };
+var CARDINALS_FR = { 0:"N", 45:"NE", 90:"E", 135:"SE", 180:"S", 225:"SO", 270:"O", 315:"NO" };
+
+// Real local horizon (alt=0 great circle) + ground + cardinal points, for the
+// location-simulated opening. Fades out as we climb toward the target.
+function drawLocationHorizon( g, cam, obs, unit )
+{
+   var fov = cam.fovDeg;
+   var a = ( fov >= 40 ) ? 1 : ( fov <= 12 ? 0 : smoothstep01( ( fov - 12 )/28 ) );
+   if ( a <= 0 )
+      return;
+   var W = cam.W, H = cam.H;
+   var pts = [];
+   for ( var az = 0; az <= 360; az += 2 )
+   {
+      var rd = altAzToRaDec( 0, az, obs.lst, obs.lat );
+      pts.push( projectToScreen( cam, rd.ra, rd.dec ) );
+   }
+   var prevOp = g.opacity;
+   g.opacity = a;
+
+   // Ground: fill below the on-screen horizon curve (best-effort).
+   var onscreen = [];
+   for ( var i = 0; i < pts.length; ++i )
+      if ( pts[ i ].front && pts[ i ].x > -80 && pts[ i ].x < W + 80 )
+         onscreen.push( pts[ i ] );
+   onscreen.sort( function( p, q ) { return p.x - q.x; } );
+   if ( onscreen.length >= 2 )
+   {
+      try
+      {
+         var poly = [];
+         for ( var k = 0; k < onscreen.length; ++k )
+            poly.push( new Point( onscreen[ k ].x, onscreen[ k ].y ) );
+         poly.push( new Point( onscreen[ onscreen.length - 1 ].x, H ) );
+         poly.push( new Point( onscreen[ 0 ].x, H ) );
+         g.brush = new Brush( 0xF2060A11 );
+         g.pen = new Pen( 0x00000000, 0 );
+         g.fillPolygon( poly );
+      }
+      catch ( e )
+      {
+      }
+   }
+
+   // Horizon line.
+   g.pen = new Pen( argb( 0.9, 0x6FC7DA ), Math.max( 2, 3*unit ) );
+   var maxSeg = W*0.5, maxSeg2 = maxSeg*maxSeg, prev = null;
+   for ( var j = 0; j < pts.length; ++j )
+   {
+      var p = pts[ j ];
+      if ( p.front && prev != null )
+      {
+         var dx = p.x - prev.x, dy = p.y - prev.y;
+         if ( dx*dx + dy*dy < maxSeg2 )
+            g.drawLine( prev.x, prev.y, p.x, p.y );
+      }
+      prev = p.front ? p : null;
+   }
+
+   // Cardinal points, just above the horizon.
+   var table = ( gLanguage == "fr" ) ? CARDINALS_FR : CARDINALS_EN;
+   var f = zoomFont( 20*unit, true );
+   g.font = f;
+   g.pen = new Pen( argb( 0.95, 0xCDEAF2 ) );
+   for ( var c in table )
+   {
+      var crd = altAzToRaDec( 1.5, parseFloat( c ), obs.lst, obs.lat );
+      var cp = projectToScreen( cam, crd.ra, crd.dec );
+      if ( cp.front && cp.x > 10 && cp.x < W - 30 && cp.y > 10 && cp.y < H - 10 )
+         g.drawText( cp.x - Math.round( f.width( table[ c ] )/2 ), cp.y, table[ c ] );
+   }
    g.opacity = prevOp;
 }
 
@@ -2894,6 +3129,7 @@ class SessionCinemaDialog extends Dialog
          {
             self.cfg.zoomImagePath = d.fileNames[ 0 ];
             self.zoomImageEdit.text = d.fileNames[ 0 ];
+            self.autofillLocationFromImage( d.fileNames[ 0 ] );
          }
       };
       this.zoomImageSizer = new HorizontalSizer;
@@ -3103,6 +3339,16 @@ class SessionCinemaDialog extends Dialog
       this.hipsCheck.checked = cfg.hipsEnabled;
       this.hipsCheck.onCheck = ( c ) => { self.cfg.hipsEnabled = c; };
 
+      this.locationCheck = new CheckBox( this );
+      this.locationCheck.text = tr( "zoom.location.opt" );
+      this.locationCheck.toolTip = tr( "zoom.location.hint" );
+      this.locationCheck.checked = cfg.locationEnabled;
+      this.locationCheck.onCheck = ( c ) =>
+      {
+         self.cfg.locationEnabled = c;
+         self.updateLocationEnabled();
+      };
+
       this.checksRow3 = new HorizontalSizer;
       this.checksRow3.spacing = 12;
       this.checksRow3.add( this.constNamesCheck );
@@ -3111,6 +3357,41 @@ class SessionCinemaDialog extends Dialog
       this.checksRow3.add( this.gridCheck );
       this.checksRow3.add( this.hipsCheck );
       this.checksRow3.addStretch();
+
+      // Shoot-location fields (auto-filled from the solved image headers).
+      function coordEdit( value, hint )
+      {
+         var e = new Edit( self );
+         e.text = ( value == 999 || value == null ) ? "" : String( value );
+         e.setFixedWidth( self.font.width( "-180.0000" ) + 12 );
+         try { e.placeholderText = hint; } catch ( ex ) {}
+         return e;
+      }
+      this.latLabel = new Label( this );
+      this.latLabel.text = tr( "zoom.lat" );
+      this.latEdit = coordEdit( cfg.observerLat, "43.60" );
+      this.latEdit.onTextUpdated = ( t ) => { self.cfg.observerLat = t.length ? parseFloat( t ) : 999; };
+      this.lonLabel = new Label( this );
+      this.lonLabel.text = tr( "zoom.lon" );
+      this.lonEdit = coordEdit( cfg.observerLong, "5.48" );
+      this.lonEdit.onTextUpdated = ( t ) => { self.cfg.observerLong = t.length ? parseFloat( t ) : 999; };
+      this.dateLabel = new Label( this );
+      this.dateLabel.text = tr( "zoom.date" );
+      this.dateEdit = new Edit( this );
+      this.dateEdit.text = cfg.observerDateUtc;
+      try { this.dateEdit.placeholderText = tr( "zoom.date.hint" ); } catch ( ex ) {}
+      this.dateEdit.onTextUpdated = ( t ) => { self.cfg.observerDateUtc = t; };
+
+      this.locationSizer = new HorizontalSizer;
+      this.locationSizer.spacing = 6;
+      this.locationSizer.add( this.locationCheck );
+      this.locationSizer.addSpacing( 12 );
+      this.locationSizer.add( this.latLabel );
+      this.locationSizer.add( this.latEdit );
+      this.locationSizer.add( this.lonLabel );
+      this.locationSizer.add( this.lonEdit );
+      this.locationSizer.add( this.dateLabel );
+      this.locationSizer.add( this.dateEdit, 100 );
 
       this.subtitleLabel = new Label( this );
       this.subtitleLabel.text = tr( "overlay.subtitle" );
@@ -3467,7 +3748,7 @@ class SessionCinemaDialog extends Dialog
       // ---- mode tabs: subs-based (timelapse/stack) vs Zoom Odyssey ----
       this.sequencePage = this.makePage( [ this.subStyleSizer, this.stackNote,
                                            this.framesGroup, this.seqOptionsGroup ] );
-      this.zoomPage = this.makePage( [ this.zoomNote, this.zoomGroup, this.checksRow3 ] );
+      this.zoomPage = this.makePage( [ this.zoomNote, this.zoomGroup, this.checksRow3, this.locationSizer ] );
 
       this.tabBox = new TabBox( this );
       this.tabBox.addPage( this.sequencePage, tr( "tab.sequence" ) );
@@ -3630,6 +3911,8 @@ class SessionCinemaDialog extends Dialog
       this.horizonCheck.enabled = isZoom;
       this.gridCheck.enabled = isZoom;
       this.hipsCheck.enabled = isZoom;
+      this.locationCheck.enabled = isZoom;
+      this.updateLocationEnabled();
       this.subtitleLabel.enabled = isZoom;
       this.subtitleEdit.enabled = isZoom;
       this.distanceLabel.enabled = isZoom;
@@ -3643,6 +3926,31 @@ class SessionCinemaDialog extends Dialog
       if ( this.previewButton )
          this.previewButton.enabled = !isZoom;
       this.updateEstimate();
+   }
+
+   // Fill the shoot-location fields from a solved image's headers, unless the
+   // user has already entered values.
+   autofillLocationFromImage( path )
+   {
+      var meta = scanFrameHeader( path );
+      if ( meta.siteLat != null && ( this.cfg.observerLat == 999 || !this.latEdit.text.length ) )
+      {
+         this.cfg.observerLat = meta.siteLat;
+         this.latEdit.text = meta.siteLat.toFixed( 4 );
+      }
+      if ( meta.siteLong != null && ( this.cfg.observerLong == 999 || !this.lonEdit.text.length ) )
+      {
+         this.cfg.observerLong = meta.siteLong;
+         this.lonEdit.text = meta.siteLong.toFixed( 4 );
+      }
+   }
+
+   updateLocationEnabled()
+   {
+      var on = this.cfg.locationEnabled && ( this.cfg.style == STYLE_ZOOM );
+      this.latLabel.enabled = on; this.latEdit.enabled = on;
+      this.lonLabel.enabled = on; this.lonEdit.enabled = on;
+      this.dateLabel.enabled = on; this.dateEdit.enabled = on;
    }
 
    // Fill the (untouched) title field with the OBJECT keyword read from the
