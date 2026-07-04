@@ -127,6 +127,37 @@ const near = ( a, b, eps, msg ) => assert.ok( Math.abs( a - b ) <= ( eps || 1e-6
    assert.ok( sfHigh.fovDeg <= 150, "fov clamped for high targets" );
 }
 
+// --- fast projector must be identical to projectToScreen for on-screen points ---
+{
+   const cams = [
+      M.makeCamera( 100, 20, 60, 0, 1920, 1080 ),
+      M.makeCamera( 274.65, -13.86, 8, 12, 1920, 1080 ),
+      M.makeCameraFromBasis( M.raDecToVec( 40, 55 ), [ 0, 0, 1 ], 120, 0, 1080, 1920 )
+   ];
+   for ( const cam of cams )
+   {
+      const pj = M.cameraProjector( cam );
+      for ( const [ ra, dec ] of [ [ 100, 20 ], [ 103, 22 ], [ 95, 18 ], [ 40, 55 ], [ 274.65, -13.86 ], [ 275, -13 ], [ 12, 8 ] ] )
+      {
+         const slow = M.projectToScreen( cam, ra, dec );
+         const fast = M.projectVecPre( pj, M.raDecToVec( ra, dec ) );
+         const onScreen = slow.front && slow.x > -8 && slow.x < cam.W + 8 && slow.y > -8 && slow.y < cam.H + 8;
+         if ( onScreen )
+         {
+            assert.ok( fast != null, "on-screen point must not be culled" );
+            near( fast.x, slow.x, 1e-6, "fast x == slow x" );
+            near( fast.y, slow.y, 1e-6, "fast y == slow y" );
+         }
+      }
+   }
+}
+
+// smootherstep: endpoints and midpoint, monotone
+assert.strictEqual( M.smootherstep01( 0 ), 0 );
+assert.strictEqual( M.smootherstep01( 1 ), 1 );
+near( M.smootherstep01( 0.5 ), 0.5, 1e-9 );
+assert.ok( M.smootherstep01( 0.3 ) < M.smootherstep01( 0.7 ), "monotone" );
+
 // --- camera path ---
 {
    const target = { centerRA: 100, centerDec: 20, fovDeg: 1.07, rollDeg: 12 };

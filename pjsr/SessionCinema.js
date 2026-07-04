@@ -843,6 +843,15 @@ function smoothstep01( t )
    return t*t*( 3 - 2*t );
 }
 
+// Quintic ease-in-out (zero velocity AND acceleration at both ends) for a
+// smoother camera motion than cubic smoothstep.
+function smootherstep01( t )
+{
+   if ( t <= 0 ) return 0;
+   if ( t >= 1 ) return 1;
+   return t*t*t*( t*( t*6 - 15 ) + 10 );
+}
+
 // Great-circle separation between two sky points, in degrees.
 function angularSepDeg( ra1, dec1, ra2, dec2 )
 {
@@ -953,6 +962,38 @@ function projectToScreen( cam, ra, dec )
    };
 }
 
+// Frame-constant projector: all the camera-only terms computed ONCE, plus a
+// cull threshold on z = vec·forward (no on-screen point can have a smaller z,
+// so a star below it is safely skipped before any projection math). Hot loops
+// use projectVecPre with precomputed star/vertex vectors — no per-point trig.
+function cameraProjector( cam )
+{
+   var rEdge = 2*Math.tan( deg2rad( cam.fovDeg/2 )/2 );
+   var s = ( cam.W/2 )/rEdge;
+   var half = Math.sqrt( cam.W*cam.W + cam.H*cam.H )/2;     // corner radius (px)
+   var thetaCorner = 2*Math.atan( ( half/s )/2 );           // its angular distance
+   var cullZ = Math.cos( Math.min( Math.PI, thetaCorner + deg2rad( 2 ) ) );
+   return { f: cam.f, u: cam.u, r: cam.r, s: s,
+            cr: Math.cos( deg2rad( cam.rollDeg ) ), sr: Math.sin( deg2rad( cam.rollDeg ) ),
+            W: cam.W, H: cam.H, fovDeg: cam.fovDeg, cullZ: cullZ };
+}
+
+// Project a PRECOMPUTED unit vector. Returns { x, y } or null when the point is
+// culled (behind the camera or outside the frame). Identical screen coords to
+// projectToScreen for on-screen points.
+function projectVecPre( pj, v )
+{
+   var z = pj.f[0]*v[0] + pj.f[1]*v[1] + pj.f[2]*v[2];
+   if ( z <= pj.cullZ )
+      return null;
+   var x = pj.r[0]*v[0] + pj.r[1]*v[1] + pj.r[2]*v[2];
+   var y = pj.u[0]*v[0] + pj.u[1]*v[1] + pj.u[2]*v[2];
+   var k = 2/( 1 + z );
+   var xp = k*x, yp = k*y;
+   var rx = xp*pj.cr - yp*pj.sr, ry = xp*pj.sr + yp*pj.cr;
+   return { x: pj.W/2 - pj.s*rx, y: pj.H/2 - pj.s*ry };
+}
+
 // --- Observer-frame astronomy (for the "you are here on Earth" opening) ------
 
 // Julian Date from epoch seconds (UTC).
@@ -1006,7 +1047,7 @@ function altAzToRaDec( alt, az, lst, latDeg )
 // so the image drops in at its true orientation on reveal.
 function zoomCameraAt( t, target, startFovDeg, W, H )
 {
-   var e = smoothstep01( t );
+   var e = smootherstep01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
    return makeCamera( target.centerRA, target.centerDec, fov, 0, W, H );
 }
@@ -1063,9 +1104,9 @@ function locationStartFraming( targetAltDeg, W, H )
 // obs = { lst, lat, targetAlt, targetAz, startFov, altC }.
 function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
 {
-   var e = smoothstep01( t );
+   var e = smootherstep01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
-   var e2 = smoothstep01( Math.min( 1, t/0.4 ) );   // centering completes early
+   var e2 = smootherstep01( Math.min( 1, t/0.4 ) );   // centering completes early, eased
 
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
    var upEnd = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );  // celestial north
@@ -1736,6 +1777,34 @@ function loadZoomCatalogs()
          try { cat.labels = JSON.parse( labelsText ); } catch ( e ) {}
       cat.ok = cat.stars.length > 0;
    }
+
+   // Precompute the fixed 3D unit vector of every star and constellation vertex
+   // once (they never move on the sky) so the per-frame hot loops do no trig.
+   var i, j;
+   for ( i = 0; i < cat.stars.length; ++i )
+      cat.stars[ i ].v = raDecToVec( cat.stars[ i ].ra, cat.stars[ i ].dec );
+   for ( i = 0; i < cat.polys.length; ++i )
+      for ( j = 0; j < cat.polys[ i ].length; ++j )
+         cat.polys[ i ][ j ].v = raDecToVec( cat.polys[ i ][ j ].ra, cat.polys[ i ][ j ].dec );
+
+   // Equatorial grid as precomputed polylines of vectors (parallels + meridians).
+   cat.grid = [];
+   var dec, ra, poly;
+   for ( dec = -60; dec <= 60; dec += 30 )
+   {
+      poly = [];
+      for ( ra = 0; ra <= 360; ra += 5 )
+         poly.push( raDecToVec( ra, dec ) );
+      cat.grid.push( poly );
+   }
+   for ( ra = 0; ra < 360; ra += 30 )
+   {
+      poly = [];
+      for ( dec = -80; dec <= 80; dec += 5 )
+         poly.push( raDecToVec( ra, dec ) );
+      cat.grid.push( poly );
+   }
+
    gZoomCatalogs = cat;
    return cat;
 }
@@ -2490,38 +2559,47 @@ Engine.prototype.runZoom = function()
       g.antialiasing = true;
       try { g.textAntialiasing = true; } catch ( e ) {}
 
-      // Wide-field cues, then catalog star dots — all UNDER the survey images.
-      if ( obs )
-         drawLocationHorizon( g, cam, obs, unit );
-      else if ( cfg.ovShowHorizon )
-         drawZoomHorizon( g, cam, unit );
-      if ( cfg.ovShowGrid )
-         drawEquatorialGrid( g, cam, unit );
-      drawZoomStars( g, cam, cat.stars, unit );
+      var pj = cameraProjector( cam );
+      var ra = revealAlpha( fov, P, photoWideMult );
+      // When the photo fully fills the frame, everything under it is invisible.
+      var covered = ( ra >= 0.995 ) && revealCoversFrame( cam, revealWcs, revealW, revealH );
 
-      // Real-sky survey layers (DSS2), covering the star dots with real stars.
-      if ( wideBmp )
+      if ( !covered )
       {
-         var wa = fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 );
-         if ( wa > 0 )
-            drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
-      }
-      if ( nearBmp )
-      {
-         var na = fadeBand( fov, nearFov*3, nearFov*1.2, P*1.2, P*0.85 );
-         if ( na > 0 )
-            drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
-      }
+         // Wide-field cues, then catalog star dots — all UNDER the survey images.
+         if ( !obs && cfg.ovShowHorizon )
+            drawZoomHorizon( g, cam, unit );
+         if ( cfg.ovShowGrid )
+            drawEquatorialGrid( g, pj, cat.grid, unit );
+         drawZoomStars( g, pj, cat.stars, unit );
 
-      // Constellation figures and all labels are drawn OVER the surveys.
-      drawZoomConstellations( g, cam, cat.polys, unit );
-      if ( cfg.ovConstNames )
-         drawZoomConstellationNames( g, cam, cat.centroids, cat.labels, unit );
-      if ( cfg.ovStarNames )
-         drawZoomStarNames( g, cam, cat.stars, unit );
+         // Real-sky survey layers (DSS2), covering the star dots with real stars.
+         if ( wideBmp )
+         {
+            var wa = fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 );
+            if ( wa > 0 )
+               drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
+         }
+         if ( nearBmp )
+         {
+            var na = fadeBand( fov, nearFov*3, nearFov*1.2, P*1.2, P*0.85 );
+            if ( na > 0 )
+               drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
+         }
+
+         // Constellation figures and all labels are drawn OVER the surveys.
+         drawZoomConstellations( g, pj, cat.polys, unit );
+         if ( cfg.ovConstNames )
+            drawZoomConstellationNames( g, cam, cat.centroids, cat.labels, unit );
+         if ( cfg.ovStarNames )
+            drawZoomStarNames( g, cam, cat.stars, unit );
+
+         // The real horizon + opaque ground go LAST, so nothing shows below it.
+         if ( obs )
+            drawLocationHorizon( g, cam, obs, unit );
+      }
 
       // Only the user's own image sits on top of everything.
-      var ra = revealAlpha( fov, P, photoWideMult );
       if ( ra > 0 )
          drawZoomReveal( g, cam, revealWcs, revealW, revealH, revealBmp, ra );
 
@@ -2682,17 +2760,20 @@ function argb( alpha, rgb )
    return ( a*0x1000000 ) + ( rgb & 0xFFFFFF );
 }
 
-// Stars from the bright-star catalog, deepening as we zoom in.
-function drawZoomStars( g, cam, stars, unit )
+// Stars from the bright-star catalog, deepening as we zoom in. Uses the frame
+// projector and precomputed star vectors; the cull in projectVecPre skips
+// off-screen stars before any projection math.
+function drawZoomStars( g, pj, stars, unit )
 {
-   var magLimit = limitingMagnitude( cam.fovDeg );
+   var magLimit = limitingMagnitude( pj.fovDeg );
+   var W = pj.W, H = pj.H;
    for ( var i = 0; i < stars.length; ++i )
    {
       var st = stars[ i ];
       if ( st.mag > magLimit )
          continue;
-      var p = projectToScreen( cam, st.ra, st.dec );
-      if ( !p.front || p.x < -8 || p.x > cam.W + 8 || p.y < -8 || p.y > cam.H + 8 )
+      var p = projectVecPre( pj, st.v );
+      if ( p == null || p.x < -8 || p.x > W + 8 || p.y < -8 || p.y > H + 8 )
          continue;
       var r = starRadius( st.mag, magLimit, unit );
       if ( r <= 0 )
@@ -2802,77 +2883,45 @@ function drawZoomHorizon( g, cam, unit )
 var CARDINALS_EN = { 0:"N", 45:"NE", 90:"E", 135:"SE", 180:"S", 225:"SW", 270:"W", 315:"NW" };
 var CARDINALS_FR = { 0:"N", 45:"NE", 90:"E", 135:"SE", 180:"S", 225:"SO", 270:"O", 315:"NO" };
 
-// Real local horizon (alt=0 great circle) + ground + cardinal points, for the
-// location-simulated opening. Fades out as we climb toward the target.
+// Location horizon — drawn FLAT (a horizontal line) by request, even though the
+// true horizon is curved. Its height follows the projected central horizon
+// point (in the target's azimuth), so it descends naturally as the camera
+// lifts. Below it, an opaque black+blue ground hides every sky element. Cardinal
+// points are placed at their real azimuth's screen X, sitting on the flat line.
 function drawLocationHorizon( g, cam, obs, unit )
 {
-   var fov = cam.fovDeg;
-   var a = ( fov >= 40 ) ? 1 : ( fov <= 12 ? 0 : smoothstep01( ( fov - 12 )/28 ) );
-   if ( a <= 0 )
-      return;
    var W = cam.W, H = cam.H;
-   var pts = [];
-   for ( var az = 0; az <= 360; az += 2 )
-   {
-      var rd = altAzToRaDec( 0, az, obs.lst, obs.lat );
-      pts.push( projectToScreen( cam, rd.ra, rd.dec ) );
-   }
+   var hc = altAzToRaDec( 0, obs.targetAz, obs.lst, obs.lat );
+   var pC = projectToScreen( cam, hc.ra, hc.dec );
+   if ( !pC.front || pC.y <= -6*unit || pC.y >= H + 6*unit )
+      return;                                   // horizon out of frame
+   var yr = Math.round( pC.y );
    var prevOp = g.opacity;
-   g.opacity = a;
+   g.opacity = 1;
 
-   // Ground: fill below the on-screen horizon curve (best-effort).
-   var onscreen = [];
-   for ( var i = 0; i < pts.length; ++i )
-      if ( pts[ i ].front && pts[ i ].x > -80 && pts[ i ].x < W + 80 )
-         onscreen.push( pts[ i ] );
-   onscreen.sort( function( p, q ) { return p.x - q.x; } );
-   if ( onscreen.length >= 2 )
-   {
-      try
-      {
-         var poly = [];
-         // Extend to the frame edges so the ground never leaves dark gaps.
-         poly.push( new Point( -100, onscreen[ 0 ].y ) );
-         for ( var k = 0; k < onscreen.length; ++k )
-            poly.push( new Point( onscreen[ k ].x, onscreen[ k ].y ) );
-         poly.push( new Point( W + 100, onscreen[ onscreen.length - 1 ].y ) );
-         poly.push( new Point( W + 100, H + 100 ) );
-         poly.push( new Point( -100, H + 100 ) );
-         g.brush = new Brush( 0xF50E2038 );   // deep blue ground
-         g.pen = new Pen( 0x00000000, 0 );
-         g.fillPolygon( poly );
-      }
-      catch ( e )
-      {
-      }
-   }
+   // Airglow just above the horizon.
+   g.brush = new Brush( 0x2222D3EE ); g.fillRect( new Rect( 0, Math.max( 0, yr - Math.round( 70*unit ) ), W, yr ) );
+   g.brush = new Brush( 0x3341AEC4 ); g.fillRect( new Rect( 0, Math.max( 0, yr - Math.round( 22*unit ) ), W, yr ) );
 
-   // Horizon line.
+   // Opaque ground: black first, then deep blue — nothing below the horizon.
+   g.brush = new Brush( 0xFF000000 ); g.fillRect( new Rect( 0, yr, W, H ) );
+   g.brush = new Brush( 0xFF0E2038 ); g.fillRect( new Rect( 0, yr, W, H ) );
+
+   // Flat horizon line.
    g.pen = new Pen( argb( 0.9, 0x6FC7DA ), Math.max( 2, 3*unit ) );
-   var maxSeg = W*0.5, maxSeg2 = maxSeg*maxSeg, prev = null;
-   for ( var j = 0; j < pts.length; ++j )
-   {
-      var p = pts[ j ];
-      if ( p.front && prev != null )
-      {
-         var dx = p.x - prev.x, dy = p.y - prev.y;
-         if ( dx*dx + dy*dy < maxSeg2 )
-            g.drawLine( prev.x, prev.y, p.x, p.y );
-      }
-      prev = p.front ? p : null;
-   }
+   g.drawLine( 0, yr, W, yr );
 
-   // Cardinal points, just above the horizon.
+   // Cardinal points at their real azimuth, on the flat line.
    var table = ( gLanguage == "fr" ) ? CARDINALS_FR : CARDINALS_EN;
    var f = zoomFont( 20*unit, true );
    g.font = f;
    g.pen = new Pen( argb( 0.95, 0xCDEAF2 ) );
    for ( var c in table )
    {
-      var crd = altAzToRaDec( 1.5, parseFloat( c ), obs.lst, obs.lat );
+      var crd = altAzToRaDec( 0, parseFloat( c ), obs.lst, obs.lat );
       var cp = projectToScreen( cam, crd.ra, crd.dec );
-      if ( cp.front && cp.x > 10 && cp.x < W - 30 && cp.y > 10 && cp.y < H - 10 )
-         g.drawText( cp.x - Math.round( f.width( table[ c ] )/2 ), cp.y, table[ c ] );
+      if ( cp.front && cp.x > 10 && cp.x < W - 30 )
+         g.drawText( Math.round( cp.x - f.width( table[ c ] )/2 ), yr - Math.round( 8*unit ), table[ c ] );
    }
    g.opacity = prevOp;
 }
@@ -2880,70 +2929,49 @@ function drawLocationHorizon( g, cam, obs, unit )
 // Equatorial coordinate grid (RA meridians + Dec parallels) in a distinct
 // green, a wide-field cue that fades as we zoom in. Segments crossing behind
 // the projection or wrapping across the sky are dropped.
-function drawEquatorialGrid( g, cam, unit )
+// Draw a set of precomputed-vector polylines with the frame projector, skipping
+// segments that cross behind the camera or wrap across the sky.
+function drawVecPolylines( g, pj, polys, vectorOf )
 {
-   var fov = cam.fovDeg;
-   var a = ( fov >= 90 ) ? 1 : ( fov <= 25 ? 0 : smoothstep01( ( fov - 25 )/65 ) );
-   if ( a <= 0 )
-      return;
-   g.pen = new Pen( argb( 0.28*a, 0x5FBF7F ), Math.max( 1, 1*unit ) );
-   var maxSeg = cam.W*0.6, maxSeg2 = maxSeg*maxSeg;
-   function poly( pts )
+   var maxSeg = pj.W*0.6, maxSeg2 = maxSeg*maxSeg;
+   for ( var i = 0; i < polys.length; ++i )
    {
-      var prev = null;
-      for ( var k = 0; k < pts.length; ++k )
+      var pts = polys[ i ], prev = null;
+      for ( var j = 0; j < pts.length; ++j )
       {
-         var p = projectToScreen( cam, pts[ k ][ 0 ], pts[ k ][ 1 ] );
-         if ( p.front && prev != null )
+         var p = projectVecPre( pj, vectorOf( pts[ j ] ) );
+         if ( p != null && prev != null )
          {
             var dx = p.x - prev.x, dy = p.y - prev.y;
             if ( dx*dx + dy*dy < maxSeg2 )
                g.drawLine( prev.x, prev.y, p.x, p.y );
          }
-         prev = p.front ? p : null;
+         prev = p;
       }
-   }
-   var dec, ra;
-   for ( dec = -60; dec <= 60; dec += 30 )   // parallels
-   {
-      var par = [];
-      for ( ra = 0; ra <= 360; ra += 5 )
-         par.push( [ ra, dec ] );
-      poly( par );
-   }
-   for ( ra = 0; ra < 360; ra += 30 )        // meridians (every 2h)
-   {
-      var mer = [];
-      for ( dec = -80; dec <= 80; dec += 5 )
-         mer.push( [ ra, dec ] );
-      poly( mer );
    }
 }
 
-// Constellation figure lines, fading in around the constellation phase.
-function drawZoomConstellations( g, cam, polys, unit )
+var VEC_SELF = function( v ) { return v; };
+var VEC_OF   = function( pt ) { return pt.v; };
+
+function drawEquatorialGrid( g, pj, grid, unit )
 {
-   var alpha = constellationAlpha( cam.fovDeg );
+   var fov = pj.fovDeg;
+   var a = ( fov >= 90 ) ? 1 : ( fov <= 25 ? 0 : smoothstep01( ( fov - 25 )/65 ) );
+   if ( a <= 0 )
+      return;
+   g.pen = new Pen( argb( 0.28*a, 0x5FBF7F ), Math.max( 1, 1*unit ) );
+   drawVecPolylines( g, pj, grid, VEC_SELF );
+}
+
+// Constellation figure lines, fading in around the constellation phase.
+function drawZoomConstellations( g, pj, polys, unit )
+{
+   var alpha = constellationAlpha( pj.fovDeg );
    if ( alpha <= 0 )
       return;
    g.pen = new Pen( argb( 0.45*alpha, 0x7FD8F0 ), Math.max( 1, 1.3*unit ) );
-   var maxSeg = cam.W*0.6;   // drop segments that wrap across the whole sky
-   for ( var i = 0; i < polys.length; ++i )
-   {
-      var pts = polys[ i ];
-      var prev = null;
-      for ( var j = 0; j < pts.length; ++j )
-      {
-         var p = projectToScreen( cam, pts[ j ].ra, pts[ j ].dec );
-         if ( p.front && prev != null )
-         {
-            var dx = p.x - prev.x, dy = p.y - prev.y;
-            if ( dx*dx + dy*dy < maxSeg*maxSeg )
-               g.drawLine( prev.x, prev.y, p.x, p.y );
-         }
-         prev = p.front ? p : null;
-      }
-   }
+   drawVecPolylines( g, pj, polys, VEC_OF );
 }
 
 // Place the revealed image at its true on-sky position, orientation and scale.
@@ -2977,6 +3005,34 @@ function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha )
    g.opacity = prevOp;
 }
 
+// True if the revealed image, projected, fully covers the frame — so the layers
+// underneath (stars, constellations, surveys, ground) can be skipped entirely.
+function pointInPoly( x, y, poly )
+{
+   var inside = false;
+   for ( var i = 0, j = poly.length - 1; i < poly.length; j = i++ )
+   {
+      var xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+      if ( ( ( yi > y ) != ( yj > y ) ) && ( x < ( xj - xi )*( y - yi )/( yj - yi ) + xi ) )
+         inside = !inside;
+   }
+   return inside;
+}
+
+function revealCoversFrame( cam, wcs, imgW, imgH )
+{
+   function scr( px, py ) { var s = wcsPixelToSky( wcs, px, py ); return projectToScreen( cam, s.ra, s.dec ); }
+   var q = [ scr( 0, 0 ), scr( imgW, 0 ), scr( imgW, imgH ), scr( 0, imgH ) ];
+   for ( var i = 0; i < 4; ++i )
+      if ( !q[ i ].front )
+         return false;
+   var fc = [ { x: 0, y: 0 }, { x: cam.W, y: 0 }, { x: cam.W, y: cam.H }, { x: 0, y: cam.H } ];
+   for ( var c = 0; c < 4; ++c )
+      if ( !pointInPoly( fc[ c ].x, fc[ c ].y, q ) )
+         return false;
+   return true;
+}
+
 function zoomFont( px, bold )
 {
    var f = new Font( "Open Sans" );
@@ -2992,11 +3048,6 @@ function drawZoomOverlay( g, cam, cfg, title, t )
    var W = cam.W, H = cam.H, u = H/1080;
    var margin = Math.round( 40*u );
    g.opacity = 1;
-
-   var scrimTop = H - Math.round( 150*u );
-   g.fillRect( new Rect( 0, scrimTop, W, H ), new Brush( 0x26000000 ) );
-   g.fillRect( new Rect( 0, scrimTop + Math.round( 50*u ), W, H ), new Brush( 0x33000000 ) );
-   g.fillRect( new Rect( 0, scrimTop + Math.round( 100*u ), W, H ), new Brush( 0x40000000 ) );
 
    var titleFont = zoomFont( 34*u, true );
    var subFont = zoomFont( 21*u, false );
