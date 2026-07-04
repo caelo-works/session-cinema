@@ -193,6 +193,11 @@ var STRINGS = {
       "prog.title":        "Progress",
       "prog.idle":         "Idle — press Generate to start.",
       "prog.done":         "Done.",
+      "prog.pause":        "Pause",
+      "prog.resume":       "Resume",
+      "prog.cancel":       "Cancel",
+      "prog.paused":       "⏸  Paused.",
+      "prog.cancelled":    "Cancelled.",
       "stretch.label":     "Screen stretch:",
       "stretch.final":     "Fixed, computed on the final stack (2 passes — honest noise progression)",
       "stretch.first":     "Fixed, computed on the first frame (1 pass, faster)",
@@ -360,6 +365,11 @@ var STRINGS = {
       "prog.title":        "Progression",
       "prog.idle":         "En attente — cliquez sur Générer.",
       "prog.done":         "Terminé.",
+      "prog.pause":        "Pause",
+      "prog.resume":       "Reprendre",
+      "prog.cancel":       "Annuler",
+      "prog.paused":       "⏸  En pause.",
+      "prog.cancelled":    "Annulé.",
       "stretch.label":     "Étirement d'affichage :",
       "stretch.final":     "Fixe, calculé sur le stack final (2 passes — progression du bruit honnête)",
       "stretch.first":     "Fixe, calculé sur la première brute (1 passe, plus rapide)",
@@ -1151,7 +1161,7 @@ function starRadius( mag, magLimit, unit )
 {
    var b = magLimit - mag;
    if ( b <= 0 ) return 0;
-   return Math.max( 0.4*unit, 0.5*unit*Math.pow( b, 0.7 ) );
+   return Math.max( 0.6*unit, 0.75*unit*Math.pow( b, 0.72 ) );
 }
 
 // Round angle just below `targetDeg`, for an honest scale bar.
@@ -1704,10 +1714,38 @@ function fileSize( path )
    catch ( e ) { return -1; }
 }
 
+// Survey cutouts are cached in memory (and on disk) so re-running a generation
+// on the same coordinates in the same PixInsight session never re-downloads.
+var gHipsCache = {};
+
 function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx, onTick )
 {
+   var key = hips + "|" + Math.round( ra*1000 ) + "|" + Math.round( dec*1000 ) +
+             "|" + Math.round( fovDeg*1000 ) + "|" + nPx;
+   if ( gHipsCache[ key ] )
+      return gHipsCache[ key ];
+
    var out = File.systemTempDirectory + "/sc-hips-" +
-             Math.round( ra*1000 ) + "_" + Math.round( dec*1000 ) + "_" + Math.round( fovDeg*1000 ) + ".jpg";
+             Math.round( ra*1000 ) + "_" + Math.round( dec*1000 ) + "_" +
+             Math.round( fovDeg*1000 ) + "_" + nPx + ".jpg";
+
+   function loadValid()
+   {
+      if ( File.exists( out ) && fileSize( out ) > 2048 )
+         try
+         {
+            var b = new Bitmap( out );
+            if ( b.width > 1 && b.height > 1 )
+               return b;
+         }
+         catch ( e ) {}
+      return null;
+   }
+
+   // Reuse a previously downloaded file (survives across generations).
+   var cached = loadValid();
+   if ( cached ) { gHipsCache[ key ] = cached; return cached; }
+
    var url = hips2fitsUrl( hips, ra, dec, fovDeg, nPx );
    var curl = ( platformKind() == "windows" ) ? "curl.exe" : "curl";
    var attempts = 3;
@@ -1719,15 +1757,8 @@ function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx, onTick )
       var size = File.exists( out ) ? fileSize( out ) : -1;
       if ( r.started && r.exitCode == 0 && size > 2048 )
       {
-         try
-         {
-            var bmp = new Bitmap( out );
-            if ( bmp.width > 1 && bmp.height > 1 )
-               return bmp;
-         }
-         catch ( eb )
-         {
-         }
+         var bmp = loadValid();
+         if ( bmp ) { gHipsCache[ key ] = bmp; return bmp; }
       }
       console.warningln( tr( "zoom.hipsRetry", a, attempts,
                              ( r.started ? ( "exit " + r.exitCode + ", " + size + " B" ) : "curl not started" ) ) );
@@ -1960,7 +1991,8 @@ function Engine( cfg, frames )
    this.skipped = [];
    this.rendered = 0;
    this.aborted = false;
-   this.onProgress = null;   // optional (done, total, message); done<0 = indeterminate
+   this.onProgress = null;   // optional (done, total, message, previewBmp?)
+   this.shouldAbort = null;  // optional () -> true to cancel
 }
 
 // Report progress to a UI callback if one is attached (keeps the dialog alive).
@@ -1994,6 +2026,8 @@ Engine.prototype.checkAbort = function()
    processEvents();
    if ( console.abortRequested )
       this.aborted = true;
+   if ( this.shouldAbort )
+      try { if ( this.shouldAbort() ) this.aborted = true; } catch ( e ) {}
    return this.aborted;
 };
 
@@ -2346,9 +2380,11 @@ Engine.prototype.runZoom = function()
    // Their dense real stars carry the range where the bright-star catalog
    // thins, then the photo takes over. Best-effort — a failed fetch falls back
    // to the catalog stars.
-   var NEAR_PX = 3200, WIDE_PX = 2000;
+   // The wide survey is fetched large (~50°) so real stars fill the frame early
+   // — the bright-star catalog thins fast a few seconds into the zoom.
+   var NEAR_PX = 3200, WIDE_PX = 2600;
    var nearFov = P*2.5;
-   var wideFov = Math.max( 12, Math.min( 45, P*20 ) );
+   var wideFov = Math.max( 35, Math.min( 60, P*40 ) );
    var nearBmp = null, nearWcs = null, wideBmp = null, wideWcs = null;
    if ( cfg.hipsEnabled )
    {
@@ -2408,7 +2444,7 @@ Engine.prototype.runZoom = function()
       // Real-sky survey layers (DSS2), covering the star dots with real stars.
       if ( wideBmp )
       {
-         var wa = fadeBand( fov, wideFov*3, wideFov*1.2, P*3, P*1.5 );
+         var wa = fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 );
          if ( wa > 0 )
             drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
       }
@@ -3445,7 +3481,7 @@ class SessionCinemaDialog extends Dialog
       for ( var i = 0; i < OUTPUT_FORMATS.length; ++i )
          this.formatCombo.addItem( OUTPUT_FORMATS[ i ].label );
       this.formatCombo.currentItem = cfg.formatIndex;
-      this.formatCombo.onItemSelected = ( idx ) => { self.cfg.formatIndex = idx; };
+      this.formatCombo.onItemSelected = ( idx ) => { self.cfg.formatIndex = idx; self.updateThumbSize(); };
       this.formatSizer = new HorizontalSizer;
       this.formatSizer.spacing = 6;
       this.formatSizer.add( this.formatLabel );
@@ -3704,10 +3740,29 @@ class SessionCinemaDialog extends Dialog
          g.end();
       };
 
+      this.pauseButton = new PushButton( this );
+      this.pauseButton.text = tr( "prog.pause" );
+      this.pauseButton.enabled = false;
+      this.pauseButton.onClick = () =>
+      {
+         self._paused = !self._paused;
+         self.pauseButton.text = self._paused ? tr( "prog.resume" ) : tr( "prog.pause" );
+      };
+      this.cancelButton = new PushButton( this );
+      this.cancelButton.text = tr( "prog.cancel" );
+      this.cancelButton.enabled = false;
+      this.cancelButton.onClick = () => { self._cancel = true; self._paused = false; };
+
+      this.progressButtons = new HorizontalSizer;
+      this.progressButtons.spacing = 6;
+      this.progressButtons.add( this.progressStatus, 100 );
+      this.progressButtons.add( this.pauseButton );
+      this.progressButtons.add( this.cancelButton );
+
       this.progressInfo = new VerticalSizer;
       this.progressInfo.spacing = 6;
       this.progressInfo.addStretch();
-      this.progressInfo.add( this.progressStatus );
+      this.progressInfo.add( this.progressButtons );
       this.progressInfo.add( this.progressBar );
       this.progressInfo.addStretch();
 
@@ -3778,6 +3833,7 @@ class SessionCinemaDialog extends Dialog
       this.adjustToContents();
       this.autofillTitle();   // frames may already be loaded (e.g. language reload)
       this.refreshTree();
+      this.updateThumbSize();
       this.updateStyleDependents();
       this.onDetectFfmpeg();
    }
@@ -3829,6 +3885,15 @@ class SessionCinemaDialog extends Dialog
          page.sizer.add( items[ i ], ( items[ i ] == this.framesGroup ) ? 100 : 0 );
       page.sizer.addStretch();
       return page;
+   }
+
+   // Size the progress thumbnail to the chosen output aspect ratio.
+   updateThumbSize()
+   {
+      var fmt = OUTPUT_FORMATS[ this.cfg.formatIndex ];
+      var scale = Math.min( 176/fmt.w, 140/fmt.h );
+      try { this.thumbCtrl.setFixedSize( Math.round( fmt.w*scale ), Math.round( fmt.h*scale ) ); } catch ( e ) {}
+      this.thumbCtrl.repaint();
    }
 
    // Mode-specific tagline shown in the header.
@@ -4153,12 +4218,18 @@ class SessionCinemaDialog extends Dialog
       saveConfig( this.persistableConfig() );
 
       var self = this;
+      this._paused = false;
+      this._cancel = false;
       this.setBusy( true );
+      this.pauseButton.enabled = true;
+      this.cancelButton.enabled = true;
+      this.pauseButton.text = tr( "prog.pause" );
       console.show();
 
       var SPIN = [ "◐", "◓", "◑", "◒" ];
       this._spin = 0;
       var engine = new Engine( this.cfg, this.frames );
+      engine.shouldAbort = () => self._cancel;
       engine.onProgress = ( done, total, msg, previewBmp ) =>
       {
          self._spin = ( self._spin + 1 ) % SPIN.length;
@@ -4182,6 +4253,13 @@ class SessionCinemaDialog extends Dialog
          }
          self.progressBar.repaint();
          processEvents();
+         // Pause blocks the engine here, between steps, until resumed/cancelled.
+         while ( self._paused && !self._cancel )
+         {
+            self.progressStatus.text = tr( "prog.paused" );
+            self.progressBar.repaint();
+            processEvents();
+         }
       };
 
       var result = null, error = "";
@@ -4195,10 +4273,12 @@ class SessionCinemaDialog extends Dialog
       }
 
       this.setBusy( false );
+      this.pauseButton.enabled = false;
+      this.cancelButton.enabled = false;
       this.progressBar.__indet = false;
       this.progressBar.__frac = ( result && result.ok ) ? 1 : 0;
       this.progressBar.repaint();
-      this.progressStatus.text = tr( "prog.done" );
+      this.progressStatus.text = self._cancel ? tr( "prog.cancelled" ) : tr( "prog.done" );
 
       if ( error.length )
       {
