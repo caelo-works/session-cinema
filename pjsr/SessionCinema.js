@@ -1336,7 +1336,8 @@ function keywordsToMap( keywords )
 function scanFrameHeader( path )
 {
    var frame = { path: path, name: File.extractName( path ) + File.extractExtension( path ),
-                 dateObs: null, exposure: 0, object: "", filter: "", cfa: false };
+                 dateObs: null, dateObsStr: "", exposure: 0, object: "", filter: "", cfa: false,
+                 siteLat: null, siteLong: null };
    try
    {
       var ext = File.extractExtension( path ).toLowerCase();
@@ -1347,10 +1348,13 @@ function scanFrameHeader( path )
       {
          var meta = frameMetaFromKeywords( keywordsToMap( inst.keywords ) );
          frame.dateObs = meta.dateObs;
+         frame.dateObsStr = meta.dateObsStr;
          frame.exposure = meta.exposure;
          frame.object = meta.object;
          frame.filter = meta.filter;
          frame.cfa = meta.cfa;
+         frame.siteLat = meta.siteLat;
+         frame.siteLong = meta.siteLong;
       }
       inst.close();
    }
