@@ -194,7 +194,8 @@ var STRINGS = {
       "align.opacity":     "Overlay:",
       "align.flipH":       "Flip H",
       "align.flipV":       "Flip V",
-      "align.rot90":       "Rotate 90°",
+      "align.rot90":       "+90°",
+      "align.rotM90":      "−90°",
       "align.fit":         "Fit to solved",
       "align.fitHint":     "Assume the reveal covers the whole solved frame.",
       "align.loading":     "Loading images for alignment…",
@@ -377,7 +378,8 @@ var STRINGS = {
       "align.opacity":     "Superposition :",
       "align.flipH":       "Miroir H",
       "align.flipV":       "Miroir V",
-      "align.rot90":       "Rotation 90°",
+      "align.rot90":       "+90°",
+      "align.rotM90":      "−90°",
       "align.fit":         "Ajuster à l'image résolue",
       "align.fitHint":     "Suppose que l'image à révéler couvre tout le cadre résolu.",
       "align.loading":     "Chargement des images pour l'alignement…",
@@ -4727,9 +4729,12 @@ class ZoomAlignDialog extends Dialog
       this.scaleControl.setValue( this.scale );
       this.scaleControl.onValueUpdated = ( v ) => { self.scale = v; self.canvas.repaint(); };
 
+      // Rotation as 0..360 (all-positive, so the slider never has to deliver
+      // negative values); -10° is simply 350°.
+      this.rotDeg = ( ( this.rotDeg % 360 ) + 360 ) % 360;
       this.rotControl = new NumericControl( this );
       this.rotControl.label.text = tr( "align.rotation" );
-      this.rotControl.setRange( -180, 180 );
+      this.rotControl.setRange( 0, 360 );
       this.rotControl.setPrecision( 2 );
       this.rotControl.setValue( this.rotDeg );
       this.rotControl.onValueUpdated = ( v ) => { self.rotDeg = v; self.canvas.repaint(); };
@@ -4747,14 +4752,18 @@ class ZoomAlignDialog extends Dialog
       this.flipVButton = new PushButton( this );
       this.flipVButton.text = tr( "align.flipV" );
       this.flipVButton.onClick = () => { self.flipV = !self.flipV; self.canvas.repaint(); };
-      this.rot90Button = new PushButton( this );
-      this.rot90Button.text = tr( "align.rot90" );
-      this.rot90Button.onClick = () =>
+      function nudgeRot( d )
       {
-         self.rotDeg = ( ( self.rotDeg + 90 + 180 ) % 360 ) - 180;
+         self.rotDeg = ( ( self.rotDeg + d ) % 360 + 360 ) % 360;
          self.rotControl.setValue( self.rotDeg );
          self.canvas.repaint();
-      };
+      }
+      this.rotM90Button = new PushButton( this );
+      this.rotM90Button.text = tr( "align.rotM90" );
+      this.rotM90Button.onClick = () => nudgeRot( -90 );
+      this.rot90Button = new PushButton( this );
+      this.rot90Button.text = tr( "align.rot90" );
+      this.rot90Button.onClick = () => nudgeRot( 90 );
 
       this.fitButton = new PushButton( this );
       this.fitButton.text = tr( "align.fit" );
@@ -4811,6 +4820,7 @@ class ZoomAlignDialog extends Dialog
       this.ctrlSizer2.spacing = 6;
       this.ctrlSizer2.add( this.flipHButton );
       this.ctrlSizer2.add( this.flipVButton );
+      this.ctrlSizer2.add( this.rotM90Button );
       this.ctrlSizer2.add( this.rot90Button );
       this.ctrlSizer2.addStretch();
       this.ctrlSizer2.add( this.panButton );
