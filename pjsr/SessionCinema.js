@@ -2623,7 +2623,9 @@ Engine.prototype.runZoom = function()
    var topV = raDecToVec( topSky.ra, topSky.dec );
    var du = vdot( topV, fC );
    var upVec = vnorm( [ topV[0]-fC[0]*du, topV[1]-fC[1]*du, topV[2]-fC[2]*du ] );
-   var endFov = Math.max( P, ( P*revealH/revealW )*W/H )*1.03;
+   // No extra margin: exactly one image dimension equals the frame (the
+   // constraining axis touches edge-to-edge), the real sky fills only the other.
+   var endFov = Math.max( P, ( P*revealH/revealW )*W/H );
    var camTarget = { centerRA: framing.centerRA, centerDec: framing.centerDec, fovDeg: endFov, upVec: upVec };
 
    var startFov;
