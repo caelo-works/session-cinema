@@ -1070,7 +1070,15 @@ function zoomCameraAt( t, target, startFovDeg, W, H )
 {
    var e = smootherstep01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
-   return makeCamera( target.centerRA, target.centerDec, fov, 0, W, H );
+   var fEnd = raDecToVec( target.centerRA, target.centerDec );
+   var nu = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );   // north up
+   var endUp = target.upVec || nu;
+   // Roll gently from north-up to the reveal's own up so the image ends upright,
+   // filling the frame (rather than tilted with background showing at the edges).
+   var rollB = Math.atan2( vdot( vcross( nu, endUp ), fEnd ), vdot( nu, endUp ) );
+   var roll = rollB*e, cx = vcross( fEnd, nu ), cr = Math.cos( roll ), sr = Math.sin( roll );
+   var up = vnorm( [ nu[0]*cr + cx[0]*sr, nu[1]*cr + cx[1]*sr, nu[2]*cr + cx[2]*sr ] );
+   return makeCameraFromBasis( fEnd, up, fov, 0, W, H );
 }
 
 // Spherical linear interpolation between two unit vectors.
@@ -1128,21 +1136,42 @@ function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
    var e = smootherstep01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
    // The look direction (centring) settles early so the target is framed by the
-   // time the surveys appear. The camera ROLL (up: local vertical → celestial
-   // north) is a separate, slower curve spread over the WHOLE zoom, so the field
-   // never spins violently at the start while the view is still wide.
+   // time the surveys appear. The camera ROLL is interpolated as an ANGLE about
+   // a continuous "north-up" reference (Rodrigues), NOT by slerping the up vector
+   // and re-orthonormalising: when the target is near the zenith the up vector
+   // passes through the look axis, and the vector method snaps ~180° in a single
+   // frame. The angle method is singularity-free and spreads the roll smoothly.
    var eCenter = smootherstep01( Math.min( 1, t/0.4 ) );
-   var eRoll = smootherstep01( t );
+   // Roll completes during the wide star/constellation phase (before the DSS2
+   // imagery takes over), so the recognisable survey/photo never spins — but
+   // spread smoothly, not as a snap.
+   var eRoll = smootherstep01( Math.min( 1, t/0.3 ) );
 
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
-   var upEnd = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );  // celestial north
-
    var startC = altAzToRaDec( ( obs.altC !== undefined ) ? obs.altC : obs.targetAlt, obs.targetAz, obs.lst, obs.lat );
    var fStart = raDecToVec( startC.ra, startC.dec );
    var zenith = raDecToVec( obs.lst, obs.lat );                        // local vertical
 
    var f = slerpVec( fStart, fEnd, eCenter );
-   var up = slerpVec( zenith, upEnd, eRoll );
+
+   // Roll is an ANGLE offset from a continuous "north-up" carrier, interpolated
+   // from the level horizon (up = local vertical) at the START to the REVEAL's
+   // own up (target.upVec, so the image ends filling the frame upright) at the
+   // end. Angle interpolation is singularity-free — the vector-slerp method
+   // snaps ~180° near the zenith.
+   function northUp( v ) { return vnorm( [ -v[0]*v[2], -v[1]*v[2], 1 - v[2]*v[2] ] ); }
+   function projPerp( u, v ) { var d = vdot( u, v ); return vnorm( [ u[0]-v[0]*d, u[1]-v[1]*d, u[2]-v[2]*d ] ); }
+   function rollOff( nu, ref, axis ) { return Math.atan2( vdot( vcross( nu, ref ), axis ), vdot( nu, ref ) ); }
+
+   var endUp = target.upVec || northUp( fEnd );
+   var rollA = rollOff( northUp( fStart ), projPerp( zenith, fStart ), fStart );   // start: level
+   var rollB = rollOff( northUp( fEnd ), endUp, fEnd );                            // end: reveal up
+   while ( rollB - rollA >  Math.PI ) rollB -= 2*Math.PI;                          // shortest path
+   while ( rollB - rollA < -Math.PI ) rollB += 2*Math.PI;
+   var roll = rollA*( 1 - eRoll ) + rollB*eRoll;
+
+   var nu = northUp( f ), cx = vcross( f, nu ), cr = Math.cos( roll ), sr = Math.sin( roll );
+   var up = vnorm( [ nu[0]*cr + cx[0]*sr, nu[1]*cr + cx[1]*sr, nu[2]*cr + cx[2]*sr ] );
    return makeCameraFromBasis( f, up, fov, 0, W, H );
 }
 
@@ -2585,6 +2614,19 @@ Engine.prototype.runZoom = function()
 
    var fmt = OUTPUT_FORMATS[ cfg.formatIndex ];
    var W = fmt.w, H = fmt.h, unit = H/1080;
+
+   // End-of-zoom fov that frames the WHOLE reveal. wcsImageFraming reports the
+   // field from the image WIDTH (P), but the reveal can be rotated on the sky
+   // (e.g. a portrait frame aligned with a 90° turn), so its on-screen bounding
+   // box — for the north-up final camera — is what must fit the output aspect.
+   // Ending at exactly P would show only the central strip ("too zoomed").
+   var hImg = P*revealH/revealW;                       // reveal angular height
+   var thr = deg2rad( framing.rollDeg );
+   var ct = Math.abs( Math.cos( thr ) ), stt = Math.abs( Math.sin( thr ) );
+   var bw = P*ct + hImg*stt, bh = P*stt + hImg*ct;     // rotated bounding box
+   var endFov = Math.max( bw, bh*W/H )*1.02;           // + small margin
+   var camTarget = { centerRA: framing.centerRA, centerDec: framing.centerDec, fovDeg: endFov };
+
    var startFov;
    if ( obs )
    {
@@ -2607,8 +2649,8 @@ Engine.prototype.runZoom = function()
       if ( this.checkAbort() )
          break;
       var t = i/( N - 1 );
-      var cam = obs ? zoomCameraLocation( t, framing, startFov, W, H, obs )
-                    : zoomCameraAt( t, framing, startFov, W, H );
+      var cam = obs ? zoomCameraLocation( t, camTarget, startFov, W, H, obs )
+                    : zoomCameraAt( t, camTarget, startFov, W, H );
       var fov = cam.fovDeg;
 
       var _t0 = Date.now();
@@ -2620,7 +2662,7 @@ Engine.prototype.runZoom = function()
       PERF.alloc += Date.now() - _t0;
 
       var pj = cameraProjector( cam );
-      var ra = revealAlpha( fov, P, photoWideMult );
+      var ra = revealAlpha( fov, endFov, photoWideMult );
       // When the photo fully fills the frame, everything under it is invisible.
       var covered = ( ra >= 0.995 ) && revealCoversFrame( cam, revealWcs, revealW, revealH );
 
