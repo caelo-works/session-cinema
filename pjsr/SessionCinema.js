@@ -1082,13 +1082,10 @@ function zoomCameraAt( t, target, startFovDeg, W, H )
    var e = easeOut01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
-   var nu = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );   // north up
-   var endUp = target.upVec || nu;
-   // Roll gently from north-up to the reveal's own up so the image ends upright,
-   // filling the frame (rather than tilted with background showing at the edges).
-   var rollB = Math.atan2( vdot( vcross( nu, endUp ), fEnd ), vdot( nu, endUp ) );
-   var roll = rollB*e, cx = vcross( fEnd, nu ), cr = Math.cos( roll ), sr = Math.sin( roll );
-   var up = vnorm( [ nu[0]*cr + cx[0]*sr, nu[1]*cr + cx[1]*sr, nu[2]*cr + cx[2]*sr ] );
+   // The image is the anchor: the camera stays locked to its frame the whole
+   // zoom — NO roll, nothing spins. The sky simply appears in the image's
+   // orientation. up = the image's own up (north-up when none is supplied).
+   var up = target.upVec || vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );
    return makeCameraFromBasis( fEnd, up, fov, 0, W, H );
 }
 
@@ -1137,49 +1134,39 @@ function locationStartFraming( targetAltDeg, W, H )
    return { fovDeg: fov, altCDeg: altC( fov ) };
 }
 
-// Camera along the LOCATION path. Opens with the target ~1/4 from the top and
-// the real horizon low in the frame (up = local zenith), then re-centers onto
-// the target early in the zoom (done by t≈0.4, before the surveys dominate)
-// while the up vector rolls to celestial north, so the reveal lands aligned.
-// obs = { lst, lat, targetAlt, targetAz, startFov, altC }.
+// Camera along the LOCATION path. The ONLY rotation in the whole video is the
+// opening flourish: it opens with the target ~1/4 from the top and the real
+// horizon low (up = local zenith, level horizon), then during a short opening
+// window both re-centers onto the target AND rolls to the image's own frame.
+// After the opening (t ≳ 0.15) the camera is LOCKED to the image frame — pure
+// zoom, nothing spins — so the surveys/photo never rotate. obs = { lst, lat,
+// targetAlt, targetAz, startFov, altC }.
 function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
 {
    var e = easeOut01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
-   // The look direction (centring) settles early so the target is framed by the
-   // time the surveys appear. The camera ROLL is interpolated as an ANGLE about
-   // a continuous "north-up" reference (Rodrigues), NOT by slerping the up vector
-   // and re-orthonormalising: when the target is near the zenith the up vector
-   // passes through the look axis, and the vector method snaps ~180° in a single
-   // frame. The angle method is singularity-free and spreads the roll smoothly.
-   var eCenter = smootherstep01( Math.min( 1, t/0.4 ) );
-   // Roll completes during the wide star/constellation phase (before the DSS2
-   // imagery takes over), so the recognisable survey/photo never spins — but
-   // spread smoothly, not as a snap.
-   var eRoll = smootherstep01( Math.min( 1, t/0.3 ) );
+   var eOpen = smootherstep01( Math.min( 1, t/0.15 ) );   // slew + roll, done by t≈0.15
 
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
    var startC = altAzToRaDec( ( obs.altC !== undefined ) ? obs.altC : obs.targetAlt, obs.targetAz, obs.lst, obs.lat );
    var fStart = raDecToVec( startC.ra, startC.dec );
    var zenith = raDecToVec( obs.lst, obs.lat );                        // local vertical
 
-   var f = slerpVec( fStart, fEnd, eCenter );
+   var f = slerpVec( fStart, fEnd, eOpen );
 
-   // Roll is an ANGLE offset from a continuous "north-up" carrier, interpolated
-   // from the level horizon (up = local vertical) at the START to the REVEAL's
-   // own up (target.upVec, so the image ends filling the frame upright) at the
-   // end. Angle interpolation is singularity-free — the vector-slerp method
-   // snaps ~180° near the zenith.
+   // Roll as an ANGLE offset from a continuous north-up carrier (singularity-free
+   // near the zenith), from the level horizon at the START to the IMAGE's own up
+   // at the end of the opening — then held.
    function northUp( v ) { return vnorm( [ -v[0]*v[2], -v[1]*v[2], 1 - v[2]*v[2] ] ); }
    function projPerp( u, v ) { var d = vdot( u, v ); return vnorm( [ u[0]-v[0]*d, u[1]-v[1]*d, u[2]-v[2]*d ] ); }
    function rollOff( nu, ref, axis ) { return Math.atan2( vdot( vcross( nu, ref ), axis ), vdot( nu, ref ) ); }
 
    var endUp = target.upVec || northUp( fEnd );
    var rollA = rollOff( northUp( fStart ), projPerp( zenith, fStart ), fStart );   // start: level
-   var rollB = rollOff( northUp( fEnd ), endUp, fEnd );                            // end: reveal up
+   var rollB = rollOff( northUp( fEnd ), endUp, fEnd );                            // end: image up
    while ( rollB - rollA >  Math.PI ) rollB -= 2*Math.PI;                          // shortest path
    while ( rollB - rollA < -Math.PI ) rollB += 2*Math.PI;
-   var roll = rollA*( 1 - eRoll ) + rollB*eRoll;
+   var roll = rollA*( 1 - eOpen ) + rollB*eOpen;
 
    var nu = northUp( f ), cx = vcross( f, nu ), cr = Math.cos( roll ), sr = Math.sin( roll );
    var up = vnorm( [ nu[0]*cr + cx[0]*sr, nu[1]*cr + cx[1]*sr, nu[2]*cr + cx[2]*sr ] );
@@ -2626,17 +2613,18 @@ Engine.prototype.runZoom = function()
    var fmt = OUTPUT_FORMATS[ cfg.formatIndex ];
    var W = fmt.w, H = fmt.h, unit = H/1080;
 
-   // End-of-zoom fov that frames the WHOLE reveal. wcsImageFraming reports the
-   // field from the image WIDTH (P), but the reveal can be rotated on the sky
-   // (e.g. a portrait frame aligned with a 90° turn), so its on-screen bounding
-   // box — for the north-up final camera — is what must fit the output aspect.
-   // Ending at exactly P would show only the central strip ("too zoomed").
-   var hImg = P*revealH/revealW;                       // reveal angular height
-   var thr = deg2rad( framing.rollDeg );
-   var ct = Math.abs( Math.cos( thr ) ), stt = Math.abs( Math.sin( thr ) );
-   var bw = P*ct + hImg*stt, bh = P*stt + hImg*ct;     // rotated bounding box
-   var endFov = Math.max( bw, bh*W/H )*1.02;           // + small margin
-   var camTarget = { centerRA: framing.centerRA, centerDec: framing.centerDec, fovDeg: endFov };
+   // The REVEAL is the anchor: the camera ends locked to the image's OWN frame,
+   // so the image finishes exactly upright/native and the sky (DSS2, stars) is
+   // what's oriented around it. upVec = the image's up on the sky; endFov frames
+   // the WHOLE image (its native aspect vs the output), the real sky filling the
+   // margins. No rotation term — the image is axis-aligned with the camera.
+   var fC = raDecToVec( framing.centerRA, framing.centerDec );
+   var topSky = wcsPixelToSky( revealWcs, revealW/2, 0 );      // image top-edge centre
+   var topV = raDecToVec( topSky.ra, topSky.dec );
+   var du = vdot( topV, fC );
+   var upVec = vnorm( [ topV[0]-fC[0]*du, topV[1]-fC[1]*du, topV[2]-fC[2]*du ] );
+   var endFov = Math.max( P, ( P*revealH/revealW )*W/H )*1.03;
+   var camTarget = { centerRA: framing.centerRA, centerDec: framing.centerDec, fovDeg: endFov, upVec: upVec };
 
    var startFov;
    if ( obs )
