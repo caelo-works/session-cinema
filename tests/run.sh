@@ -83,6 +83,7 @@ module.exports = {
    buildOverlayInfo: buildOverlayInfo,
    buildFfmpegArgs: buildFfmpegArgs,
    shellQuote: shellQuote,
+   buildEncodeScriptText: buildEncodeScriptText,
    frameFileName: frameFileName
 };
 EOF

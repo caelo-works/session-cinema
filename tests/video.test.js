@@ -68,6 +68,18 @@ assert.deepStrictEqual( M.computeRenderIndices( 0, 30, 12 ), [] );
 // shellQuote
 assert.strictEqual( M.shellQuote( 'a "b" c' ), '"a \\"b\\" c"' );
 
+// buildEncodeScriptText — .bat doubles every literal % (cmd.exe expansion)
+{
+   const args = [ "-i", "C:/out/frames/frame_%05d.png", "C:/out/video.mp4" ];
+   const bat = M.buildEncodeScriptText( true, args );
+   assert.ok( bat.includes( "frame_%%05d.png" ), bat );
+   assert.ok( !bat.split( "%%" ).join( "" ).includes( "%" ), "no lone % left in the .bat" );
+   assert.ok( bat.startsWith( "@echo off\r\n" ) );
+   const sh = M.buildEncodeScriptText( false, args );
+   assert.ok( sh.includes( "frame_%05d.png" ), sh );
+   assert.ok( sh.startsWith( "#!/bin/sh\n" ) );
+}
+
 // frameFileName
 assert.strictEqual( M.frameFileName( 1 ), "frame_00001.png" );
 assert.strictEqual( M.frameFileName( 12345 ), "frame_12345.png" );

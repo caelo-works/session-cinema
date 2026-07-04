@@ -557,6 +557,22 @@ function shellQuote( s )
    return "\"" + String( s ).split( "\"" ).join( "\\\"" ) + "\"";
 }
 
+// Full text of the fallback encoding script. In a .bat, every literal %
+// must be doubled or cmd.exe eats it (frame_%05d.png would break).
+function buildEncodeScriptText( isWin, ffmpegArgs )
+{
+   var cmd = shellQuote( "ffmpeg" );
+   for ( var i = 0; i < ffmpegArgs.length; ++i )
+   {
+      var a = shellQuote( ffmpegArgs[ i ] );
+      if ( isWin )
+         a = a.split( "%" ).join( "%%" );
+      cmd += " " + a;
+   }
+   return isWin ? ( "@echo off\r\n" + cmd + "\r\npause\r\n" )
+                : ( "#!/bin/sh\n" + cmd + "\n" );
+}
+
 // Extract the frame metadata Session Cinema needs from a raw keyword map.
 function frameMetaFromKeywords( map )
 {
@@ -813,9 +829,31 @@ function applyStretchToView( view, stretch )
    HT.executeOn( view, false );
 }
 
-// Robust noise estimate (scaled MAD) on the central half of the image.
+// Noise standard deviation of a (linear) image. A plain MAD is dominated by
+// real structure on nebula-filled fields and barely moves while stacking, so
+// prefer PixInsight's dedicated estimators: MRS (best), then k-sigma, and
+// only fall back to the scaled central MAD when neither is available.
 function estimateSigma( img )
 {
+   try
+   {
+      var a = img.noiseMRS();
+      if ( a && a.length > 0 && a[ 0 ] > 0 )
+         return a[ 0 ];
+   }
+   catch ( e )
+   {
+   }
+   try
+   {
+      var k = img.noiseKSigma();
+      var sigma = ( k && k.length !== undefined ) ? k[ 0 ] : k;
+      if ( sigma > 0 )
+         return sigma;
+   }
+   catch ( e )
+   {
+   }
    try
    {
       var stats = imageChannelStats( img, true );
@@ -952,6 +990,16 @@ function runExternal( program, args, timeoutMs, keepUiAlive )
    {
       var P = new ExternalProcess;
       P.start( program, args );
+      // A program that fails to launch still reports exitCode 0 (Qt trap):
+      // require an actual start before trusting anything else.
+      try
+      {
+         if ( !P.waitForStarted( 5000 ) )
+            return result;
+      }
+      catch ( e )
+      {
+      }
       var waited = 0;
       for ( ;; )
       {
@@ -1011,12 +1059,7 @@ function writeEncodeScript( framesDir, ffmpegArgs )
 {
    var isWin = ( platformKind() == "windows" );
    var scriptPath = framesDir + ( isWin ? "/encode.bat" : "/encode.sh" );
-   var cmd = shellQuote( "ffmpeg" );
-   for ( var i = 0; i < ffmpegArgs.length; ++i )
-      cmd += " " + shellQuote( ffmpegArgs[ i ] );
-   var text = isWin ? ( "@echo off\r\n" + cmd + "\r\npause\r\n" )
-                    : ( "#!/bin/sh\n" + cmd + "\n" );
-   File.writeTextFile( scriptPath, text );
+   File.writeTextFile( scriptPath, buildEncodeScriptText( isWin, ffmpegArgs ) );
    if ( !isWin )
       runExternal( "/bin/chmod", [ "+x", scriptPath ], 5000, false );
    return scriptPath;
@@ -1312,7 +1355,8 @@ Engine.prototype.encode = function()
    }
    console.writeln( tr( "run.encoding" ) );
    var r = runExternal( ffmpeg, args, 0, true );
-   if ( r.started && r.exitCode == 0 )
+   // The written file is the ground truth — exit codes can lie (see above).
+   if ( r.started && r.exitCode == 0 && File.exists( this.videoPath() ) )
    {
       console.noteln( tr( "run.encodeOk", this.videoPath() ) );
       if ( !cfg.keepFrames )
