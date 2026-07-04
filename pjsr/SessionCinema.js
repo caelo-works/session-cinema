@@ -3114,12 +3114,12 @@ function blitOriented( g, c, ex, ey, imgW, imgH, bmp, alpha, outlineColor )
    var scale = Math.sqrt( ux*ux + uy*uy );
    if ( !( scale > 0 ) )
       return;
-   // Normalise to [0, 2π): rotateTransformation ignores negative angles, so a
-   // rotation past 180° (atan2 returns a negative here) would otherwise snap
-   // back to 0.
-   var angle = Math.atan2( uy, ux );
-   if ( angle < 0 )
-      angle += 2*Math.PI;
+   // rotateTransformation rotates CLOCKWISE (positive angle → screen-CW) and
+   // ignores negative angles, so to place the image's x-axis along (ux,uy) we
+   // pass the NEGATED atan2, normalised into [0, 2π). Getting this sign wrong is
+   // invisible when the image is axis-aligned (angle≈0) but makes surveys rotate
+   // OPPOSITE to the directly-projected stars whenever the camera is rolled.
+   var angle = ( 2*Math.PI - Math.atan2( uy, ux ) ) % ( 2*Math.PI );
    var wyx = ( ey.x - c.x )/( -imgH/2 ), wyy = ( ey.y - c.y )/( -imgH/2 );
    var flip = ( ux*wyy - uy*wyx < 0 ) ? -1 : 1;
    var prevOp = g.opacity;
