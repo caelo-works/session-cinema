@@ -25,6 +25,12 @@ All notable changes to this project are documented here. The format is based on
   settings, headless automation hook (`SESSIONCINEMA_AUTORUN`).
 
 <!-- Every release entry states its VALIDATION evidence (which run, which gates). -->
-<!-- Unreleased: logic tests + packaging battery pass under node/bash (tests/run.sh,
-     tests/packaging.sh); the PixInsight runtime gates (§8 two-gate discipline on a
-     real frame set) have not run yet — required before the first tagged release. -->
+<!-- Unreleased validation: logic tests + packaging battery pass (tests/run.sh,
+     tests/packaging.sh). Two PixInsight runtime gates PASSED headless on real data
+     (PI 1.9.x, Windows): progressive stack over 53 registered 300 s Ha subs and
+     timelapse over 25 raw subs — gate 1 clean (ok:true, 0 skipped, no errors);
+     gate 2 outputs verified (53 + 25 frames, overlays correct, measured SNR gain
+     +17.5 dB vs +17.2 dB theoretical for N=53, MP4s encode to spec). -->
+<!-- Fixed during validation: ExternalProcess false-success (exitCode 0 on launch
+     failure), noise estimator (MAD dominated by nebula structure -> noiseMRS),
+     and literal % escaping in the fallback encode.bat. -->
