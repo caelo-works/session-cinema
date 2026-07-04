@@ -19,7 +19,7 @@ set -euo pipefail
 NAME="SessionCinema"                          # class-case: entry file, package dir, icon
 SLUG="session-cinema"                         # kebab-case: site slug
 TITLE="Session Cinema"                        # human name
-DESCRIPTION_HTML="<p>Session Cinema turns one or more nights of raw light frames into shareable videos: a sky timelapse (clouds, meteors, field rotation) or a progressive-stacking movie that builds the integration from 1 to N subs, with sober scientific overlays (frame count, cumulative exposure, measured SNR gain). Renders a PNG sequence and encodes it with ffmpeg when available.</p>"
+DESCRIPTION_HTML="<p>Session Cinema turns your astrophotography sessions into shareable videos: a sky <b>timelapse</b> (clouds, meteors, field rotation), a <b>progressive-stacking</b> movie that builds the integration from 1 to N subs, or a <b>Zoom Odyssey</b> — a &quot;you are here&quot; context zoom from the whole sky down to your image revealing itself, driven by its plate solve. Sober scientific overlays only (frame count, cumulative exposure, measured SNR gain, angular scale). Renders a PNG sequence and encodes it with ffmpeg when available.</p>"
 PI_VERSION_RANGE="1.9.4:1.9.99"
 # -----------------------------------------------------------------------------
 

@@ -18,12 +18,15 @@
 
 ## Overview
 
-Your imaging session already tells two great stories: what the sky did all
-night, and how the signal emerged from the noise. Session Cinema turns the raw
-light frames of one or more nights into videos ready for sharing — a
+Your imaging session already tells great stories: what the sky did all night,
+how the signal emerged from the noise, and where in the sky your target actually
+sits. Session Cinema turns your frames into videos ready for sharing — a
 **timelapse** where clouds, meteors, satellites and field rotation play back as
-they happened, or a **progressive stack** where the integration visibly builds
-itself from 1 to N subs while the noise melts away.
+they happened, a **progressive stack** where the integration visibly builds
+itself from 1 to N subs while the noise melts away, or a **Zoom Odyssey** that
+falls from the whole sky through the constellation down to your image revealing
+itself at its true position — the "you are here" that makes even a modest frame
+land.
 
 The overlays stay on the scientific side of pretty: they only display measured
 facts — frame count, cumulative exposure, UT clock from `DATE-OBS`, and a
@@ -38,7 +41,7 @@ by per-frame auto-stretching.
 
 | | |
 |---|---|
-| 🎬 **Two styles** | Timelapse (one video frame per sub) and progressive stack (cumulative mean integration from 1 to N subs, render cadence fitted to your target duration) |
+| 🎬 **Three styles** | Timelapse (one video frame per sub), progressive stack (cumulative mean integration from 1 to N subs), and **Zoom Odyssey** — a "you are here" context zoom from the whole sky down to your image revealing itself, built from its plate solve |
 | 🔬 **Honest by default** | Fixed screen stretch referenced on the final stack (2-pass); SNR gain measured on the data (scaled MAD, central region) — overlays never show anything that wasn't measured |
 | 🖼️ **Sober overlays** | Title, frame counter, cumulative exposure, UT clock, progress bar, optional signature — on a discreet gradient scrim, all individually switchable |
 | 📱 **Social-ready formats** | 16:9 (1080p / 4K), square 1:1 and vertical 9:16, fill-crop or letterbox framing, H.264 `yuv420p` with faststart |
@@ -74,7 +77,8 @@ folder containing the file. Alternatively, run it once via
    directory. Frames are ordered by `DATE-OBS`, so several nights just work.
 2. Pick a style. **Timelapse** takes the subs as they are; **Progressive
    stack** expects registered frames (point it at WBPP's `registered/`
-   output for a clean build-up).
+   output for a clean build-up); **Zoom Odyssey** takes a single
+   plate-solved image (a WBPP master is already solved) and needs no sub list.
 3. Give the video a title, choose format and duration, check the overlay
    items you want. **Preview frame** renders a single frame so you can check
    the framing and overlay before committing.

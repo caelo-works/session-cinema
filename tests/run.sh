@@ -48,6 +48,7 @@ fi
       | sed -e "s|\\bSC_VERSION\\b|\"$VERSION\"|g" \
             -e "s|\\bSC_TITLE\\b|\"$TITLE\"|g" \
             -e "s|\\bSESSIONCINEMA_BUILD\\b|\"dev\"|g" \
+            -e 's|#__FILE__|"__FILE__"|g' \
             -e '/^main();$/d'
 
    # Expose the internals under test
@@ -86,7 +87,24 @@ module.exports = {
    buildFfmpegArgs: buildFfmpegArgs,
    shellQuote: shellQuote,
    buildEncodeScriptText: buildEncodeScriptText,
-   frameFileName: frameFileName
+   frameFileName: frameFileName,
+   angularSepDeg: angularSepDeg,
+   makeWcs: makeWcs,
+   wcsPixelToSky: wcsPixelToSky,
+   wcsImageFraming: wcsImageFraming,
+   makeCamera: makeCamera,
+   projectToScreen: projectToScreen,
+   zoomCameraAt: zoomCameraAt,
+   revealAlpha: revealAlpha,
+   constellationAlpha: constellationAlpha,
+   limitingMagnitude: limitingMagnitude,
+   starRadius: starRadius,
+   niceAngle: niceAngle,
+   formatAngle: formatAngle,
+   scaleBar: scaleBar,
+   parseStarCatalog: parseStarCatalog,
+   parseConstellationLines: parseConstellationLines,
+   smoothstep01: smoothstep01
 };
 EOF
 } > "$MODULE"

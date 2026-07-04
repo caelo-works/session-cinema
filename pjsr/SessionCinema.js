@@ -53,6 +53,7 @@ function ensureMinimumVersion( maj, min, rel )
 
 var STYLE_TIMELAPSE = 0;   // one video frame per sub: clouds, meteors, rotation
 var STYLE_STACKING  = 1;   // cumulative mean integration, 1..N subs
+var STYLE_ZOOM      = 2;   // "you are here": whole sky -> constellation -> image
 
 var STRETCH_REF_FINAL = 0; // fixed stretch computed on the final stack (2 passes)
 var STRETCH_REF_FIRST = 1; // fixed stretch computed on the first frame (1 pass)
@@ -92,7 +93,13 @@ var DEFAULT_CONFIG = {
    ovSignature:     "",
    outputDir:       "",
    keepFrames:      false,
-   ffmpegPath:      ""
+   ffmpegPath:      "",
+   // Zoom Odyssey
+   zoomImagePath:   "",          // solved final image to reveal
+   zoomStartFov:    180,         // whole-sky field of view (deg) at t=0
+   ovShowScale:     true,        // angular scale bar
+   ovSubtitle:      "",          // free subtitle, e.g. the constellation name
+   ovDistance:      ""           // free distance label, e.g. "5000 ly"
 };
 
 var SETTINGS_KEY = "SessionCinema/config";
@@ -132,6 +139,10 @@ var STRINGS = {
       "style.stacking":    "Progressive stack — watch the integration build from 1 to N subs",
       "style.stackNote":   "Stacking mode expects registered frames (e.g. the registered output of WBPP). " +
                            "Unregistered subs will show as drifting stars, not a clean stack.",
+      "style.zoom":        "Zoom Odyssey — \"you are here\": whole sky → constellation → your image reveals itself",
+      "style.zoomNote":    "Needs one plate-solved image (a WBPP master is already solved). " +
+                           "Its embedded WCS drives the zoom; the sky is drawn from PixInsight's bundled catalogs.",
+      "zoom.image":        "Final image:",
       "stretch.label":     "Screen stretch:",
       "stretch.final":     "Fixed, computed on the final stack (2 passes — honest noise progression)",
       "stretch.first":     "Fixed, computed on the first frame (1 pass, faster)",
@@ -147,6 +158,11 @@ var STRINGS = {
       "overlay.time":      "UT clock (timelapse)",
       "overlay.snr":       "Measured SNR gain (stacking)",
       "overlay.bar":       "Progress bar",
+      "overlay.scale":     "Angular scale bar (zoom)",
+      "overlay.subtitle":  "Subtitle:",
+      "overlay.subtitle.hint": "e.g. the constellation",
+      "overlay.distance":  "Distance:",
+      "overlay.distance.hint": "e.g. 7000 ly",
       "overlay.signature": "Signature:",
       "overlay.signature.hint": "optional, e.g. @yourhandle",
 
@@ -182,12 +198,17 @@ var STRINGS = {
       "lang.label":        "Language:",
 
       "err.noFrames":      "Add at least 2 light frames.",
+      "err.noZoomImage":   "Choose a plate-solved final image for Zoom Odyssey.",
       "err.noOutput":      "Choose an output folder.",
       "err.title":         "Session Cinema",
 
       "run.start":         "Session Cinema %1 — %2 frames, style: %3",
       "run.styleTimelapse": "timelapse",
       "run.styleStacking": "progressive stack",
+      "run.styleZoom":     "zoom odyssey",
+      "zoom.solved":       "Plate solve read: field %1, center RA %2° Dec %3°.",
+      "zoom.noCatalogs":   "Star/constellation catalogs not found in the PixInsight install — the sky will be sparse.",
+      "zoom.errUnsolved":  "This image has no astrometric solution. Solve it first (Script > Image Analysis > ImageSolver), then run Session Cinema again.",
       "run.pass1":         "Pass 1 of 2 — integrating %1 frames to compute the reference stretch…",
       "run.pass1Done":     "Reference stretch computed on the final stack.",
       "run.render":        "Rendered %1 / %2 (%3)",
@@ -225,6 +246,10 @@ var STRINGS = {
       "style.stacking":    "Empilement progressif — l'intégration se construit de 1 à N brutes",
       "style.stackNote":   "Le mode empilement attend des brutes alignées (ex. la sortie registered de WBPP). " +
                            "Des brutes non alignées donneront des étoiles qui dérivent, pas un empilement propre.",
+      "style.zoom":        "Zoom Odyssey — « tu es ici » : ciel entier → constellation → ton image se révèle",
+      "style.zoomNote":    "Nécessite une image résolue astrométriquement (un master WBPP l'est déjà). " +
+                           "Son WCS embarqué pilote le zoom ; le ciel est tracé depuis les catalogues fournis avec PixInsight.",
+      "zoom.image":        "Image finale :",
       "stretch.label":     "Étirement d'affichage :",
       "stretch.final":     "Fixe, calculé sur le stack final (2 passes — progression du bruit honnête)",
       "stretch.first":     "Fixe, calculé sur la première brute (1 passe, plus rapide)",
@@ -240,6 +265,11 @@ var STRINGS = {
       "overlay.time":      "Horloge TU (timelapse)",
       "overlay.snr":       "Gain de SNR mesuré (empilement)",
       "overlay.bar":       "Barre de progression",
+      "overlay.scale":     "Barre d'échelle angulaire (zoom)",
+      "overlay.subtitle":  "Sous-titre :",
+      "overlay.subtitle.hint": "ex. la constellation",
+      "overlay.distance":  "Distance :",
+      "overlay.distance.hint": "ex. 7000 al",
       "overlay.signature": "Signature :",
       "overlay.signature.hint": "optionnel, ex. @votrepseudo",
 
@@ -275,12 +305,17 @@ var STRINGS = {
       "lang.label":        "Langue :",
 
       "err.noFrames":      "Ajoutez au moins 2 brutes.",
+      "err.noZoomImage":   "Choisissez une image finale résolue astrométriquement pour Zoom Odyssey.",
       "err.noOutput":      "Choisissez un dossier de sortie.",
       "err.title":         "Session Cinema",
 
       "run.start":         "Session Cinema %1 — %2 brutes, style : %3",
       "run.styleTimelapse": "timelapse",
       "run.styleStacking": "empilement progressif",
+      "run.styleZoom":     "zoom odyssey",
+      "zoom.solved":       "Solve astrométrique lu : champ %1, centre AD %2° Déc %3°.",
+      "zoom.noCatalogs":   "Catalogues d'étoiles/constellations introuvables dans l'install PixInsight — le ciel sera clairsemé.",
+      "zoom.errUnsolved":  "Cette image n'a pas de solution astrométrique. Résolvez-la d'abord (Script > Image Analysis > ImageSolver), puis relancez Session Cinema.",
       "run.pass1":         "Passe 1 sur 2 — intégration des %1 brutes pour calculer l'étirement de référence…",
       "run.pass1Done":     "Étirement de référence calculé sur le stack final.",
       "run.render":        "Rendu %1 / %2 (%3)",
@@ -620,6 +655,232 @@ function frameMetaFromKeywords( map )
 }
 
 // ============================================================================
+// ZOOM ODYSSEY — astrometry, projection and camera path (pure math)
+// ============================================================================
+//
+// Builds a "you are here" context zoom from the plate solve of the final image
+// and PixInsight's bundled star/constellation catalogs: whole sky -> the
+// constellation -> the field -> the image revealing itself. Everything below
+// is free of PixInsight APIs and exercised by tests/zoom.test.js. The WCS is
+// the linear part of the AstrometricSolution (reference point + CD matrix +
+// gnomonic deprojection); sub-arcsecond spline distortion is irrelevant at
+// zoom scales and intentionally ignored.
+
+var DEG = Math.PI/180;
+
+function deg2rad( d ) { return d*DEG; }
+function rad2deg( r ) { return r/DEG; }
+
+function smoothstep01( t )
+{
+   if ( t <= 0 ) return 0;
+   if ( t >= 1 ) return 1;
+   return t*t*( 3 - 2*t );
+}
+
+// Great-circle separation between two sky points, in degrees.
+function angularSepDeg( ra1, dec1, ra2, dec2 )
+{
+   var a1 = deg2rad( ra1 ), d1 = deg2rad( dec1 ), a2 = deg2rad( ra2 ), d2 = deg2rad( dec2 );
+   var c = Math.sin( d1 )*Math.sin( d2 ) + Math.cos( d1 )*Math.cos( d2 )*Math.cos( a1 - a2 );
+   c = Math.max( -1, Math.min( 1, c ) );
+   return rad2deg( Math.acos( c ) );
+}
+
+// WCS from the AstrometricSolution linear part.
+//   refRA, refDec : reference celestial coordinates (deg)
+//   refX,  refY   : reference image coordinates (px)
+//   cd = [ [m11,m12], [m21,m22] ] : tangent-plane deg = cd * (pixel - refPixel)
+function makeWcs( refRA, refDec, refX, refY, cd )
+{
+   return { refRA: refRA, refDec: refDec, refX: refX, refY: refY, cd: cd };
+}
+
+// Image pixel (x,y) -> celestial (ra,dec) in degrees, standard gnomonic (TAN)
+// deprojection about the reference point.
+function wcsPixelToSky( wcs, x, y )
+{
+   var dx = x - wcs.refX, dy = y - wcs.refY;
+   var xi  = deg2rad( wcs.cd[0][0]*dx + wcs.cd[0][1]*dy );
+   var eta = deg2rad( wcs.cd[1][0]*dx + wcs.cd[1][1]*dy );
+   var a0 = deg2rad( wcs.refRA ), d0 = deg2rad( wcs.refDec );
+   var rho = Math.sqrt( xi*xi + eta*eta );
+   if ( rho == 0 )
+      return { ra: ( wcs.refRA + 360 ) % 360, dec: wcs.refDec };
+   var c = Math.atan( rho );
+   var sinc = Math.sin( c ), cosc = Math.cos( c );
+   var dec = Math.asin( cosc*Math.sin( d0 ) + eta*sinc*Math.cos( d0 )/rho );
+   var ra = a0 + Math.atan2( xi*sinc, rho*Math.cos( d0 )*cosc - eta*Math.sin( d0 )*sinc );
+   return { ra: ( rad2deg( ra ) + 360 ) % 360, dec: rad2deg( dec ) };
+}
+
+// Derived framing of a solved image: center, angular width, roll, pixel scale.
+function wcsImageFraming( wcs, width, height )
+{
+   var center = wcsPixelToSky( wcs, width/2, height/2 );
+   var det = Math.abs( wcs.cd[0][0]*wcs.cd[1][1] - wcs.cd[0][1]*wcs.cd[1][0] );
+   var scale = Math.sqrt( det );                 // deg/px
+   // Position angle of the image +y (up) axis on the sky.
+   var roll = Math.atan2( wcs.cd[0][1], wcs.cd[1][1] );
+   return {
+      centerRA: center.ra,
+      centerDec: center.dec,
+      fovDeg: scale*width,                        // angular width of the frame
+      rollDeg: rad2deg( roll ),
+      pixScaleArcsec: scale*3600
+   };
+}
+
+// Camera: looking at (ra0,dec0), showing fovDeg across the width, rolled by
+// rollDeg, onto a WxH frame. RA increases to the left (sky-chart convention),
+// north is up.
+function makeCamera( ra0, dec0, fovDeg, rollDeg, W, H )
+{
+   return { ra0: ra0, dec0: dec0, fovDeg: fovDeg, rollDeg: rollDeg, W: W, H: H };
+}
+
+// Stereographic projection of a sky point to screen pixels — stable from an
+// all-sky view down to a fraction of a degree. Returns { x, y, front }.
+function projectToScreen( cam, ra, dec )
+{
+   var a0 = deg2rad( cam.ra0 ), d0 = deg2rad( cam.dec0 );
+   var a = deg2rad( ra ), d = deg2rad( dec );
+   var da = a - a0;
+   var cosc = Math.sin( d0 )*Math.sin( d ) + Math.cos( d0 )*Math.cos( d )*Math.cos( da );
+   var k = 2/( 1 + cosc );
+   var xp = k*Math.cos( d )*Math.sin( da );                                          // east +
+   var yp = k*( Math.cos( d0 )*Math.sin( d ) - Math.sin( d0 )*Math.cos( d )*Math.cos( da ) ); // north +
+   var rEdge = 2*Math.tan( deg2rad( cam.fovDeg/2 )/2 );
+   var s = ( cam.W/2 )/rEdge;
+   var cr = Math.cos( deg2rad( cam.rollDeg ) ), sr = Math.sin( deg2rad( cam.rollDeg ) );
+   var rx = xp*cr - yp*sr;
+   var ry = xp*sr + yp*cr;
+   return {
+      x: cam.W/2 - s*rx,     // higher RA (east) to the left
+      y: cam.H/2 - s*ry,     // north up
+      front: cosc > -0.2
+   };
+}
+
+// Camera along the zoom at normalized time t in [0,1]: center fixed on the
+// target, FOV shrinking log-linearly (a "powers of ten" feel), north kept up
+// so the image drops in at its true orientation on reveal.
+function zoomCameraAt( t, target, startFovDeg, W, H )
+{
+   var e = smoothstep01( t );
+   var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
+   return makeCamera( target.centerRA, target.centerDec, fov, 0, W, H );
+}
+
+// Opacity of the real-image reveal as the FOV approaches the image field. The
+// image starts appearing several times wider than its own field: its dense,
+// real stars bridge the range where the bright-star catalog runs thin, so the
+// zoom never crosses an empty gap — and every star shown there is genuine.
+function revealAlpha( fovDeg, imageFovDeg )
+{
+   var wide = imageFovDeg*6;
+   if ( fovDeg <= imageFovDeg ) return 1;
+   if ( fovDeg >= wide ) return 0;
+   return smoothstep01( ( wide - fovDeg )/( wide - imageFovDeg ) );
+}
+
+// Opacity of the constellation figures: absent on the whole-sky shot, strongest
+// at medium fields, gone once we dive into the target field.
+function constellationAlpha( fovDeg )
+{
+   var inA = 120, inB = 70, outA = 12, outB = 6;
+   if ( fovDeg >= inA ) return 0;
+   if ( fovDeg > inB ) return smoothstep01( ( inA - fovDeg )/( inA - inB ) );
+   if ( fovDeg >= outA ) return 1;
+   if ( fovDeg > outB ) return smoothstep01( ( fovDeg - outB )/( outA - outB ) );
+   return 0;
+}
+
+// Limiting magnitude shown at a given FOV: brighter-only wide, deeper closer in
+// (NamedStars runs out near mag 7).
+function limitingMagnitude( fovDeg )
+{
+   var f = Math.min( 60, Math.max( 5, fovDeg ) );
+   return 5.5 + 1.5*smoothstep01( ( 60 - f )/55 );
+}
+
+// Dot radius (px) for a star of given magnitude at the given magnitude limit.
+function starRadius( mag, magLimit, unit )
+{
+   var b = magLimit - mag;
+   if ( b <= 0 ) return 0;
+   return Math.max( 0.4*unit, 0.5*unit*Math.pow( b, 0.7 ) );
+}
+
+// Round angle just below `targetDeg`, for an honest scale bar.
+function niceAngle( targetDeg )
+{
+   var cands = [ 90, 60, 30, 15, 10, 5, 2, 1, 0.5, 30/60, 15/60, 10/60, 5/60, 2/60, 1/60 ];
+   for ( var i = 0; i < cands.length; ++i )
+      if ( cands[ i ] <= targetDeg )
+         return cands[ i ];
+   return cands[ cands.length - 1 ];
+}
+
+function formatAngle( deg )
+{
+   if ( deg >= 1 )
+      return ( Math.round( deg*10 )/10 ) + "°";
+   var arcmin = deg*60;
+   if ( arcmin >= 1 )
+      return ( Math.round( arcmin*10 )/10 ) + "′";
+   return ( Math.round( arcmin*600 )/10 ) + "″";
+}
+
+// A scale bar spanning about a quarter of the frame for the current FOV.
+function scaleBar( fovDeg, W )
+{
+   var ang = niceAngle( fovDeg*0.25 );
+   return { label: formatAngle( ang ), lengthPx: ang*( W/fovDeg ) };
+}
+
+// NamedStars.csv / Messier.csv share "id,alpha(deg),delta(deg),magnitude,..."
+// -> [{ ra, dec, mag }], optionally magnitude-limited.
+function parseStarCatalog( csvText, maxMag )
+{
+   var out = [];
+   var lines = String( csvText ).split( "\n" );
+   for ( var i = 1; i < lines.length; ++i )
+   {
+      var f = lines[ i ].split( "," );
+      if ( f.length < 4 )
+         continue;
+      var ra = parseFloat( f[ 1 ] ), dec = parseFloat( f[ 2 ] ), mag = parseFloat( f[ 3 ] );
+      if ( !isFinite( ra ) || !isFinite( dec ) || !isFinite( mag ) )
+         continue;
+      if ( maxMag !== undefined && mag > maxMag )
+         continue;
+      out.push( { ra: ra, dec: dec, mag: mag } );
+   }
+   return out;
+}
+
+// ConstellationLines.json: [ { pol:[ {x:RA_hours, y:Dec_deg}, ... ] }, ... ]
+// -> array of polylines, each an array of { ra(deg), dec(deg) }.
+function parseConstellationLines( jsonText )
+{
+   var data = ( typeof jsonText == "string" ) ? JSON.parse( jsonText ) : jsonText;
+   var polys = [];
+   for ( var i = 0; i < data.length; ++i )
+   {
+      var pol = data[ i ].pol;
+      if ( !pol )
+         continue;
+      var pts = [];
+      for ( var j = 0; j < pol.length; ++j )
+         pts.push( { ra: pol[ j ].x*15, dec: pol[ j ].y } );
+      if ( pts.length >= 2 )
+         polys.push( pts );
+   }
+   return polys;
+}
+
+// ============================================================================
 // SETTINGS PERSISTENCE (single JSON blob; failures are non-fatal)
 // ============================================================================
 
@@ -899,6 +1160,102 @@ function estimateSigma( img )
    }
 }
 
+// ---------------------------------------------------------------------------
+// Zoom Odyssey — PixInsight-facing data access (WCS + bundled catalogs).
+// ---------------------------------------------------------------------------
+
+// Read the linear WCS from a solved view's AstrometricSolution; null if unsolved.
+function readImageWcs( view )
+{
+   function pvec( id )
+   {
+      try
+      {
+         var v = view.propertyValue( id );
+         return ( v == null ) ? null : [ v.at( 0 ), v.at( 1 ) ];
+      }
+      catch ( e ) { return null; }
+   }
+   function pmat( id )
+   {
+      try
+      {
+         var m = view.propertyValue( id );
+         return ( m == null ) ? null : [ [ m.at( 0, 0 ), m.at( 0, 1 ) ], [ m.at( 1, 0 ), m.at( 1, 1 ) ] ];
+      }
+      catch ( e ) { return null; }
+   }
+   var refCel = pvec( "PCL:AstrometricSolution:ReferenceCelestialCoordinates" );
+   var refImg = pvec( "PCL:AstrometricSolution:ReferenceImageCoordinates" );
+   var cd = pmat( "PCL:AstrometricSolution:LinearTransformationMatrix" );
+   if ( !refCel || !refImg || !cd )
+      return null;
+   return makeWcs( refCel[ 0 ], refCel[ 1 ], refImg[ 0 ], refImg[ 1 ], cd );
+}
+
+// Root of the PixInsight install, to locate the bundled star/constellation
+// catalogs. Override via SESSIONCINEMA_PI_HOME; otherwise derived from this
+// script's own location (installed under <root>/src/scripts/...), with a
+// per-OS fallback. The PCL* environment variables are empty in automation mode,
+// so they are not used.
+function piInstallRoot()
+{
+   var env = getEnvironmentVariable( "SESSIONCINEMA_PI_HOME" );
+   if ( env && env.length && File.directoryExists( env ) )
+      return env;
+   try
+   {
+      var self = ( File.extractDrive( #__FILE__ ) + File.extractDirectory( #__FILE__ ) ).split( "\\" ).join( "/" );
+      var i = self.toLowerCase().lastIndexOf( "/src/" );
+      if ( i > 0 && File.directoryExists( self.substring( 0, i ) ) )
+         return self.substring( 0, i );
+   }
+   catch ( e )
+   {
+   }
+   var cands = [];
+   var kind = platformKind();
+   if ( kind == "windows" )
+   {
+      var pf = getEnvironmentVariable( "ProgramFiles" );
+      cands.push( ( ( pf && pf.length ) ? pf.split( "\\" ).join( "/" ) : "C:/Program Files" ) + "/PixInsight" );
+   }
+   else if ( kind == "macos" )
+      cands.push( "/Applications/PixInsight" );
+   else
+      cands.push( "/opt/PixInsight" );
+   for ( var k = 0; k < cands.length; ++k )
+      if ( File.directoryExists( cands[ k ] ) )
+         return cands[ k ];
+   return "";
+}
+
+function readTextFileSafe( path )
+{
+   try { return File.readTextFile( path ); }
+   catch ( e ) { return ""; }
+}
+
+// Load the bundled catalogs once. Returns { stars, polys, ok }.
+var gZoomCatalogs = null;
+function loadZoomCatalogs()
+{
+   if ( gZoomCatalogs != null )
+      return gZoomCatalogs;
+   var root = piInstallRoot();
+   var cat = { root: root, stars: [], polys: [], ok: false };
+   if ( root.length )
+   {
+      cat.stars = parseStarCatalog( readTextFileSafe( root + "/include/pjsr/astrometry/NamedStars.csv" ), 7.0 );
+      var linesText = readTextFileSafe( root + "/src/scripts/AnnotateImage/ConstellationLines.json" );
+      if ( linesText.length )
+         try { cat.polys = parseConstellationLines( linesText ); } catch ( e ) {}
+      cat.ok = cat.stars.length > 0;
+   }
+   gZoomCatalogs = cat;
+   return cat;
+}
+
 // Overlay renderer. All facts come precomputed in `ov` (buildOverlayInfo).
 function drawOverlay( g, W, H, ov )
 {
@@ -1115,7 +1472,8 @@ function Engine( cfg, frames )
 Engine.prototype.baseName = function()
 {
    var slug = slugify( this.title || "session" );
-   var style = ( this.cfg.style == STYLE_TIMELAPSE ) ? "timelapse" : "stack";
+   var style = ( this.cfg.style == STYLE_TIMELAPSE ) ? "timelapse"
+             : ( this.cfg.style == STYLE_ZOOM ) ? "zoom" : "stack";
    return slug + "-" + style;
 };
 
@@ -1370,6 +1728,87 @@ Engine.prototype.runStacking = function()
    gc();
 };
 
+// --------------------------------------------------------------------------
+// Zoom Odyssey: whole sky -> constellation -> field -> the image revealing
+// itself, driven by the plate solve of the final image.
+Engine.prototype.runZoom = function()
+{
+   var cfg = this.cfg;
+   this.zoomError = "";
+
+   var meta = scanFrameHeader( cfg.zoomImagePath );
+   this.title = ( cfg.ovTitle && String( cfg.ovTitle ).trim().length )
+                ? String( cfg.ovTitle ).trim() : ( meta.object || "" );
+
+   var win = null;
+   try { win = openFrameWindow( cfg.zoomImagePath ); } catch ( e ) { win = null; }
+   if ( win == null )
+   {
+      this.zoomError = "open";
+      this.skipped.push( meta.name );
+      return;
+   }
+   var view = win.mainView;
+   var imgW = view.image.width, imgH = view.image.height;
+
+   var wcs = readImageWcs( view );
+   if ( wcs == null )
+   {
+      win.forceClose();
+      this.zoomError = "unsolved";
+      return;
+   }
+   var framing = wcsImageFraming( wcs, imgW, imgH );
+   console.noteln( tr( "zoom.solved", formatAngle( framing.fovDeg ),
+                       framing.centerRA.toFixed( 3 ), framing.centerDec.toFixed( 3 ) ) );
+   if ( !File.directoryExists( this.framesDir() ) )
+      File.createDirectory( this.framesDir(), true );
+
+   // Revealed image: a stretched copy rendered once to a bitmap.
+   var stretch = computeStretchForImage( view.image, cfg.stretchLinked );
+   applyStretchToView( view, stretch );
+   var revealBmp = view.image.render();
+   win.forceClose();
+   gc();
+
+   var cat = loadZoomCatalogs();
+   if ( !cat.ok )
+      console.warningln( tr( "zoom.noCatalogs" ) );
+
+   var fmt = OUTPUT_FORMATS[ cfg.formatIndex ];
+   var W = fmt.w, H = fmt.h, unit = H/1080;
+   var startFov = Math.max( framing.fovDeg*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
+   var N = Math.max( 2, Math.round( cfg.fps*cfg.targetDuration ) );
+   var outIndex = 0;
+
+   for ( var i = 0; i < N; ++i )
+   {
+      if ( this.checkAbort() )
+         break;
+      var t = i/( N - 1 );
+      var cam = zoomCameraAt( t, framing, startFov, W, H );
+
+      var out = new Bitmap( W, H );
+      out.fill( 0xFF05070D );
+      var g = new Graphics( out );
+      g.antialiasing = true;
+      try { g.textAntialiasing = true; } catch ( e ) {}
+
+      drawZoomStars( g, cam, cat.stars, unit );
+      drawZoomConstellations( g, cam, cat.polys, unit );
+      var ra = revealAlpha( cam.fovDeg, framing.fovDeg );
+      if ( ra > 0 )
+         drawZoomReveal( g, cam, wcs, imgW, imgH, revealBmp, ra );
+      drawZoomOverlay( g, cam, cfg, this.title, t );
+      g.end();
+
+      this.saveFrame( out, ++outIndex );
+      console.writeln( tr( "run.render", outIndex, N, formatAngle( cam.fovDeg ) ) );
+      if ( ( outIndex & 7 ) == 0 )
+         gc();
+   }
+};
+
 Engine.prototype.encode = function()
 {
    var cfg = this.cfg;
@@ -1421,15 +1860,20 @@ Engine.prototype.run = function()
    var cfg = this.cfg;
    console.show();
    try { console.abortEnabled = true; } catch ( e ) {}
-   console.noteln( tr( "run.start", SC_VERSION,
-                       this.frames.length,
-                       cfg.style == STYLE_TIMELAPSE ? tr( "run.styleTimelapse" )
-                                                    : tr( "run.styleStacking" ) ) );
-   if ( !File.directoryExists( this.framesDir() ) )
+   var styleLabel = ( cfg.style == STYLE_TIMELAPSE ) ? tr( "run.styleTimelapse" )
+                  : ( cfg.style == STYLE_ZOOM ) ? tr( "run.styleZoom" )
+                  : tr( "run.styleStacking" );
+   var inputCount = ( cfg.style == STYLE_ZOOM ) ? 1 : this.frames.length;
+   console.noteln( tr( "run.start", SC_VERSION, inputCount, styleLabel ) );
+   // Zoom resolves its title (hence its output dir) from the image header
+   // inside runZoom, so it creates its own directory there.
+   if ( cfg.style != STYLE_ZOOM && !File.directoryExists( this.framesDir() ) )
       File.createDirectory( this.framesDir(), true );
 
    if ( cfg.style == STYLE_TIMELAPSE )
       this.runTimelapse();
+   else if ( cfg.style == STYLE_ZOOM )
+      this.runZoom();
    else
       this.runStacking();
 
@@ -1437,6 +1881,11 @@ Engine.prototype.run = function()
                   aborted: this.aborted, videoPath: "", scriptPath: "",
                   framesDir: this.framesDir() };
 
+   if ( this.zoomError == "unsolved" )
+   {
+      console.criticalln( tr( "zoom.errUnsolved" ) );
+      return result;
+   }
    if ( this.skipped.length )
       console.warningln( tr( "run.skipped", this.skipped.join( ", " ) ) );
    if ( this.aborted )
@@ -1488,6 +1937,166 @@ Engine.prototype.preview = function()
    bmp.save( path );
    return path;
 };
+
+// ============================================================================
+// ZOOM ODYSSEY — frame rendering
+// ============================================================================
+
+function argb( alpha, rgb )
+{
+   var a = Math.round( clamp01( alpha )*255 );
+   return ( a*0x1000000 ) + ( rgb & 0xFFFFFF );
+}
+
+// Stars from the bright-star catalog, deepening as we zoom in.
+function drawZoomStars( g, cam, stars, unit )
+{
+   var magLimit = limitingMagnitude( cam.fovDeg );
+   for ( var i = 0; i < stars.length; ++i )
+   {
+      var st = stars[ i ];
+      if ( st.mag > magLimit )
+         continue;
+      var p = projectToScreen( cam, st.ra, st.dec );
+      if ( !p.front || p.x < -8 || p.x > cam.W + 8 || p.y < -8 || p.y > cam.H + 8 )
+         continue;
+      var r = starRadius( st.mag, magLimit, unit );
+      if ( r <= 0 )
+         continue;
+      var a = 0.25 + 0.75*clamp01( ( magLimit - st.mag )/magLimit );
+      g.brush = new Brush( argb( a, 0xFFFFFF ) );
+      g.fillCircle( p.x, p.y, r );
+   }
+}
+
+// Constellation figure lines, fading in around the constellation phase.
+function drawZoomConstellations( g, cam, polys, unit )
+{
+   var alpha = constellationAlpha( cam.fovDeg );
+   if ( alpha <= 0 )
+      return;
+   g.pen = new Pen( argb( 0.45*alpha, 0x7FD8F0 ), Math.max( 1, 1.3*unit ) );
+   var maxSeg = cam.W*0.6;   // drop segments that wrap across the whole sky
+   for ( var i = 0; i < polys.length; ++i )
+   {
+      var pts = polys[ i ];
+      var prev = null;
+      for ( var j = 0; j < pts.length; ++j )
+      {
+         var p = projectToScreen( cam, pts[ j ].ra, pts[ j ].dec );
+         if ( p.front && prev != null )
+         {
+            var dx = p.x - prev.x, dy = p.y - prev.y;
+            if ( dx*dx + dy*dy < maxSeg*maxSeg )
+               g.drawLine( prev.x, prev.y, p.x, p.y );
+         }
+         prev = p.front ? p : null;
+      }
+   }
+}
+
+// Place the revealed image at its true on-sky position, orientation and scale.
+// The projection is conformal, so a translate/rotate/scale (with a parity flip)
+// reproduces it faithfully over the ~1° image field.
+function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha )
+{
+   function scr( px, py )
+   {
+      var s = wcsPixelToSky( wcs, px, py );
+      return projectToScreen( cam, s.ra, s.dec );
+   }
+   var c  = scr( imgW/2, imgH/2 );
+   var ex = scr( imgW, imgH/2 );
+   var ey = scr( imgW/2, 0 );
+   var ux = ( ex.x - c.x )/( imgW/2 ), uy = ( ex.y - c.y )/( imgW/2 );
+   var scale = Math.sqrt( ux*ux + uy*uy );
+   if ( !( scale > 0 ) || !c.front )
+      return;
+   var angle = Math.atan2( uy, ux );
+   var wyx = ( ey.x - c.x )/( -imgH/2 ), wyy = ( ey.y - c.y )/( -imgH/2 );
+   var flip = ( ux*wyy - uy*wyx < 0 ) ? -1 : 1;
+   var prevOp = g.opacity;
+   g.opacity = clamp01( alpha );
+   g.resetTransformation();
+   g.translateTransformation( c.x, c.y );
+   g.rotateTransformation( angle );
+   g.scaleTransformation( scale, scale*flip );
+   g.drawBitmap( -imgW/2, -imgH/2, bmp );
+   g.resetTransformation();
+   g.opacity = prevOp;
+}
+
+function zoomFont( px, bold )
+{
+   var f = new Font( "Open Sans" );
+   f.pixelSize = Math.round( px );
+   if ( bold )
+      try { f.bold = true; } catch ( e ) {}
+   return f;
+}
+
+// Title / subtitle / distance / scale bar / signature / progress.
+function drawZoomOverlay( g, cam, cfg, title, t )
+{
+   var W = cam.W, H = cam.H, u = H/1080;
+   var margin = Math.round( 40*u );
+   g.opacity = 1;
+
+   var scrimTop = H - Math.round( 150*u );
+   g.fillRect( new Rect( 0, scrimTop, W, H ), new Brush( 0x26000000 ) );
+   g.fillRect( new Rect( 0, scrimTop + Math.round( 50*u ), W, H ), new Brush( 0x33000000 ) );
+   g.fillRect( new Rect( 0, scrimTop + Math.round( 100*u ), W, H ), new Brush( 0x40000000 ) );
+
+   var titleFont = zoomFont( 34*u, true );
+   var subFont = zoomFont( 21*u, false );
+   var smallFont = zoomFont( 16*u, false );
+
+   var baseY = H - margin;
+   var subParts = [];
+   if ( cfg.ovSubtitle && cfg.ovSubtitle.length )
+      subParts.push( cfg.ovSubtitle );
+   if ( cfg.ovDistance && cfg.ovDistance.length )
+      subParts.push( cfg.ovDistance );
+   var subtitle = subParts.join( "  ·  " );
+
+   if ( title && title.length )
+   {
+      g.font = titleFont;
+      g.pen = new Pen( 0xFFFFFFFF );
+      g.drawText( margin, baseY - ( subtitle.length ? Math.round( 34*u ) : 0 ), title );
+   }
+   if ( subtitle.length )
+   {
+      g.font = subFont;
+      g.pen = new Pen( 0xD9FFFFFF );
+      g.drawText( margin, baseY, subtitle );
+   }
+   if ( cfg.ovSignature && cfg.ovSignature.length )
+   {
+      g.font = smallFont;
+      g.pen = new Pen( 0x99FFFFFF );
+      g.drawText( W - margin - smallFont.width( cfg.ovSignature ), margin + Math.round( 16*u ), cfg.ovSignature );
+   }
+   if ( cfg.ovShowScale )
+   {
+      var sb = scaleBar( cam.fovDeg, W );
+      var bx1 = W - margin, bx0 = bx1 - sb.lengthPx, by = H - margin;
+      var tick = Math.round( 6*u );
+      g.pen = new Pen( 0xCCFFFFFF, Math.max( 1, 2*u ) );
+      g.drawLine( bx0, by, bx1, by );
+      g.drawLine( bx0, by - tick, bx0, by + tick );
+      g.drawLine( bx1, by - tick, bx1, by + tick );
+      g.font = smallFont;
+      g.pen = new Pen( 0xCCFFFFFF );
+      g.drawText( bx0, by - Math.round( 8*u ), sb.label );
+   }
+   if ( cfg.ovShowBar )
+   {
+      var bh = Math.max( 2, Math.round( 4*u ) );
+      g.fillRect( new Rect( 0, H - bh, W, H ), new Brush( 0x33FFFFFF ) );
+      g.fillRect( new Rect( 0, H - bh, Math.round( W*clamp01( t ) ), H ), new Brush( 0xB3FFFFFF ) );
+   }
+}
 
 // ============================================================================
 // DIALOG
@@ -1601,10 +2210,54 @@ class SessionCinemaDialog extends Dialog
          }
       };
 
+      this.styleZoomRadio = new RadioButton( this );
+      this.styleZoomRadio.text = tr( "style.zoom" );
+      this.styleZoomRadio.checked = ( cfg.style == STYLE_ZOOM );
+      this.styleZoomRadio.onCheck = ( checked ) =>
+      {
+         if ( checked )
+         {
+            self.cfg.style = STYLE_ZOOM;
+            self.updateStyleDependents();
+         }
+      };
+
       this.stackNote = new Label( this );
       this.stackNote.text = tr( "style.stackNote" );
       this.stackNote.wordWrapping = true;
       this.stackNote.enabled = false;
+
+      this.zoomNote = new Label( this );
+      this.zoomNote.text = tr( "style.zoomNote" );
+      this.zoomNote.wordWrapping = true;
+      this.zoomNote.enabled = false;
+
+      // Zoom Odyssey: the single solved image to reveal.
+      this.zoomImageLabel = new Label( this );
+      this.zoomImageLabel.text = tr( "zoom.image" );
+      this.zoomImageLabel.minWidth = labelWidth;
+      this.zoomImageEdit = new Edit( this );
+      this.zoomImageEdit.text = cfg.zoomImagePath;
+      this.zoomImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomImagePath = t; };
+      this.zoomImageBrowse = new PushButton( this );
+      this.zoomImageBrowse.text = tr( "out.browse" );
+      this.zoomImageBrowse.onClick = () =>
+      {
+         var d = new OpenFileDialog;
+         d.multipleSelections = false;
+         d.caption = tr( "zoom.image" );
+         d.filters = [ [ "FITS / XISF", "*.fit", "*.fits", "*.fts", "*.xisf" ] ];
+         if ( d.execute() && d.fileNames.length )
+         {
+            self.cfg.zoomImagePath = d.fileNames[ 0 ];
+            self.zoomImageEdit.text = d.fileNames[ 0 ];
+         }
+      };
+      this.zoomImageSizer = new HorizontalSizer;
+      this.zoomImageSizer.spacing = 6;
+      this.zoomImageSizer.add( this.zoomImageLabel );
+      this.zoomImageSizer.add( this.zoomImageEdit, 100 );
+      this.zoomImageSizer.add( this.zoomImageBrowse );
 
       this.stretchLabel = new Label( this );
       this.stretchLabel.text = tr( "stretch.label" );
@@ -1640,6 +2293,9 @@ class SessionCinemaDialog extends Dialog
       this.styleGroup.sizer.add( this.styleTimelapseRadio );
       this.styleGroup.sizer.add( this.styleStackingRadio );
       this.styleGroup.sizer.add( this.stackNote );
+      this.styleGroup.sizer.add( this.styleZoomRadio );
+      this.styleGroup.sizer.add( this.zoomNote );
+      this.styleGroup.sizer.add( this.zoomImageSizer );
       this.styleGroup.sizer.add( this.stretchSizer );
       this.styleGroup.sizer.add( this.linkedCheck );
       this.styleGroup.sizer.add( this.debayerCheck );
@@ -1695,11 +2351,38 @@ class SessionCinemaDialog extends Dialog
       this.checksRow1.add( this.barCheck );
       this.checksRow1.addStretch();
 
+      this.scaleCheck = new CheckBox( this );
+      this.scaleCheck.text = tr( "overlay.scale" );
+      this.scaleCheck.checked = cfg.ovShowScale;
+      this.scaleCheck.onCheck = ( c ) => { self.cfg.ovShowScale = c; };
+
       this.checksRow2 = new HorizontalSizer;
       this.checksRow2.spacing = 12;
       this.checksRow2.add( this.timeCheck );
       this.checksRow2.add( this.snrCheck );
+      this.checksRow2.add( this.scaleCheck );
       this.checksRow2.addStretch();
+
+      this.subtitleLabel = new Label( this );
+      this.subtitleLabel.text = tr( "overlay.subtitle" );
+      this.subtitleLabel.minWidth = labelWidth;
+      this.subtitleEdit = new Edit( this );
+      this.subtitleEdit.text = cfg.ovSubtitle;
+      try { this.subtitleEdit.placeholderText = tr( "overlay.subtitle.hint" ); } catch ( e ) {}
+      this.subtitleEdit.onTextUpdated = ( t ) => { self.cfg.ovSubtitle = t; };
+      this.distanceLabel = new Label( this );
+      this.distanceLabel.text = tr( "overlay.distance" );
+      this.distanceEdit = new Edit( this );
+      this.distanceEdit.text = cfg.ovDistance;
+      try { this.distanceEdit.placeholderText = tr( "overlay.distance.hint" ); } catch ( e ) {}
+      this.distanceEdit.onTextUpdated = ( t ) => { self.cfg.ovDistance = t; };
+      this.subtitleSizer = new HorizontalSizer;
+      this.subtitleSizer.spacing = 6;
+      this.subtitleSizer.add( this.subtitleLabel );
+      this.subtitleSizer.add( this.subtitleEdit, 60 );
+      this.subtitleSizer.addSpacing( 12 );
+      this.subtitleSizer.add( this.distanceLabel );
+      this.subtitleSizer.add( this.distanceEdit, 40 );
 
       this.signatureLabel = new Label( this );
       this.signatureLabel.text = tr( "overlay.signature" );
@@ -1721,6 +2404,7 @@ class SessionCinemaDialog extends Dialog
       this.overlayGroup.sizer.add( this.titleSizer );
       this.overlayGroup.sizer.add( this.checksRow1 );
       this.overlayGroup.sizer.add( this.checksRow2 );
+      this.overlayGroup.sizer.add( this.subtitleSizer );
       this.overlayGroup.sizer.add( this.signatureSizer );
 
       // ---- video group ----
@@ -1976,36 +2660,63 @@ class SessionCinemaDialog extends Dialog
 
    updateEstimate()
    {
+      var count, seconds;
+      if ( this.cfg.style == STYLE_ZOOM )
+      {
+         count = Math.max( 2, Math.round( this.cfg.fps*this.cfg.targetDuration ) );
+         seconds = count/this.cfg.fps + this.cfg.holdFirst + this.cfg.holdLast;
+         this.estimateLabel.text = tr( "video.estimate", count, formatDuration( seconds ), this.cfg.fps );
+         return;
+      }
       var N = this.frames.length;
       if ( N == 0 )
       {
          this.estimateLabel.text = "";
          return;
       }
-      var count, seconds;
+      var count2, seconds2;
       if ( this.cfg.style == STYLE_TIMELAPSE )
       {
-         count = N;
-         seconds = N/this.cfg.fps;
+         count2 = N;
+         seconds2 = N/this.cfg.fps;
       }
       else
       {
          var idx = computeRenderIndices( N, this.cfg.fps, this.cfg.targetDuration );
-         count = idx.length;
-         seconds = count/this.cfg.fps;
+         count2 = idx.length;
+         seconds2 = count2/this.cfg.fps;
       }
-      seconds += this.cfg.holdFirst + this.cfg.holdLast;
-      this.estimateLabel.text = tr( "video.estimate", count, formatDuration( seconds ), this.cfg.fps );
+      seconds2 += this.cfg.holdFirst + this.cfg.holdLast;
+      this.estimateLabel.text = tr( "video.estimate", count2, formatDuration( seconds2 ), this.cfg.fps );
    }
 
    updateStyleDependents()
    {
       var isStack = ( this.cfg.style == STYLE_STACKING );
+      var isZoom = ( this.cfg.style == STYLE_ZOOM );
       this.stackNote.visible = isStack;
+      this.zoomNote.visible = isZoom;
+      // Frame list is irrelevant to Zoom Odyssey; it works from one solved image.
+      this.zoomImageLabel.visible = isZoom;
+      this.zoomImageEdit.visible = isZoom;
+      this.zoomImageBrowse.visible = isZoom;
+      this.framesGroup.visible = !isZoom;
+      // Per-style overlay items.
       this.snrCheck.enabled = isStack;
-      this.timeCheck.enabled = !isStack;
-      this.durationSpin.enabled = isStack;
-      this.durationLabel.enabled = isStack;
+      this.timeCheck.enabled = !isStack && !isZoom;
+      this.counterCheck.enabled = !isZoom;
+      this.exposureCheck.enabled = !isZoom;
+      this.scaleCheck.enabled = isZoom;
+      this.subtitleLabel.enabled = isZoom;
+      this.subtitleEdit.enabled = isZoom;
+      this.distanceLabel.enabled = isZoom;
+      this.distanceEdit.enabled = isZoom;
+      this.debayerCheck.enabled = !isZoom;
+      this.durationSpin.enabled = isStack || isZoom;
+      this.durationLabel.enabled = isStack || isZoom;
+      // Preview renders a middle sub; meaningless for a zoom (one image only).
+      if ( this.previewButton )
+         this.previewButton.enabled = !isZoom;
       this.updateEstimate();
    }
 
@@ -2100,7 +2811,16 @@ class SessionCinemaDialog extends Dialog
 
    validate( needOutput )
    {
-      if ( this.frames.length < 2 )
+      if ( this.cfg.style == STYLE_ZOOM )
+      {
+         if ( !this.cfg.zoomImagePath.length || !File.exists( this.cfg.zoomImagePath ) )
+         {
+            ( new MessageBox( tr( "err.noZoomImage" ), tr( "err.title" ),
+                              StdIcon.Error, StdButton.Ok ) ).execute();
+            return false;
+         }
+      }
+      else if ( this.frames.length < 2 )
       {
          ( new MessageBox( tr( "err.noFrames" ), tr( "err.title" ),
                            StdIcon.Error, StdButton.Ok ) ).execute();

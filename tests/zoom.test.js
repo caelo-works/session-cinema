@@ -1,0 +1,123 @@
+// Zoom Odyssey math: WCS gnomonic, stereographic camera, path, catalogs.
+"use strict";
+const assert = require( "assert" );
+const M = require( "./build/module.js" );
+
+const near = ( a, b, eps, msg ) => assert.ok( Math.abs( a - b ) <= ( eps || 1e-6 ), ( msg || "" ) + " got " + a + " want " + b );
+
+// --- WCS: synthetic 1"/px TAN solve, RA axis flipped (standard orientation) ---
+{
+   // cd in deg/px: x pixel -> -1"/px in RA-tangent, y pixel -> +1"/px in Dec
+   const s = 1/3600;
+   const wcs = M.makeWcs( 100, 20, 1920, 1080, [ [ -s, 0 ], [ 0, s ] ] );
+   const c = M.wcsPixelToSky( wcs, 1920, 1080 );
+   near( c.ra, 100, 1e-9, "center RA" );
+   near( c.dec, 20, 1e-9, "center Dec" );
+
+   const fr = M.wcsImageFraming( wcs, 3840, 2160 );
+   near( fr.centerRA, 100, 1e-6, "framing centerRA" );
+   near( fr.centerDec, 20, 1e-6, "framing centerDec" );
+   near( fr.pixScaleArcsec, 1, 1e-6, "pixel scale 1 arcsec" );
+   near( fr.fovDeg, 3840/3600, 1e-4, "fov = width * scale" );
+   near( fr.rollDeg, 0, 1e-6, "axis-aligned -> roll 0" );
+
+   // cd11 < 0 is the standard orientation: +x pixel is WEST (lower RA);
+   // cd22 > 0 makes +y NORTH (higher Dec).
+   const west = M.wcsPixelToSky( wcs, 1920 + 3600, 1080 );
+   assert.ok( west.ra < 100, "standard orientation: +x -> lower RA (west)" );
+   const north = M.wcsPixelToSky( wcs, 1920, 1080 + 3600 );
+   assert.ok( north.dec > 20, "+y -> higher Dec (north)" );
+   near( north.dec, 21, 1e-3, "1 deg north" );
+}
+
+// --- stereographic camera projection ---
+{
+   const cam = M.makeCamera( 100, 20, 60, 0, 1920, 1080 );
+   const ctr = M.projectToScreen( cam, 100, 20 );
+   near( ctr.x, 960, 1e-6, "center x" );
+   near( ctr.y, 540, 1e-6, "center y" );
+   assert.ok( ctr.front );
+
+   const east = M.projectToScreen( cam, 105, 20 );   // higher RA -> left
+   assert.ok( east.x < 960, "higher RA projects left" );
+   assert.ok( east.y <= 540 + 1e-6, "constant-dec parallel curves up in stereographic" );
+
+   const north = M.projectToScreen( cam, 100, 25 );  // higher Dec -> up (smaller y)
+   assert.ok( north.y < 540, "higher Dec projects up" );
+
+   // half the FOV (30 deg) north lands exactly W/2 px from center (isotropic scale)
+   const edge = M.projectToScreen( cam, 100, 20 + 30 );
+   near( edge.y, 540 - 960, 1e-3, "half-FOV maps to half the frame width in px" );
+
+   // behind the projection point
+   const back = M.projectToScreen( cam, 100 + 180, -20 );
+   assert.strictEqual( back.front, false );
+}
+
+// --- camera path ---
+{
+   const target = { centerRA: 100, centerDec: 20, fovDeg: 1.07, rollDeg: 12 };
+   const c0 = M.zoomCameraAt( 0, target, 180, 1920, 1080 );
+   const c1 = M.zoomCameraAt( 1, target, 180, 1920, 1080 );
+   near( c0.fovDeg, 180, 1e-6, "starts at whole sky" );
+   near( c1.fovDeg, 1.07, 1e-4, "ends at image field" );
+   const cm = M.zoomCameraAt( 0.5, target, 180, 1920, 1080 );
+   assert.ok( cm.fovDeg < 180 && cm.fovDeg > 1.07, "monotone zoom" );
+   assert.strictEqual( c0.rollDeg, 0, "north kept up" );
+}
+
+// --- opacity ramps ---
+{
+   assert.strictEqual( M.revealAlpha( 1, 1 ), 1 );
+   assert.strictEqual( M.revealAlpha( 6, 1 ), 0 );
+   assert.ok( M.revealAlpha( 3, 1 ) > 0 && M.revealAlpha( 3, 1 ) < 1 );
+   assert.ok( M.revealAlpha( 2, 1 ) > M.revealAlpha( 4, 1 ), "reveal grows as fov shrinks" );
+   assert.strictEqual( M.constellationAlpha( 150 ), 0 );
+   assert.strictEqual( M.constellationAlpha( 30 ), 1 );
+   assert.strictEqual( M.constellationAlpha( 3 ), 0 );
+   assert.ok( M.limitingMagnitude( 5 ) > M.limitingMagnitude( 120 ), "deeper when zoomed in" );
+}
+
+// --- scale bar / angle formatting ---
+assert.strictEqual( M.formatAngle( 1 ), "1°" );
+assert.strictEqual( M.formatAngle( 0.5 ), "30′" );
+assert.strictEqual( M.formatAngle( 15/60 ), "15′" );
+assert.strictEqual( M.formatAngle( 0.5/60 ), "30″" );
+assert.strictEqual( M.niceAngle( 40 ), 30 );
+assert.strictEqual( M.niceAngle( 0.9 ), 0.5 );
+{
+   const b = M.scaleBar( 60, 1920 );
+   assert.strictEqual( b.label, "15°" );        // niceAngle(15) for target 15
+   near( b.lengthPx, 15*(1920/60), 1e-6, "bar length" );
+}
+
+// --- angular separation ---
+near( M.angularSepDeg( 100, 20, 100, 20 ), 0, 1e-9 );
+near( M.angularSepDeg( 0, 0, 180, 0 ), 180, 1e-6 );
+// Betelgeuse (88.79,7.41) to Rigel (78.63,-8.20) ~ 18.6 deg
+near( M.angularSepDeg( 88.793, 7.407, 78.634, -8.202 ), 18.65, 0.2, "Betelgeuse-Rigel" );
+
+// --- catalog parsers ---
+{
+   const csv = "id,alpha,delta,magnitude,x\n" +
+               "alf Ori,88.792939,7.407064,0.42,z\n" +
+               "faint,10,10,9.9,z\n";
+   const all = M.parseStarCatalog( csv );
+   assert.strictEqual( all.length, 2 );
+   near( all[0].ra, 88.792939, 1e-6 );
+   near( all[0].dec, 7.407064, 1e-6 );
+   near( all[0].mag, 0.42, 1e-6 );
+   const bright = M.parseStarCatalog( csv, 6 );
+   assert.strictEqual( bright.length, 1, "magnitude limit drops the faint star" );
+}
+{
+   // ConstellationLines: x in hours -> degrees (Betelgeuse vertex 5.9194h)
+   const json = JSON.stringify( [ { pol: [ { x: 5.919444, y: 7.4 }, { x: 5.6794, y: -1.95 } ] },
+                                  { pol: [ { x: 1.0, y: 0 } ] } ] );
+   const polys = M.parseConstellationLines( json );
+   assert.strictEqual( polys.length, 1, "single-point polylines dropped" );
+   near( polys[0][0].ra, 5.919444*15, 1e-4, "hours -> degrees" );
+   near( polys[0][0].dec, 7.4, 1e-6 );
+}
+
+console.log( "zoom.test.js OK" );

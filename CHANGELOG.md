@@ -12,6 +12,14 @@ All notable changes to this project are documented here. The format is based on
   field rotation as they happened, with a fixed or per-frame auto-stretch.
 - **Progressive stack** style: cumulative mean integration rendered from 1 to
   N subs, with a render cadence computed from the target animation length.
+- **Zoom Odyssey** style: a "you are here" context zoom built from the plate
+  solve of the final image — whole sky → constellation figures → the field →
+  the image revealing itself at its true on-sky position, orientation and
+  scale. Reads the embedded `AstrometricSolution` (WCS) via `View.propertyValue`
+  and draws the sky from PixInsight's bundled catalogs (NamedStars,
+  ConstellationLines); the image's own dense stars bridge the range where the
+  bright-star catalog thins, so every star shown is genuine. Optional angular
+  scale bar, subtitle (e.g. the constellation) and distance overlays.
 - Honest screen-stretch options: fixed reference computed on the final stack
   (2 passes, default), on the first frame (1 pass), or per rendered frame.
 - Sober overlays showing measured facts only: title, frame counter, cumulative
