@@ -1127,7 +1127,12 @@ function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
 {
    var e = smootherstep01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
-   var e2 = smootherstep01( Math.min( 1, t/0.4 ) );   // centering completes early, eased
+   // The look direction (centring) settles early so the target is framed by the
+   // time the surveys appear. The camera ROLL (up: local vertical → celestial
+   // north) is a separate, slower curve spread over the WHOLE zoom, so the field
+   // never spins violently at the start while the view is still wide.
+   var eCenter = smootherstep01( Math.min( 1, t/0.4 ) );
+   var eRoll = smootherstep01( t );
 
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
    var upEnd = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );  // celestial north
@@ -1136,8 +1141,8 @@ function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
    var fStart = raDecToVec( startC.ra, startC.dec );
    var zenith = raDecToVec( obs.lst, obs.lat );                        // local vertical
 
-   var f = slerpVec( fStart, fEnd, e2 );
-   var up = slerpVec( zenith, upEnd, e2 );
+   var f = slerpVec( fStart, fEnd, eCenter );
+   var up = slerpVec( zenith, upEnd, eRoll );
    return makeCameraFromBasis( f, up, fov, 0, W, H );
 }
 
