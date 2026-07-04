@@ -1968,12 +1968,17 @@ function makeWorkWindow( img, id )
    return w;
 }
 
+// Intermediate frames are written as uncompressed BMP: ffmpeg re-encodes them
+// to H.264 anyway, so PNG's deflate (which dominated render time — ~700 ms per
+// 1080p frame) is pure waste. BMP saves are essentially instantaneous.
+var FRAME_EXT = ".bmp";
+
 function frameFileName( index )
 {
    var s = String( index );
    while ( s.length < 5 )
       s = "0" + s;
-   return "frame_" + s + ".png";
+   return "frame_" + s + FRAME_EXT;
 }
 
 // ============================================================================
@@ -2543,6 +2548,8 @@ Engine.prototype.runZoom = function()
       startFov = Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
    var N = Math.max( 2, Math.round( cfg.fps*cfg.targetDuration ) );
    var outIndex = 0;
+   var PERF = { alloc: 0, sky: 0, survey: 0, photo: 0, labels: 0, overlay: 0, save: 0 };
+   var tLoop0 = Date.now();
 
    for ( var i = 0; i < N; ++i )
    {
@@ -2553,11 +2560,13 @@ Engine.prototype.runZoom = function()
                     : zoomCameraAt( t, framing, startFov, W, H );
       var fov = cam.fovDeg;
 
+      var _t0 = Date.now();
       var out = new Bitmap( W, H );
       out.fill( 0xFF05070D );
       var g = new Graphics( out );
       g.antialiasing = true;
       try { g.textAntialiasing = true; } catch ( e ) {}
+      PERF.alloc += Date.now() - _t0;
 
       var pj = cameraProjector( cam );
       var ra = revealAlpha( fov, P, photoWideMult );
@@ -2566,13 +2575,16 @@ Engine.prototype.runZoom = function()
 
       if ( !covered )
       {
+         _t0 = Date.now();
          // Wide-field cues, then catalog star dots — all UNDER the survey images.
          if ( !obs && cfg.ovShowHorizon )
             drawZoomHorizon( g, cam, unit );
          if ( cfg.ovShowGrid )
             drawEquatorialGrid( g, pj, cat.grid, unit );
          drawZoomStars( g, pj, cat.stars, unit );
+         PERF.sky += Date.now() - _t0;
 
+         _t0 = Date.now();
          // Real-sky survey layers (DSS2), covering the star dots with real stars.
          if ( wideBmp )
          {
@@ -2586,39 +2598,57 @@ Engine.prototype.runZoom = function()
             if ( na > 0 )
                drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
          }
+         PERF.survey += Date.now() - _t0;
 
+         _t0 = Date.now();
          // Constellation figures and all labels are drawn OVER the surveys.
          drawZoomConstellations( g, pj, cat.polys, unit );
          if ( cfg.ovConstNames )
             drawZoomConstellationNames( g, cam, cat.centroids, cat.labels, unit );
          if ( cfg.ovStarNames )
             drawZoomStarNames( g, cam, cat.stars, unit );
-
          // The real horizon + opaque ground go LAST, so nothing shows below it.
          if ( obs )
             drawLocationHorizon( g, cam, obs, unit );
+         PERF.labels += Date.now() - _t0;
       }
 
+      _t0 = Date.now();
       // Only the user's own image sits on top of everything.
       if ( ra > 0 )
          drawZoomReveal( g, cam, revealWcs, revealW, revealH, revealBmp, ra );
+      PERF.photo += Date.now() - _t0;
 
+      _t0 = Date.now();
       drawZoomOverlay( g, cam, cfg, this.title, t );
       g.end();
+      PERF.overlay += Date.now() - _t0;
 
+      _t0 = Date.now();
       this.saveFrame( out, ++outIndex );
+      PERF.save += Date.now() - _t0;
       this.progress( outIndex, N, tr( "run.render", outIndex, N, formatAngle( fov ) ),
                      ( ( outIndex & 3 ) == 0 ) ? out : null );
       console.writeln( tr( "run.render", outIndex, N, formatAngle( fov ) ) );
       if ( ( outIndex & 7 ) == 0 )
          gc();
    }
+
+   var tot = Math.max( 1, Date.now() - tLoop0 );
+   console.noteln( "PERF zoom (" + outIndex + " frames, " + tot + " ms; per-frame avg): " +
+      "alloc " + ( PERF.alloc/outIndex ).toFixed( 1 ) + " | sky " + ( PERF.sky/outIndex ).toFixed( 1 ) +
+      " | survey " + ( PERF.survey/outIndex ).toFixed( 1 ) + " | labels " + ( PERF.labels/outIndex ).toFixed( 1 ) +
+      " | photo " + ( PERF.photo/outIndex ).toFixed( 1 ) + " | overlay " + ( PERF.overlay/outIndex ).toFixed( 1 ) +
+      " | save " + ( PERF.save/outIndex ).toFixed( 1 ) + " ms" );
+   this.perf = PERF;
+   this.perf.totalMs = tot;
+   this.perf.frames = outIndex;
 };
 
 Engine.prototype.encode = function()
 {
    var cfg = this.cfg;
-   var framesPattern = this.framesDir() + "/frame_%05d.png";
+   var framesPattern = this.framesDir() + "/frame_%05d" + FRAME_EXT;
    var args = buildFfmpegArgs( {
       fps: cfg.fps,
       framesPattern: framesPattern,
@@ -2645,7 +2675,7 @@ Engine.prototype.encode = function()
       {
          var toRemove = [];
          var ff = new FileFind;
-         if ( ff.begin( this.framesDir() + "/frame_*.png" ) )
+         if ( ff.begin( this.framesDir() + "/frame_*" + FRAME_EXT ) )
             do
             {
                if ( ff.isFile )
@@ -4683,6 +4713,8 @@ function runHeadless( cfgPath )
       result.skipped = r.skipped;
       result.videoPath = r.videoPath;
       result.framesDir = r.framesDir;
+      if ( engine.perf )
+         result.perf = engine.perf;
    }
    catch ( e )
    {

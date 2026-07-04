@@ -81,7 +81,7 @@ assert.strictEqual( M.shellQuote( 'a "b" c' ), '"a \\"b\\" c"' );
 }
 
 // frameFileName
-assert.strictEqual( M.frameFileName( 1 ), "frame_00001.png" );
-assert.strictEqual( M.frameFileName( 12345 ), "frame_12345.png" );
+assert.strictEqual( M.frameFileName( 1 ), "frame_00001.bmp" );
+assert.strictEqual( M.frameFileName( 12345 ), "frame_12345.bmp" );
 
 console.log( "video.test.js OK" );
