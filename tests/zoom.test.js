@@ -263,6 +263,22 @@ assert.ok( M.smootherstep01( 0.3 ) < M.smootherstep01( 0.7 ), "monotone" );
       near( a.ra, b.ra, 1e-9, "crop rot/flip RA at " + rx + "," + ry );
       near( a.dec, b.dec, 1e-9, "crop rot/flip Dec at " + rx + "," + ry );
    }
+
+   // cropWcsCentered: rotation pivots on the reveal centre. The centre pixel
+   // maps to (cx,cy); at 0 rotation it's cropWcs with offset = centre - scale*half.
+   const rW = 1280, rH = 720, cx = 1500, cy = 1000;
+   const cen = M.cropWcsCentered( solved, cx, cy, sc, rot, fh, fv, rW, rH );
+   const mid = M.wcsPixelToSky( cen, rW/2, rH/2 );
+   const want = M.wcsPixelToSky( solved, cx, cy );
+   near( mid.ra, want.ra, 1e-9, "reveal centre lands at (cx,cy)" );
+   near( mid.dec, want.dec, 1e-9, "reveal centre lands at (cx,cy)" );
+   // equivalence to offset form
+   const th2 = rot*Math.PI/180, cc2 = Math.cos( th2 ), ss2 = Math.sin( th2 );
+   const mxh = cc2*( sc*(-1)*rW/2 ) - ss2*( sc*1*rH/2 );
+   const myh = ss2*( sc*(-1)*rW/2 ) + cc2*( sc*1*rH/2 );
+   const off = M.cropWcs( solved, cx - mxh, cy - myh, sc, rot, fh, fv );
+   const A = M.wcsPixelToSky( cen, 200, 300 ), B = M.wcsPixelToSky( off, 200, 300 );
+   near( A.ra, B.ra, 1e-12 ); near( A.dec, B.dec, 1e-12 );
 }
 
 // constellation centroids from border segments (x in degrees)

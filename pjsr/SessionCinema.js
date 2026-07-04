@@ -184,7 +184,11 @@ var STRINGS = {
       "zoom.cropped":      "Different crop from the solved image",
       "zoom.align":        "Align…",
       "align.title":       "Align the reveal image on the solved image",
-      "align.help":        "Drag the reveal image to position it, and adjust the scale so it matches the solved image behind. The overlay slider fades it to check the alignment.",
+      "align.help":        "Drag the reveal to position it; scale/rotate/flip it to match the solved image behind. Mouse wheel zooms the view. The overlay slider fades the reveal to check the fit. Resize this window as needed.",
+      "align.resetView":   "Reset view",
+      "align.move":        "Drag: move image",
+      "align.pan":         "Drag: pan view",
+      "align.panHint":     "Toggle what left-drag does: move the reveal, or pan the zoomed view.",
       "align.scale":       "Scale:",
       "align.rotation":    "Rotation:",
       "align.opacity":     "Overlay:",
@@ -363,7 +367,11 @@ var STRINGS = {
       "zoom.cropped":      "Cadrage différent de l'image résolue",
       "zoom.align":        "Aligner…",
       "align.title":       "Aligner l'image à révéler sur l'image résolue",
-      "align.help":        "Faites glisser l'image à révéler pour la positionner, et ajustez l'échelle pour qu'elle coïncide avec l'image résolue derrière. Le curseur d'opacité l'estompe pour vérifier l'alignement.",
+      "align.help":        "Glissez l'image à révéler pour la positionner ; échelle/rotation/miroir pour la faire coïncider avec l'image résolue derrière. La molette zoome la vue. Le curseur de superposition l'estompe pour vérifier le calage. Fenêtre redimensionnable.",
+      "align.resetView":   "Réinitialiser la vue",
+      "align.move":        "Glisser : déplacer l'image",
+      "align.pan":         "Glisser : déplacer la vue",
+      "align.panHint":     "Bascule ce que fait le glisser gauche : déplacer l'image ou la vue zoomée.",
       "align.scale":       "Échelle :",
       "align.rotation":    "Rotation :",
       "align.opacity":     "Superposition :",
@@ -1221,6 +1229,18 @@ function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
    var refX = (  m11*dx - m01*dy )/det;   // inv(M) · (refPixSolved - offset)
    var refY = ( -m10*dx + m00*dy )/det;
    return makeWcs( wcs.refRA, wcs.refDec, refX, refY, CD );
+}
+
+// Like cropWcs but the alignment is expressed about the reveal CENTRE (cx,cy =
+// where the reveal centre lands in solved px), so rotation pivots on the centre:
+//   solvedPixel = (cx,cy) + M · ( revealPixel - revealCentre )
+function cropWcsCentered( wcs, cx, cy, scale, rotDeg, flipH, flipV, revealW, revealH )
+{
+   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = Math.sin( th );
+   var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1, hx = revealW/2, hy = revealH/2;
+   var mx = c*( scale*fx*hx ) - s*( scale*fy*hy );   // M · revealCentre
+   var my = s*( scale*fx*hx ) + c*( scale*fy*hy );
+   return cropWcs( wcs, cx - mx, cy - my, scale, rotDeg, flipH, flipV );
 }
 
 // Unit-sphere centroid of each constellation from ConstellationBorders.json
@@ -2463,8 +2483,8 @@ Engine.prototype.runZoom = function()
       revealW = revealBmp.width;
       revealH = revealBmp.height;
       revealWcs = ( cfg.zoomRevealCropped && cfg.zoomRevealScale > 0 )
-                  ? cropWcs( wcs, cfg.zoomRevealOffX, cfg.zoomRevealOffY, cfg.zoomRevealScale,
-                             cfg.zoomRevealRot, cfg.zoomRevealFlipH, cfg.zoomRevealFlipV )
+                  ? cropWcsCentered( wcs, cfg.zoomRevealOffX, cfg.zoomRevealOffY, cfg.zoomRevealScale,
+                                     cfg.zoomRevealRot, cfg.zoomRevealFlipH, cfg.zoomRevealFlipV, revealW, revealH )
                   : scaleWcsToDims( wcs, imgW, imgH, revealW, revealH );
       console.writeln( tr( "zoom.revealFrom", File.extractName( cfg.zoomRevealPath ) +
                            File.extractExtension( cfg.zoomRevealPath ), revealW, revealH ) );
@@ -3028,22 +3048,16 @@ function drawZoomConstellations( g, pj, polys, unit )
    drawVecPolylines( g, pj, polys, VEC_OF );
 }
 
-// Place the revealed image at its true on-sky position, orientation and scale.
-// The projection is conformal, so a translate/rotate/scale (with a parity flip)
-// reproduces it faithfully over the ~1° image field.
-function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha )
+// Draw a bitmap given the screen positions of its CENTER, its +x edge midpoint
+// and its top edge midpoint — decomposes to a conformal translate/rotate/scale
+// (with a parity flip) and blits. Shared by the zoom renderer and the alignment
+// preview, so what you align is exactly what renders. An optional outline is
+// drawn under the same transform, so it can never diverge from the image.
+function blitOriented( g, c, ex, ey, imgW, imgH, bmp, alpha, outlineColor )
 {
-   function scr( px, py )
-   {
-      var s = wcsPixelToSky( wcs, px, py );
-      return projectToScreen( cam, s.ra, s.dec );
-   }
-   var c  = scr( imgW/2, imgH/2 );
-   var ex = scr( imgW, imgH/2 );
-   var ey = scr( imgW/2, 0 );
    var ux = ( ex.x - c.x )/( imgW/2 ), uy = ( ex.y - c.y )/( imgW/2 );
    var scale = Math.sqrt( ux*ux + uy*uy );
-   if ( !( scale > 0 ) || !c.front )
+   if ( !( scale > 0 ) )
       return;
    var angle = Math.atan2( uy, ux );
    var wyx = ( ey.x - c.x )/( -imgH/2 ), wyy = ( ey.y - c.y )/( -imgH/2 );
@@ -3055,8 +3069,29 @@ function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha )
    g.rotateTransformation( angle );
    g.scaleTransformation( scale, scale*flip );
    g.drawBitmap( -imgW/2, -imgH/2, bmp );
+   if ( outlineColor !== undefined )
+   {
+      g.opacity = 1;
+      g.pen = new Pen( outlineColor, Math.max( 0.5, 2/scale ) );
+      g.brush = new Brush( 0x00000000 );
+      g.drawRect( new Rect( -imgW/2, -imgH/2, imgW/2, imgH/2 ) );
+   }
    g.resetTransformation();
    g.opacity = prevOp;
+}
+
+// Place the revealed image at its true on-sky position, orientation and scale.
+function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha )
+{
+   function scr( px, py )
+   {
+      var s = wcsPixelToSky( wcs, px, py );
+      return projectToScreen( cam, s.ra, s.dec );
+   }
+   var c = scr( imgW/2, imgH/2 );
+   if ( !c.front )
+      return;
+   blitOriented( g, c, scr( imgW, imgH/2 ), scr( imgW/2, 0 ), imgW, imgH, bmp, alpha );
 }
 
 // True if the revealed image, projected, fully covers the frame — so the layers
@@ -4375,8 +4410,8 @@ class SessionCinemaDialog extends Dialog
       var dlg = new ZoomAlignDialog( solvedBmp, revealBmp, this.cfg );
       if ( dlg.execute() && dlg.accepted )
       {
-         this.cfg.zoomRevealOffX = dlg.offX;
-         this.cfg.zoomRevealOffY = dlg.offY;
+         this.cfg.zoomRevealOffX = dlg.cx;   // stored as the reveal centre in solved px
+         this.cfg.zoomRevealOffY = dlg.cy;
          this.cfg.zoomRevealScale = dlg.scale;
          this.cfg.zoomRevealRot = dlg.rotDeg;
          this.cfg.zoomRevealFlipH = dlg.flipH;
@@ -4586,6 +4621,7 @@ class ZoomAlignDialog extends Dialog
       super();
       var self = this;
       this.windowTitle = tr( "align.title" );
+      this.userResizable = true;
       this.solvedBmp = solvedBmp;
       this.revealBmp = revealBmp;
       this.solvedW = solvedBmp.width;
@@ -4593,80 +4629,94 @@ class ZoomAlignDialog extends Dialog
       this.revealW = revealBmp.width;
       this.revealH = revealBmp.height;
 
-      // Alignment state (solved-image pixels).
-      this.offX = cfg.zoomRevealOffX;
-      this.offY = cfg.zoomRevealOffY;
-      this.scale = ( cfg.zoomRevealScale > 0 ) ? cfg.zoomRevealScale : ( this.solvedW/this.revealW );
-      this.rotDeg = cfg.zoomRevealRot || 0;
-      this.flipH = !!cfg.zoomRevealFlipH;
-      this.flipV = !!cfg.zoomRevealFlipV;
+      // Alignment state: the reveal CENTRE lands at (cx,cy) in solved px, so
+      // rotation pivots on the centre. Legacy configs stored an offset — if this
+      // is a fresh alignment, centre the reveal on the solved image.
+      var fresh = !cfg.zoomRevealCropped;
+      this.cx = fresh ? this.solvedW/2 : cfg.zoomRevealOffX;
+      this.cy = fresh ? this.solvedH/2 : cfg.zoomRevealOffY;
+      this.scale = ( cfg.zoomRevealScale > 0 && !fresh ) ? cfg.zoomRevealScale : ( this.solvedW/this.revealW );
+      this.rotDeg = fresh ? 0 : ( cfg.zoomRevealRot || 0 );
+      this.flipH = !fresh && !!cfg.zoomRevealFlipH;
+      this.flipV = !fresh && !!cfg.zoomRevealFlipV;
       this.overlay = 0.6;
       this.accepted = false;
 
-      var PREV_W = 760, PREV_H = 520;
-      this.previewScale = Math.min( PREV_W/this.solvedW, PREV_H/this.solvedH );
-      var cw = Math.round( this.solvedW*this.previewScale );
-      var ch = Math.round( this.solvedH*this.previewScale );
+      // View (pan/zoom of the whole preview). zoom=1 fits the solved image.
+      this.zoom = 1;
+      this.panX = null;   // computed on first paint to centre the image
+      this.panY = null;
 
       this.help = new Label( this );
       this.help.useRichText = true;
       this.help.wordWrapping = true;
       this.help.text = tr( "align.help" );
 
+      // solved-px -> screen-px given the current fit/zoom/pan.
+      this.fit = function() { return Math.min( self.canvas.width/self.solvedW, self.canvas.height/self.solvedH ); };
+      this.ps = function() { return self.fit()*self.zoom; };
+      this.S = function( X, Y ) { return { x: X*self.ps() + self.panX, y: Y*self.ps() + self.panY }; };
+
       // ---- interactive canvas ----
       this.canvas = new Control( this );
-      this.canvas.setFixedSize( cw, ch );
-      this.canvas.__drag = null;
+      this.canvas.setScaledMinSize( 640, 400 );
+      this.canvas.__mode = null;
       this.canvas.onPaint = function()
       {
          var g = new Graphics( this );
          g.fillRect( 0, 0, this.width, this.height, new Brush( 0xFF0A0E16 ) );
-         var ps = self.previewScale;
-         g.drawScaledBitmap( new Rect( 0, 0, Math.round( self.solvedW*ps ), Math.round( self.solvedH*ps ) ), self.solvedBmp );
-
-         // Reveal drawn with the same similarity used at render time:
-         // screen = off·ps + R(rot)·diag(scale·ps·flip)·revealPixel
-         var fx = self.flipH ? -1 : 1, fy = self.flipV ? -1 : 1;
-         var sx = self.scale*ps*fx, sy = self.scale*ps*fy;
-         var prevOp = g.opacity;
-         g.antialiasing = true;
-         g.opacity = self.overlay;
-         g.resetTransformation();
-         g.translateTransformation( self.offX*ps, self.offY*ps );
-         g.rotateTransformation( deg2rad( self.rotDeg ) );
-         g.scaleTransformation( sx, sy );
-         g.drawBitmap( 0, 0, self.revealBmp );
-         g.resetTransformation();
-         g.opacity = prevOp;
-
-         // Outline the (possibly rotated/flipped) reveal quad.
-         var th = deg2rad( self.rotDeg ), c = Math.cos( th ), s = Math.sin( th );
-         function mp( px, py )
+         if ( self.panX == null )
          {
-            var X = c*( sx*px ) - s*( sy*py ), Y = s*( sx*px ) + c*( sy*py );
-            return { x: self.offX*ps + X, y: self.offY*ps + Y };
+            self.panX = ( this.width - self.solvedW*self.ps() )/2;
+            self.panY = ( this.height - self.solvedH*self.ps() )/2;
          }
-         var q = [ mp( 0, 0 ), mp( self.revealW, 0 ), mp( self.revealW, self.revealH ), mp( 0, self.revealH ) ];
-         g.pen = new Pen( 0xFF22D3EE, 2 );
-         for ( var k = 0; k < 4; ++k )
-            g.drawLine( q[ k ].x, q[ k ].y, q[ ( k + 1 )%4 ].x, q[ ( k + 1 )%4 ].y );
+         var ps = self.ps();
+         var o = self.S( 0, 0 );
+         g.antialiasing = true;
+         g.drawScaledBitmap( new Rect( Math.round( o.x ), Math.round( o.y ),
+                                       Math.round( o.x + self.solvedW*ps ), Math.round( o.y + self.solvedH*ps ) ), self.solvedBmp );
+
+         // Reveal centre + axis endpoints in solved px, via M = R·diag(scale·flip).
+         var th = deg2rad( self.rotDeg ), c = Math.cos( th ), s = Math.sin( th );
+         var fx = self.flipH ? -1 : 1, fy = self.flipV ? -1 : 1, hx = self.revealW/2, hy = self.revealH/2;
+         var cS = self.S( self.cx, self.cy );
+         var exS = self.S( self.cx + c*( self.scale*fx*hx ), self.cy + s*( self.scale*fx*hx ) );
+         var eyS = self.S( self.cx - ( -s*( self.scale*fy*hy ) ), self.cy - ( c*( self.scale*fy*hy ) ) );
+         blitOriented( g, cS, exS, eyS, self.revealW, self.revealH, self.revealBmp, self.overlay, 0xFF22D3EE );
          g.end();
       };
       this.canvas.onMousePress = function( x, y, button, buttonState, modifiers )
       {
-         this.__drag = { x: x, y: y, offX: self.offX, offY: self.offY };
+         this.__mode = self.panMode ? "pan" : "reveal";
+         this.__start = { x: x, y: y, cx: self.cx, cy: self.cy, panX: self.panX, panY: self.panY };
       };
       this.canvas.onMouseMove = function( x, y, buttonState, modifiers )
       {
-         if ( this.__drag == null )
+         if ( this.__mode == null )
             return;
-         self.offX = this.__drag.offX + ( x - this.__drag.x )/self.previewScale;
-         self.offY = this.__drag.offY + ( y - this.__drag.y )/self.previewScale;
+         if ( this.__mode == "pan" )
+         {
+            self.panX = this.__start.panX + ( x - this.__start.x );
+            self.panY = this.__start.panY + ( y - this.__start.y );
+         }
+         else
+         {
+            var ps = self.ps();
+            self.cx = this.__start.cx + ( x - this.__start.x )/ps;
+            self.cy = this.__start.cy + ( y - this.__start.y )/ps;
+         }
          this.repaint();
       };
-      this.canvas.onMouseRelease = function( x, y, button, buttonState, modifiers )
+      this.canvas.onMouseRelease = function( x, y, button, buttonState, modifiers ) { this.__mode = null; };
+      this.canvas.onMouseWheel = function( x, y, delta, buttonState, modifiers )
       {
-         this.__drag = null;
+         var oldPs = self.ps();
+         var sx = ( x - self.panX )/oldPs, sy = ( y - self.panY )/oldPs;   // solved px under cursor
+         self.zoom = Math.max( 0.2, Math.min( 30, self.zoom*( delta > 0 ? 1.2 : 1/1.2 ) ) );
+         var newPs = self.ps();
+         self.panX = x - sx*newPs;
+         self.panY = y - sy*newPs;
+         this.repaint();
       };
 
       // ---- controls ----
@@ -4712,13 +4762,31 @@ class ZoomAlignDialog extends Dialog
       this.fitButton.onClick = () =>
       {
          self.scale = self.solvedW/self.revealW;
-         self.offX = 0;
-         self.offY = 0;
+         self.cx = self.solvedW/2;
+         self.cy = self.solvedH/2;
          self.rotDeg = 0;
          self.flipH = false;
          self.flipV = false;
          self.scaleControl.setValue( self.scale );
          self.rotControl.setValue( 0 );
+         self.canvas.repaint();
+      };
+
+      this.panMode = false;
+      this.panButton = new PushButton( this );
+      this.panButton.text = tr( "align.move" );
+      this.panButton.toolTip = tr( "align.panHint" );
+      this.panButton.onClick = () =>
+      {
+         self.panMode = !self.panMode;
+         self.panButton.text = self.panMode ? tr( "align.pan" ) : tr( "align.move" );
+      };
+
+      this.resetViewButton = new PushButton( this );
+      this.resetViewButton.text = tr( "align.resetView" );
+      this.resetViewButton.onClick = () =>
+      {
+         self.zoom = 1; self.panX = null; self.panY = null;   // recentred on next paint
          self.canvas.repaint();
       };
 
@@ -4745,6 +4813,8 @@ class ZoomAlignDialog extends Dialog
       this.ctrlSizer2.add( this.flipVButton );
       this.ctrlSizer2.add( this.rot90Button );
       this.ctrlSizer2.addStretch();
+      this.ctrlSizer2.add( this.panButton );
+      this.ctrlSizer2.add( this.resetViewButton );
       this.ctrlSizer2.add( this.fitButton );
 
       this.buttons = new HorizontalSizer;
@@ -4757,12 +4827,12 @@ class ZoomAlignDialog extends Dialog
       this.sizer.margin = 8;
       this.sizer.spacing = 8;
       this.sizer.add( this.help );
-      this.sizer.add( this.canvas );
+      this.sizer.add( this.canvas, 100 );
       this.sizer.add( this.ctrlSizer );
       this.sizer.add( this.ctrlSizer2 );
       this.sizer.add( this.buttons );
-      this.adjustToContents();
-      this.setFixedSize();
+      this.setScaledMinSize( 720, 620 );
+      this.resize( 900, 760 );
    }
 }
 

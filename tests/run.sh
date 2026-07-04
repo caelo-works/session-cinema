@@ -115,6 +115,7 @@ module.exports = {
    makeSurveyWcs: makeSurveyWcs,
    scaleWcsToDims: scaleWcsToDims,
    cropWcs: cropWcs,
+   cropWcsCentered: cropWcsCentered,
    constellationCentroids: constellationCentroids,
    hips2fitsUrl: hips2fitsUrl,
    limitingMagnitude: limitingMagnitude,
