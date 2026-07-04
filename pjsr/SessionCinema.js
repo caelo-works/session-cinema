@@ -1022,24 +1022,60 @@ function slerpVec( a, b, t )
    return vnorm( [ c0*a[0]+c1*b[0], c0*a[1]+c1*b[1], c0*a[2]+c1*b[2] ] );
 }
 
-// Camera along the LOCATION path: opens looking at the observer's horizon in
-// the target's direction (up = local zenith), then slews and zooms up to the
-// equatorial target framing (up = celestial north) so the reveal still lands
-// aligned. obs = { lst, lat, targetAlt, targetAz }.
+// Opening framing for the location path: find the camera center altitude and
+// FOV so the TARGET sits at ~1/4 from the top of the frame and the HORIZON
+// sits near the bottom (~85% of the height, just above the title band).
+// Stereographic vertical offset of a point θ° from center: y = 2·s·tan(θ/2)
+// with s = W / (4·tan(fov/4)). Solved by bisection on the FOV; falls back to
+// pinning the target at 1/4 when both constraints can't hold (very high alt).
+function locationStartFraming( targetAltDeg, W, H )
+{
+   var T_FRAC = 0.25;   // target above center: 0.25·H from the top
+   var H_FRAC = 0.35;   // horizon below center: 0.85·H from the top
+   function sOf( fov ) { return W/( 4*Math.tan( deg2rad( fov )/4 ) ); }
+   function altC( fov ) { return 2*rad2deg( Math.atan( H_FRAC*H/( 2*sOf( fov ) ) ) ); }
+   function g( fov )
+   {
+      return 2*sOf( fov )*Math.tan( deg2rad( targetAltDeg - altC( fov ) )/2 ) - T_FRAC*H;
+   }
+   var lo = 10, hi = 150;
+   if ( g( hi ) > 0 )
+   {
+      // Target too high for both constraints: keep it at 1/4, horizon drops.
+      var s = sOf( hi );
+      return { fovDeg: hi, altCDeg: targetAltDeg - 2*rad2deg( Math.atan( T_FRAC*H/( 2*s ) ) ) };
+   }
+   if ( g( lo ) < 0 )
+      return { fovDeg: lo, altCDeg: altC( lo ) };
+   for ( var i = 0; i < 60; ++i )
+   {
+      var mid = ( lo + hi )/2;
+      if ( g( mid ) > 0 ) lo = mid; else hi = mid;
+   }
+   var fov = ( lo + hi )/2;
+   return { fovDeg: fov, altCDeg: altC( fov ) };
+}
+
+// Camera along the LOCATION path. Opens with the target ~1/4 from the top and
+// the real horizon low in the frame (up = local zenith), then re-centers onto
+// the target early in the zoom (done by t≈0.4, before the surveys dominate)
+// while the up vector rolls to celestial north, so the reveal lands aligned.
+// obs = { lst, lat, targetAlt, targetAz, startFov, altC }.
 function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
 {
    var e = smoothstep01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
+   var e2 = smoothstep01( Math.min( 1, t/0.4 ) );   // centering completes early
 
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
    var upEnd = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );  // celestial north
 
-   var horizon = altAzToRaDec( 0, obs.targetAz, obs.lst, obs.lat );   // horizon under the target
-   var fStart = raDecToVec( horizon.ra, horizon.dec );
+   var startC = altAzToRaDec( ( obs.altC !== undefined ) ? obs.altC : obs.targetAlt, obs.targetAz, obs.lst, obs.lat );
+   var fStart = raDecToVec( startC.ra, startC.dec );
    var zenith = raDecToVec( obs.lst, obs.lat );                        // local vertical
 
-   var f = slerpVec( fStart, fEnd, e );
-   var up = slerpVec( zenith, upEnd, e );
+   var f = slerpVec( fStart, fEnd, e2 );
+   var up = slerpVec( zenith, upEnd, e2 );
    return makeCameraFromBasis( f, up, fov, 0, W, H );
 }
 
@@ -2424,7 +2460,18 @@ Engine.prototype.runZoom = function()
 
    var fmt = OUTPUT_FORMATS[ cfg.formatIndex ];
    var W = fmt.w, H = fmt.h, unit = H/1080;
-   var startFov = obs ? 140 : Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
+   var startFov;
+   if ( obs )
+   {
+      // Opening framing: target at 1/4 from the top, horizon just above the
+      // bottom overlay.
+      var sf = locationStartFraming( obs.targetAlt, W, H );
+      obs.startFov = sf.fovDeg;
+      obs.altC = sf.altCDeg;
+      startFov = Math.max( sf.fovDeg, P*4 );
+   }
+   else
+      startFov = Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
    var N = Math.max( 2, Math.round( cfg.fps*cfg.targetDuration ) );
    var outIndex = 0;
 
@@ -2784,11 +2831,14 @@ function drawLocationHorizon( g, cam, obs, unit )
       try
       {
          var poly = [];
+         // Extend to the frame edges so the ground never leaves dark gaps.
+         poly.push( new Point( -100, onscreen[ 0 ].y ) );
          for ( var k = 0; k < onscreen.length; ++k )
             poly.push( new Point( onscreen[ k ].x, onscreen[ k ].y ) );
-         poly.push( new Point( onscreen[ onscreen.length - 1 ].x, H ) );
-         poly.push( new Point( onscreen[ 0 ].x, H ) );
-         g.brush = new Brush( 0xF2060A11 );
+         poly.push( new Point( W + 100, onscreen[ onscreen.length - 1 ].y ) );
+         poly.push( new Point( W + 100, H + 100 ) );
+         poly.push( new Point( -100, H + 100 ) );
+         g.brush = new Brush( 0xF50E2038 );   // deep blue ground
          g.pen = new Pen( 0x00000000, 0 );
          g.fillPolygon( poly );
       }

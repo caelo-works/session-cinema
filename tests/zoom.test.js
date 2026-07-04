@@ -83,6 +83,50 @@ const near = ( a, b, eps, msg ) => assert.ok( Math.abs( a - b ) <= ( eps || 1e-6
    assert.ok( Math.abs( altaz.az - 141.99 ) < 1.5, "M16 azimuth ~141.99, got " + altaz.az.toFixed( 2 ) );
 }
 
+// --- location opening: target at 1/4 from the top, horizon at ~85% height ---
+{
+   const W = 1920, H = 1080;
+   const lst = 100, lat = 43.6, targetAlt = 24, targetAz = 142;
+   const sf = M.locationStartFraming( targetAlt, W, H );
+   assert.ok( sf.fovDeg > 20 && sf.fovDeg < 150, "reasonable start fov: " + sf.fovDeg );
+
+   const tRd = M.altAzToRaDec( targetAlt, targetAz, lst, lat );
+   const target = { centerRA: tRd.ra, centerDec: tRd.dec, fovDeg: 1.2 };
+   const obs = { lst: lst, lat: lat, targetAlt: targetAlt, targetAz: targetAz,
+                 startFov: sf.fovDeg, altC: sf.altCDeg };
+
+   // t = 0: target at 0.25·H, horizon (below target) at 0.85·H, both centered in x.
+   const cam0 = M.zoomCameraLocation( 0, target, sf.fovDeg, W, H, obs );
+   const pT = M.projectToScreen( cam0, tRd.ra, tRd.dec );
+   near( pT.x, W/2, 2, "target horizontally centered at start" );
+   near( pT.y, 0.25*H, 0.02*H, "target at 1/4 from the top" );
+   const hRd = M.altAzToRaDec( 0, targetAz, lst, lat );
+   const pH = M.projectToScreen( cam0, hRd.ra, hRd.dec );
+   near( pH.y, 0.85*H, 0.02*H, "horizon just above the bottom overlay" );
+   assert.ok( pH.y > pT.y, "horizon below target" );
+
+   // t >= 0.4: target centered (before the surveys dominate).
+   const cam4 = M.zoomCameraLocation( 0.4, target, sf.fovDeg, W, H, obs );
+   const pT4 = M.projectToScreen( cam4, tRd.ra, tRd.dec );
+   near( pT4.x, W/2, 1.5, "target centered x at t=0.4" );
+   near( pT4.y, H/2, 1.5, "target centered y at t=0.4" );
+
+   // t = 1: equatorial target camera — the reveal lands centered and aligned.
+   const cam1 = M.zoomCameraLocation( 1, target, sf.fovDeg, W, H, obs );
+   const pT1 = M.projectToScreen( cam1, tRd.ra, tRd.dec );
+   near( pT1.x, W/2, 1e-6, "end centered x" );
+   near( pT1.y, H/2, 1e-6, "end centered y" );
+   near( cam1.fovDeg, target.fovDeg, 1e-9, "end fov = image field" );
+   // north up at the end: a point 1° north of target projects straight up
+   const pN = M.projectToScreen( cam1, tRd.ra, tRd.dec + 1 );
+   near( pN.x, W/2, 0.5, "north is up at the end (x)" );
+   assert.ok( pN.y < H/2, "north is up at the end (y)" );
+
+   // very high target: solver falls back gracefully, target still at 1/4
+   const sfHigh = M.locationStartFraming( 80, W, H );
+   assert.ok( sfHigh.fovDeg <= 150, "fov clamped for high targets" );
+}
+
 // --- camera path ---
 {
    const target = { centerRA: 100, centerDec: 20, fovDeg: 1.07, rollDeg: 12 };

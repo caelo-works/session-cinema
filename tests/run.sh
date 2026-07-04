@@ -101,6 +101,8 @@ module.exports = {
    lstDeg: lstDeg,
    raDecToAltAz: raDecToAltAz,
    altAzToRaDec: altAzToRaDec,
+   locationStartFraming: locationStartFraming,
+   zoomCameraLocation: zoomCameraLocation,
    projectToScreen: projectToScreen,
    zoomCameraAt: zoomCameraAt,
    revealAlpha: revealAlpha,
