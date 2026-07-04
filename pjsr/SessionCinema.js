@@ -143,6 +143,8 @@ var STRINGS = {
       "style.zoomNote":    "Needs one plate-solved image (a WBPP master is already solved). " +
                            "Its embedded WCS drives the zoom; the sky is drawn from PixInsight's bundled catalogs.",
       "zoom.image":        "Final image:",
+      "zoom.inputTitle":   "Final image",
+      "zoom.imageHint":    "A plate-solved image — a WBPP master is already solved. Otherwise solve it first with Script > Image Analysis > ImageSolver.",
       "stretch.label":     "Screen stretch:",
       "stretch.final":     "Fixed, computed on the final stack (2 passes — honest noise progression)",
       "stretch.first":     "Fixed, computed on the first frame (1 pass, faster)",
@@ -189,6 +191,7 @@ var STRINGS = {
       "out.keepFrames":    "Keep the PNG frame sequence",
       "out.ffmpeg":        "ffmpeg:",
       "out.detect":        "Detect",
+      "out.allFiles":      "All files",
       "out.ffmpegFound":   "ffmpeg found: %1",
       "out.ffmpegMissing": "ffmpeg not found — the PNG sequence and an encoding script will be generated instead.",
 
@@ -250,6 +253,8 @@ var STRINGS = {
       "style.zoomNote":    "Nécessite une image résolue astrométriquement (un master WBPP l'est déjà). " +
                            "Son WCS embarqué pilote le zoom ; le ciel est tracé depuis les catalogues fournis avec PixInsight.",
       "zoom.image":        "Image finale :",
+      "zoom.inputTitle":   "Image finale",
+      "zoom.imageHint":    "Une image résolue astrométriquement — un master WBPP l'est déjà. Sinon, résolvez-la avec Script > Image Analysis > ImageSolver.",
       "stretch.label":     "Étirement d'affichage :",
       "stretch.final":     "Fixe, calculé sur le stack final (2 passes — progression du bruit honnête)",
       "stretch.first":     "Fixe, calculé sur la première brute (1 passe, plus rapide)",
@@ -296,6 +301,7 @@ var STRINGS = {
       "out.keepFrames":    "Conserver la séquence PNG",
       "out.ffmpeg":        "ffmpeg :",
       "out.detect":        "Détecter",
+      "out.allFiles":      "Tous les fichiers",
       "out.ffmpegFound":   "ffmpeg trouvé : %1",
       "out.ffmpegMissing": "ffmpeg introuvable — la séquence PNG et un script d'encodage seront générés.",
 
@@ -2259,6 +2265,20 @@ class SessionCinemaDialog extends Dialog
       this.zoomImageSizer.add( this.zoomImageEdit, 100 );
       this.zoomImageSizer.add( this.zoomImageBrowse );
 
+      this.zoomHint = new Label( this );
+      this.zoomHint.text = tr( "zoom.imageHint" );
+      this.zoomHint.wordWrapping = true;
+      this.zoomHint.enabled = false;
+
+      // Input group for Zoom Odyssey — takes the place of the frame list.
+      this.zoomGroup = new GroupBox( this );
+      this.zoomGroup.title = tr( "zoom.inputTitle" );
+      this.zoomGroup.sizer = new VerticalSizer;
+      this.zoomGroup.sizer.margin = 8;
+      this.zoomGroup.sizer.spacing = 6;
+      this.zoomGroup.sizer.add( this.zoomImageSizer );
+      this.zoomGroup.sizer.add( this.zoomHint );
+
       this.stretchLabel = new Label( this );
       this.stretchLabel.text = tr( "stretch.label" );
       this.stretchLabel.minWidth = labelWidth;
@@ -2295,7 +2315,6 @@ class SessionCinemaDialog extends Dialog
       this.styleGroup.sizer.add( this.stackNote );
       this.styleGroup.sizer.add( this.styleZoomRadio );
       this.styleGroup.sizer.add( this.zoomNote );
-      this.styleGroup.sizer.add( this.zoomImageSizer );
       this.styleGroup.sizer.add( this.stretchSizer );
       this.styleGroup.sizer.add( this.linkedCheck );
       this.styleGroup.sizer.add( this.debayerCheck );
@@ -2553,6 +2572,24 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegEdit = new Edit( this );
       this.ffmpegEdit.text = cfg.ffmpegPath;
       this.ffmpegEdit.onTextUpdated = ( t ) => { self.cfg.ffmpegPath = t; };
+      this.ffmpegBrowse = new PushButton( this );
+      this.ffmpegBrowse.text = tr( "out.browse" );
+      this.ffmpegBrowse.onClick = () =>
+      {
+         var d = new OpenFileDialog;
+         d.multipleSelections = false;
+         d.caption = tr( "out.ffmpeg" );
+         if ( platformKind() == "windows" )
+            d.filters = [ [ "ffmpeg", "*.exe" ], [ tr( "out.allFiles" ), "*" ] ];
+         else
+            d.filters = [ [ tr( "out.allFiles" ), "*" ] ];
+         if ( d.execute() && d.fileNames.length )
+         {
+            self.cfg.ffmpegPath = d.fileNames[ 0 ];
+            self.ffmpegEdit.text = d.fileNames[ 0 ];
+            self.onDetectFfmpeg();
+         }
+      };
       this.ffmpegDetect = new PushButton( this );
       this.ffmpegDetect.text = tr( "out.detect" );
       this.ffmpegDetect.onClick = () => this.onDetectFfmpeg();
@@ -2560,6 +2597,7 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegSizer.spacing = 6;
       this.ffmpegSizer.add( this.ffmpegLabel );
       this.ffmpegSizer.add( this.ffmpegEdit, 100 );
+      this.ffmpegSizer.add( this.ffmpegBrowse );
       this.ffmpegSizer.add( this.ffmpegDetect );
 
       this.ffmpegStatus = new Label( this );
@@ -2622,8 +2660,9 @@ class SessionCinemaDialog extends Dialog
       this.sizer.margin = 8;
       this.sizer.spacing = 8;
       this.sizer.add( this.helpLabel );
-      this.sizer.add( this.framesGroup, 100 );
       this.sizer.add( this.styleGroup );
+      this.sizer.add( this.framesGroup, 100 );
+      this.sizer.add( this.zoomGroup );
       this.sizer.add( this.overlayGroup );
       this.sizer.add( this.videoGroup );
       this.sizer.add( this.outGroup );
@@ -2696,11 +2735,9 @@ class SessionCinemaDialog extends Dialog
       var isZoom = ( this.cfg.style == STYLE_ZOOM );
       this.stackNote.visible = isStack;
       this.zoomNote.visible = isZoom;
-      // Frame list is irrelevant to Zoom Odyssey; it works from one solved image.
-      this.zoomImageLabel.visible = isZoom;
-      this.zoomImageEdit.visible = isZoom;
-      this.zoomImageBrowse.visible = isZoom;
+      // The 'Final image' group takes the place of the frame list for zoom.
       this.framesGroup.visible = !isZoom;
+      this.zoomGroup.visible = isZoom;
       // Per-style overlay items.
       this.snrCheck.enabled = isStack;
       this.timeCheck.enabled = !isStack && !isZoom;
