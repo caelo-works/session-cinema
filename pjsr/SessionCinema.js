@@ -32,6 +32,13 @@
 
 /* beautify ignore:end */
 
+// TextAlign is not injected as a runtime global under #engine v8 (pjsr headers
+// do not load). Define it from the official flag values so label alignment works.
+if ( typeof TextAlign == "undefined" )
+   TextAlign = { Left: 0x01, Right: 0x02, HorzCenter: 0x04, Justify: 0x08,
+                 Top: 0x20, Bottom: 0x40, VertCenter: 0x80,
+                 Center: 0x84, Default: 0x21, Unknown: 0x00 };
+
 // ============================================================================
 // Version gate — fail with a clear message instead of a cryptic v8 error.
 // ============================================================================
@@ -143,6 +150,12 @@ var STRINGS = {
       "frames.scanning":   "Reading headers… %1 / %2",
 
       "style.title":       "Style",
+      "tab.sequence":      "From subs",
+      "tab.zoom":          "Zoom Odyssey",
+      "tagline.timelapse": "Watch the night happen — clouds, meteors, field rotation.",
+      "tagline.stacking":  "Watch your stack build itself, from 1 to N subs.",
+      "tagline.zoom":      "You are here — from the whole sky down to your image.",
+      "stretch.groupTitle": "Rendering",
       "style.timelapse":   "Timelapse — one video frame per sub (clouds, meteors, field rotation)",
       "style.stacking":    "Progressive stack — watch the integration build from 1 to N subs",
       "style.stackNote":   "Stacking mode expects registered frames (e.g. the registered output of WBPP). " +
@@ -278,6 +291,12 @@ var STRINGS = {
       "frames.scanning":   "Lecture des en-têtes… %1 / %2",
 
       "style.title":       "Style",
+      "tab.sequence":      "Depuis des brutes",
+      "tab.zoom":          "Zoom Odyssey",
+      "tagline.timelapse": "Regarde la nuit se dérouler — nuages, météores, rotation de champ.",
+      "tagline.stacking":  "Regarde ton empilement se construire, de 1 à N brutes.",
+      "tagline.zoom":      "Tu es ici — du ciel entier jusqu'à ton image.",
+      "stretch.groupTitle": "Rendu",
       "style.timelapse":   "Timelapse — une image vidéo par brute (nuages, météores, rotation de champ)",
       "style.stacking":    "Empilement progressif — l'intégration se construit de 1 à N brutes",
       "style.stackNote":   "Le mode empilement attend des brutes alignées (ex. la sortie registered de WBPP). " +
@@ -2635,6 +2654,36 @@ class SessionCinemaDialog extends Dialog
 
       var labelWidth = this.font.width( "Animation length (s): MMM" );
 
+      // ---- header: emblem + title + tagline ----
+      this.emblem = this.makeEmblem();
+
+      this.titleLabel = new Label( this );
+      this.titleLabel.text = SC_TITLE;
+      var tf = this.titleLabel.font;
+      tf.bold = true;
+      tf.pointSize = Math.round( this.font.pointSize*1.7 );
+      this.titleLabel.font = tf;
+
+      this.buildLabel = new Label( this );
+      this.buildLabel.text = "v" + SC_VERSION;
+      this.buildLabel.textAlignment = TextAlign.Left | TextAlign.VertCenter;
+
+      this.taglineLabel = new Label( this );
+      this.taglineLabel.useRichText = true;
+      this.taglineLabel.wordWrapping = true;
+
+      this.titleColumn = new VerticalSizer;
+      this.titleColumn.add( this.titleLabel );
+      this.titleColumn.add( this.buildLabel );
+
+      this.headerSizer = new HorizontalSizer;
+      this.headerSizer.spacing = 10;
+      if ( this.emblem != null )
+         this.headerSizer.add( this.emblem );
+      this.headerSizer.add( this.titleColumn );
+      this.headerSizer.addSpacing( 16 );
+      this.headerSizer.add( this.taglineLabel, 100 );
+
       // ---- help ----
       this.helpLabel = new Label( this );
       this.helpLabel.text = tr( "help" );
@@ -2719,17 +2768,11 @@ class SessionCinemaDialog extends Dialog
          }
       };
 
-      this.styleZoomRadio = new RadioButton( this );
-      this.styleZoomRadio.text = tr( "style.zoom" );
-      this.styleZoomRadio.checked = ( cfg.style == STYLE_ZOOM );
-      this.styleZoomRadio.onCheck = ( checked ) =>
-      {
-         if ( checked )
-         {
-            self.cfg.style = STYLE_ZOOM;
-            self.updateStyleDependents();
-         }
-      };
+      this.subStyleSizer = new HorizontalSizer;
+      this.subStyleSizer.spacing = 12;
+      this.subStyleSizer.add( this.styleTimelapseRadio );
+      this.subStyleSizer.add( this.styleStackingRadio );
+      this.subStyleSizer.addStretch();
 
       this.stackNote = new Label( this );
       this.stackNote.text = tr( "style.stackNote" );
@@ -2850,19 +2893,15 @@ class SessionCinemaDialog extends Dialog
       this.debayerCheck.checked = cfg.debayer;
       this.debayerCheck.onCheck = ( c ) => { self.cfg.debayer = c; };
 
-      this.styleGroup = new GroupBox( this );
-      this.styleGroup.title = tr( "style.title" );
-      this.styleGroup.sizer = new VerticalSizer;
-      this.styleGroup.sizer.margin = 8;
-      this.styleGroup.sizer.spacing = 6;
-      this.styleGroup.sizer.add( this.styleTimelapseRadio );
-      this.styleGroup.sizer.add( this.styleStackingRadio );
-      this.styleGroup.sizer.add( this.stackNote );
-      this.styleGroup.sizer.add( this.styleZoomRadio );
-      this.styleGroup.sizer.add( this.zoomNote );
-      this.styleGroup.sizer.add( this.stretchSizer );
-      this.styleGroup.sizer.add( this.linkedCheck );
-      this.styleGroup.sizer.add( this.debayerCheck );
+      // Per-sub-style stretch options (used by Timelapse and Progressive stack).
+      this.seqOptionsGroup = new GroupBox( this );
+      this.seqOptionsGroup.title = tr( "stretch.groupTitle" );
+      this.seqOptionsGroup.sizer = new VerticalSizer;
+      this.seqOptionsGroup.sizer.margin = 8;
+      this.seqOptionsGroup.sizer.spacing = 6;
+      this.seqOptionsGroup.sizer.add( this.stretchSizer );
+      this.seqOptionsGroup.sizer.add( this.linkedCheck );
+      this.seqOptionsGroup.sizer.add( this.debayerCheck );
 
       // ---- overlay group ----
       this.titleLabel = new Label( this );
@@ -3003,7 +3042,6 @@ class SessionCinemaDialog extends Dialog
       this.overlayGroup.sizer.add( this.titleSizer );
       this.overlayGroup.sizer.add( this.checksRow1 );
       this.overlayGroup.sizer.add( this.checksRow2 );
-      this.overlayGroup.sizer.add( this.checksRow3 );
       this.overlayGroup.sizer.add( this.subtitleSizer );
       this.overlayGroup.sizer.add( this.signatureSizer );
 
@@ -3258,13 +3296,30 @@ class SessionCinemaDialog extends Dialog
       this.bottomSizer.add( this.generateButton );
       this.bottomSizer.add( this.closeButton );
 
+      // ---- mode tabs: subs-based (timelapse/stack) vs Zoom Odyssey ----
+      this.sequencePage = this.makePage( [ this.subStyleSizer, this.stackNote,
+                                           this.framesGroup, this.seqOptionsGroup ] );
+      this.zoomPage = this.makePage( [ this.zoomNote, this.zoomGroup, this.checksRow3 ] );
+
+      this.tabBox = new TabBox( this );
+      this.tabBox.addPage( this.sequencePage, tr( "tab.sequence" ) );
+      this.tabBox.addPage( this.zoomPage, tr( "tab.zoom" ) );
+      this.tabBox.currentPageIndex = ( cfg.style == STYLE_ZOOM ) ? 1 : 0;
+      this.tabBox.onPageSelected = ( idx ) =>
+      {
+         if ( idx == 1 )
+            self.cfg.style = STYLE_ZOOM;
+         else
+            self.cfg.style = self.styleStackingRadio.checked ? STYLE_STACKING : STYLE_TIMELAPSE;
+         self.updateStyleDependents();
+      };
+
       this.sizer = new VerticalSizer;
       this.sizer.margin = 8;
       this.sizer.spacing = 8;
+      this.sizer.add( this.headerSizer );
       this.sizer.add( this.helpLabel );
-      this.sizer.add( this.styleGroup );
-      this.sizer.add( this.framesGroup, 100 );
-      this.sizer.add( this.zoomGroup );
+      this.sizer.add( this.tabBox, 100 );
       this.sizer.add( this.overlayGroup );
       this.sizer.add( this.videoGroup );
       this.sizer.add( this.outGroup );
@@ -3275,6 +3330,64 @@ class SessionCinemaDialog extends Dialog
       this.refreshTree();
       this.updateStyleDependents();
       this.onDetectFfmpeg();
+   }
+
+   // Header emblem: the script icon, drawn into a fixed-size Control. Located
+   // from this file's own directory or the installed rsc path; null if absent.
+   makeEmblem()
+   {
+      var here = ( File.extractDrive( #__FILE__ ) + File.extractDirectory( #__FILE__ ) ).split( "\\" ).join( "/" );
+      var root = piInstallRoot();
+      var candidates = [ here + "/assets/SessionCinema.svg",
+                         here + "/SessionCinema.svg",
+                         root + "/rsc/icons/script/SessionCinema/SessionCinema.svg" ];
+      var bmp = null;
+      for ( var i = 0; i < candidates.length && bmp == null; ++i )
+      {
+         try
+         {
+            if ( File.exists( candidates[ i ] ) )
+            {
+               var b = new Bitmap( candidates[ i ] );
+               bmp = ( typeof b.scaledTo == "function" ) ? b.scaledTo( 44, 44 ) : b;
+            }
+         }
+         catch ( e ) { bmp = null; }
+      }
+      if ( bmp == null )
+         return null;
+      var ctrl = new Control( this );
+      ctrl.setFixedSize( 44, 44 );
+      ctrl.__bmp = bmp;
+      ctrl.onPaint = function()
+      {
+         var g = new Graphics( this );
+         try { g.drawBitmap( 0, 0, this.__bmp ); } catch ( e ) {}
+         g.end();
+      };
+      return ctrl;
+   }
+
+   // A tab page Control from a list of widgets/sizers.
+   makePage( items )
+   {
+      var page = new Control( this );
+      page.sizer = new VerticalSizer;
+      page.sizer.margin = 8;
+      page.sizer.spacing = 8;
+      for ( var i = 0; i < items.length; ++i )
+         page.sizer.add( items[ i ], ( items[ i ] == this.framesGroup ) ? 100 : 0 );
+      page.sizer.addStretch();
+      return page;
+   }
+
+   // Mode-specific tagline shown in the header.
+   updateTagline()
+   {
+      var s = this.cfg.style;
+      var key = ( s == STYLE_TIMELAPSE ) ? "tagline.timelapse"
+              : ( s == STYLE_ZOOM ) ? "tagline.zoom" : "tagline.stacking";
+      this.taglineLabel.text = "<i>" + tr( key ) + "</i>";
    }
 
    refreshTree()
@@ -3336,10 +3449,7 @@ class SessionCinemaDialog extends Dialog
       var isStack = ( this.cfg.style == STYLE_STACKING );
       var isZoom = ( this.cfg.style == STYLE_ZOOM );
       this.stackNote.visible = isStack;
-      this.zoomNote.visible = isZoom;
-      // The 'Final image' group takes the place of the frame list for zoom.
-      this.framesGroup.visible = !isZoom;
-      this.zoomGroup.visible = isZoom;
+      this.updateTagline();
       // Per-style overlay items.
       this.snrCheck.enabled = isStack;
       this.timeCheck.enabled = !isStack && !isZoom;
@@ -3508,12 +3618,10 @@ class SessionCinemaDialog extends Dialog
       this.generateButton.enabled = !busy;
       this.previewButton.enabled = !busy && ( this.cfg.style != STYLE_ZOOM );
       this.closeButton.enabled = !busy;
-      this.styleGroup.enabled = !busy;
+      this.tabBox.enabled = !busy;
       this.overlayGroup.enabled = !busy;
       this.videoGroup.enabled = !busy;
       this.outGroup.enabled = !busy;
-      this.framesGroup.enabled = !busy;
-      this.zoomGroup.enabled = !busy;
    }
 
    // Generation runs inline so the dialog stays open, shows live progress, and
