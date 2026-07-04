@@ -101,6 +101,7 @@ module.exports = {
    fadeBand: fadeBand,
    makeSurveyWcs: makeSurveyWcs,
    scaleWcsToDims: scaleWcsToDims,
+   cropWcs: cropWcs,
    constellationCentroids: constellationCentroids,
    hips2fitsUrl: hips2fitsUrl,
    limitingMagnitude: limitingMagnitude,

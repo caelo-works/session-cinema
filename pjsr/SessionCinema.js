@@ -105,6 +105,10 @@ var DEFAULT_CONFIG = {
    zoomImagePath:   "",          // plate-solved image (provides the WCS)
    zoomRevealPath:  "",          // image inserted in the video (jpg/png/tiff/…);
                                  // empty = reveal the solved image itself
+   zoomRevealCropped: false,     // reveal image has a different crop than solved
+   zoomRevealOffX:  0,           // reveal→solved alignment: offset X (solved px)
+   zoomRevealOffY:  0,           //  … offset Y (solved px)
+   zoomRevealScale: 1.0,         //  … reveal-pixel to solved-pixel scale
    zoomStartFov:    180,         // whole-sky field of view (deg) at t=0
    ovShowScale:     true,        // angular scale bar
    ovSubtitle:      "",          // free subtitle, e.g. the constellation name
@@ -170,6 +174,18 @@ var STRINGS = {
       "zoom.revealHint":   "Optional — the finished image inserted in the video (JPEG/PNG/TIFF/FITS/XISF), used as-is. Leave empty to reveal the solved image itself. Assumes the same framing as the solved image.",
       "zoom.revealFilter": "Images (JPEG/PNG/TIFF/FITS/XISF)",
       "zoom.revealClear":  "Clear",
+      "zoom.cropped":      "Different crop from the solved image",
+      "zoom.align":        "Align…",
+      "align.title":       "Align the reveal image on the solved image",
+      "align.help":        "Drag the reveal image to position it, and adjust the scale so it matches the solved image behind. The overlay slider fades it to check the alignment.",
+      "align.scale":       "Scale:",
+      "align.opacity":     "Overlay:",
+      "align.fit":         "Fit to solved",
+      "align.fitHint":     "Assume the reveal covers the whole solved frame.",
+      "align.loading":     "Loading images for alignment…",
+      "align.loadFailed":  "Could not load the solved or reveal image for alignment.",
+      "btn.ok":            "OK",
+      "btn.cancel":        "Cancel",
       "stretch.label":     "Screen stretch:",
       "stretch.final":     "Fixed, computed on the final stack (2 passes — honest noise progression)",
       "stretch.first":     "Fixed, computed on the first frame (1 pass, faster)",
@@ -244,6 +260,7 @@ var STRINGS = {
       "zoom.revealFrom":   "Reveal image: %1 (%2×%3).",
       "zoom.errReveal":    "Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Downloading real-sky survey (CDS/Aladin hips2fits)…",
+      "zoom.hipsRetry":    "Survey download attempt %1/%2 failed (%3).",
       "zoom.hipsFailed":   "Survey download unavailable — using the catalog star field only.",
       "zoom.noCatalogs":   "Star/constellation catalogs not found in the PixInsight install — the sky will be sparse.",
       "zoom.errUnsolved":  "This image has no astrometric solution. Solve it first (Script > Image Analysis > ImageSolver), then run Session Cinema again.",
@@ -311,6 +328,18 @@ var STRINGS = {
       "zoom.revealHint":   "Optionnel — l'image finie insérée dans la vidéo (JPEG/PNG/TIFF/FITS/XISF), utilisée telle quelle. Laissez vide pour révéler l'image résolue elle-même. Suppose le même cadrage que l'image résolue.",
       "zoom.revealFilter": "Images (JPEG/PNG/TIFF/FITS/XISF)",
       "zoom.revealClear":  "Vider",
+      "zoom.cropped":      "Cadrage différent de l'image résolue",
+      "zoom.align":        "Aligner…",
+      "align.title":       "Aligner l'image à révéler sur l'image résolue",
+      "align.help":        "Faites glisser l'image à révéler pour la positionner, et ajustez l'échelle pour qu'elle coïncide avec l'image résolue derrière. Le curseur d'opacité l'estompe pour vérifier l'alignement.",
+      "align.scale":       "Échelle :",
+      "align.opacity":     "Superposition :",
+      "align.fit":         "Ajuster à l'image résolue",
+      "align.fitHint":     "Suppose que l'image à révéler couvre tout le cadre résolu.",
+      "align.loading":     "Chargement des images pour l'alignement…",
+      "align.loadFailed":  "Impossible de charger l'image résolue ou l'image à révéler pour l'alignement.",
+      "btn.ok":            "OK",
+      "btn.cancel":        "Annuler",
       "stretch.label":     "Étirement d'affichage :",
       "stretch.final":     "Fixe, calculé sur le stack final (2 passes — progression du bruit honnête)",
       "stretch.first":     "Fixe, calculé sur la première brute (1 passe, plus rapide)",
@@ -385,6 +414,7 @@ var STRINGS = {
       "zoom.revealFrom":   "Image révélée : %1 (%2×%3).",
       "zoom.errReveal":    "Impossible de charger l'image à révéler. Vérifiez le fichier (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Téléchargement de l'imagerie réelle du ciel (CDS/Aladin hips2fits)…",
+      "zoom.hipsRetry":    "Tentative de téléchargement du survey %1/%2 échouée (%3).",
       "zoom.hipsFailed":   "Téléchargement du survey indisponible — champ d'étoiles catalogue uniquement.",
       "zoom.noCatalogs":   "Catalogues d'étoiles/constellations introuvables dans l'install PixInsight — le ciel sera clairsemé.",
       "zoom.errUnsolved":  "Cette image n'a pas de solution astrométrique. Résolvez-la d'abord (Script > Image Analysis > ImageSolver), puis relancez Session Cinema.",
@@ -925,6 +955,16 @@ function scaleWcsToDims( wcs, fromW, fromH, toW, toH )
         [ wcs.cd[ 1 ][ 0 ]/sx, wcs.cd[ 1 ][ 1 ]/sy ] ] );
 }
 
+// WCS for a reveal image that maps onto the solved image by the affine
+// solvedPixel = offset + revealPixel * scale (uniform scale, no rotation) — the
+// output of the visual alignment tool when the reveal has a different crop.
+function cropWcs( wcs, offX, offY, scale )
+{
+   return makeWcs( wcs.refRA, wcs.refDec, ( wcs.refX - offX )/scale, ( wcs.refY - offY )/scale,
+      [ [ wcs.cd[ 0 ][ 0 ]*scale, wcs.cd[ 0 ][ 1 ]*scale ],
+        [ wcs.cd[ 1 ][ 0 ]*scale, wcs.cd[ 1 ][ 1 ]*scale ] ] );
+}
+
 // Unit-sphere centroid of each constellation from ConstellationBorders.json
 // (segments carry the two adjacent constellation codes c1/c2; x is in degrees).
 // Returns { CODE: { ra, dec } }.
@@ -1103,7 +1143,7 @@ function importParameters( cfg )
          if ( typeof def == "boolean" )
             cfg[ k ] = Parameters.getBoolean( k );
          else if ( typeof def == "number" )
-            cfg[ k ] = Number.isInteger( def ) ? Math.round( Parameters.getReal( k ) ) : Parameters.getReal( k );
+            cfg[ k ] = Parameters.getReal( k );   // indices tolerate float values
          else
             cfg[ k ] = Parameters.getString( k );
       }
@@ -1514,26 +1554,42 @@ function hips2fitsUrl( hips, ra, dec, fovDeg, nPx )
 }
 
 // Download a HiPS survey cutout from the CDS/Aladin public service and load it
-// as a Bitmap. Returns null on any failure (offline, timeout, bad image) — the
+// as a Bitmap. Retries a few times (the first request can be slow to warm up),
+// validates the payload, and returns null only after all attempts fail — the
 // zoom then simply falls back to the catalog star field.
+function fileSize( path )
+{
+   try { var f = new File; f.openForReading( path ); var n = f.size; f.close(); return n; }
+   catch ( e ) { return -1; }
+}
+
 function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx )
 {
    var out = File.systemTempDirectory + "/sc-hips-" +
              Math.round( ra*1000 ) + "_" + Math.round( dec*1000 ) + "_" + Math.round( fovDeg*1000 ) + ".jpg";
    var url = hips2fitsUrl( hips, ra, dec, fovDeg, nPx );
    var curl = ( platformKind() == "windows" ) ? "curl.exe" : "curl";
-   try { File.remove( out ); } catch ( e ) {}
-   var r = runExternal( curl, [ "-s", "-L", "-o", out, "--max-time", "60", url ], 70000, true );
-   if ( !r.started || r.exitCode != 0 || !File.exists( out ) )
-      return null;
-   try
+   var attempts = 3;
+   for ( var a = 1; a <= attempts; ++a )
    {
-      var bmp = new Bitmap( out );
-      if ( bmp.width > 1 && bmp.height > 1 )
-         return bmp;
-   }
-   catch ( e )
-   {
+      try { File.remove( out ); } catch ( e ) {}
+      var r = runExternal( curl, [ "-s", "-S", "-L", "-o", out, "--connect-timeout", "20",
+                                   "--max-time", "90", url ], 100000, true );
+      var size = File.exists( out ) ? fileSize( out ) : -1;
+      if ( r.started && r.exitCode == 0 && size > 2048 )
+      {
+         try
+         {
+            var bmp = new Bitmap( out );
+            if ( bmp.width > 1 && bmp.height > 1 )
+               return bmp;
+         }
+         catch ( eb )
+         {
+         }
+      }
+      console.warningln( tr( "zoom.hipsRetry", a, attempts,
+                             ( r.started ? ( "exit " + r.exitCode + ", " + size + " B" ) : "curl not started" ) ) );
    }
    return null;
 }
@@ -2062,16 +2118,13 @@ Engine.prototype.runZoom = function()
       this.zoomError = "unsolved";
       return;
    }
-   var framing = wcsImageFraming( wcs, imgW, imgH );
-   console.noteln( tr( "zoom.solved", formatAngle( framing.fovDeg ),
-                       framing.centerRA.toFixed( 3 ), framing.centerDec.toFixed( 3 ) ) );
    if ( !File.directoryExists( this.framesDir() ) )
       File.createDirectory( this.framesDir(), true );
 
    // Revealed image. Two sources are supported: the solved image itself
-   // (auto-stretched), or a separate finished image (JPEG/PNG/TIFF/…) that is
-   // inserted as-is — the solved image only provides the WCS, which we rescale
-   // to the reveal image's pixel grid (same framing assumed).
+   // (auto-stretched), or a separate finished image (JPEG/PNG/TIFF/…) inserted
+   // as-is — the solved image then only provides the WCS, rescaled (or crop-
+   // aligned) to the reveal image's pixel grid.
    var revealBmp, revealWcs, revealW, revealH;
    var separateReveal = cfg.zoomRevealPath && String( cfg.zoomRevealPath ).length > 0;
    if ( separateReveal )
@@ -2085,7 +2138,9 @@ Engine.prototype.runZoom = function()
       }
       revealW = revealBmp.width;
       revealH = revealBmp.height;
-      revealWcs = scaleWcsToDims( wcs, imgW, imgH, revealW, revealH );
+      revealWcs = ( cfg.zoomRevealCropped && cfg.zoomRevealScale > 0 )
+                  ? cropWcs( wcs, cfg.zoomRevealOffX, cfg.zoomRevealOffY, cfg.zoomRevealScale )
+                  : scaleWcsToDims( wcs, imgW, imgH, revealW, revealH );
       console.writeln( tr( "zoom.revealFrom", File.extractName( cfg.zoomRevealPath ) +
                            File.extractExtension( cfg.zoomRevealPath ), revealW, revealH ) );
    }
@@ -2100,6 +2155,12 @@ Engine.prototype.runZoom = function()
       revealH = imgH;
    }
    gc();
+
+   // The zoom targets the REVEAL image's framing (what actually fills the frame
+   // at the end) — for a cropped reveal this is a sub-region of the solved one.
+   var framing = wcsImageFraming( revealWcs, revealW, revealH );
+   console.noteln( tr( "zoom.solved", formatAngle( framing.fovDeg ),
+                       framing.centerRA.toFixed( 3 ), framing.centerDec.toFixed( 3 ) ) );
 
    var cat = loadZoomCatalogs();
    if ( !cat.ok )
@@ -2856,6 +2917,25 @@ class SessionCinemaDialog extends Dialog
       this.revealHint.wordWrapping = true;
       this.revealHint.enabled = false;
 
+      // Cropped reveal: align it visually onto the solved image.
+      this.croppedCheck = new CheckBox( this );
+      this.croppedCheck.text = tr( "zoom.cropped" );
+      this.croppedCheck.checked = cfg.zoomRevealCropped;
+      this.croppedCheck.onCheck = ( c ) =>
+      {
+         self.cfg.zoomRevealCropped = c;
+         self.alignButton.enabled = c && self.cfg.zoomRevealPath.length > 0 && self.cfg.zoomImagePath.length > 0;
+      };
+      this.alignButton = new PushButton( this );
+      this.alignButton.text = tr( "zoom.align" );
+      this.alignButton.onClick = () => this.onAlign();
+      this.croppedSizer = new HorizontalSizer;
+      this.croppedSizer.spacing = 6;
+      this.croppedSizer.add( this.croppedCheck );
+      this.croppedSizer.addSpacing( 12 );
+      this.croppedSizer.add( this.alignButton );
+      this.croppedSizer.addStretch();
+
       // Input group for Zoom Odyssey — takes the place of the frame list.
       this.zoomGroup = new GroupBox( this );
       this.zoomGroup.title = tr( "zoom.inputTitle" );
@@ -2866,6 +2946,7 @@ class SessionCinemaDialog extends Dialog
       this.zoomGroup.sizer.add( this.zoomHint );
       this.zoomGroup.sizer.add( this.revealImageSizer );
       this.zoomGroup.sizer.add( this.revealHint );
+      this.zoomGroup.sizer.add( this.croppedSizer );
 
       this.stretchLabel = new Label( this );
       this.stretchLabel.text = tr( "stretch.label" );
@@ -3465,6 +3546,8 @@ class SessionCinemaDialog extends Dialog
       this.subtitleEdit.enabled = isZoom;
       this.distanceLabel.enabled = isZoom;
       this.distanceEdit.enabled = isZoom;
+      this.alignButton.enabled = this.cfg.zoomRevealCropped &&
+         this.cfg.zoomRevealPath.length > 0 && this.cfg.zoomImagePath.length > 0;
       this.debayerCheck.enabled = !isZoom;
       this.durationSpin.enabled = isStack || isZoom;
       this.durationLabel.enabled = isStack || isZoom;
@@ -3587,6 +3670,47 @@ class SessionCinemaDialog extends Dialog
          return false;
       }
       return true;
+   }
+
+   // Open the visual alignment popup to place a differently-cropped reveal
+   // image onto the solved image.
+   onAlign()
+   {
+      if ( !this.cfg.zoomImagePath.length || !this.cfg.zoomRevealPath.length )
+         return;
+      console.show();
+      console.writeln( tr( "align.loading" ) );
+      processEvents();
+      // Solved image, auto-stretched, as the alignment background.
+      var solvedBmp = null;
+      try
+      {
+         var w = openFrameWindow( this.cfg.zoomImagePath );
+         if ( w != null )
+         {
+            applyStretchToView( w.mainView, computeStretchForImage( w.mainView.image, this.cfg.stretchLinked ) );
+            solvedBmp = w.mainView.image.render();
+            w.forceClose();
+         }
+      }
+      catch ( e )
+      {
+      }
+      var revealBmp = loadFinishedBitmap( this.cfg.zoomRevealPath );
+      if ( solvedBmp == null || revealBmp == null )
+      {
+         ( new MessageBox( tr( "align.loadFailed" ), tr( "err.title" ), StdIcon.Error, StdButton.Ok ) ).execute();
+         return;
+      }
+      var dlg = new ZoomAlignDialog( solvedBmp, revealBmp, this.cfg );
+      if ( dlg.execute() && dlg.accepted )
+      {
+         this.cfg.zoomRevealOffX = dlg.offX;
+         this.cfg.zoomRevealOffY = dlg.offY;
+         this.cfg.zoomRevealScale = dlg.scale;
+         this.cfg.zoomRevealCropped = true;
+         this.croppedCheck.checked = true;
+      }
    }
 
    onPreview()
@@ -3734,6 +3858,142 @@ class SessionCinemaResultDialog extends Dialog
       this.sizer.margin = 8;
       this.sizer.spacing = 8;
       this.sizer.add( this.info );
+      this.sizer.add( this.buttons );
+      this.adjustToContents();
+      this.setFixedSize();
+   }
+}
+
+// ============================================================================
+// ALIGN DIALOG — visually place a differently-cropped reveal image onto the
+// solved image. Returns { offX, offY, scale } in solved-image pixels.
+// ============================================================================
+
+class ZoomAlignDialog extends Dialog
+{
+   constructor( solvedBmp, revealBmp, cfg )
+   {
+      super();
+      var self = this;
+      this.windowTitle = tr( "align.title" );
+      this.solvedBmp = solvedBmp;
+      this.revealBmp = revealBmp;
+      this.solvedW = solvedBmp.width;
+      this.solvedH = solvedBmp.height;
+      this.revealW = revealBmp.width;
+      this.revealH = revealBmp.height;
+
+      // Alignment state (solved-image pixels).
+      this.offX = cfg.zoomRevealOffX;
+      this.offY = cfg.zoomRevealOffY;
+      this.scale = ( cfg.zoomRevealScale > 0 ) ? cfg.zoomRevealScale : ( this.solvedW/this.revealW );
+      this.overlay = 0.6;
+      this.accepted = false;
+
+      var PREV_W = 760, PREV_H = 520;
+      this.previewScale = Math.min( PREV_W/this.solvedW, PREV_H/this.solvedH );
+      var cw = Math.round( this.solvedW*this.previewScale );
+      var ch = Math.round( this.solvedH*this.previewScale );
+
+      this.help = new Label( this );
+      this.help.useRichText = true;
+      this.help.wordWrapping = true;
+      this.help.text = tr( "align.help" );
+
+      // ---- interactive canvas ----
+      this.canvas = new Control( this );
+      this.canvas.setFixedSize( cw, ch );
+      this.canvas.__drag = null;
+      this.canvas.onPaint = function()
+      {
+         var g = new Graphics( this );
+         g.fillRect( 0, 0, this.width, this.height, new Brush( 0xFF0A0E16 ) );
+         var ps = self.previewScale;
+         g.drawScaledBitmap( new Rect( 0, 0, Math.round( self.solvedW*ps ), Math.round( self.solvedH*ps ) ), self.solvedBmp );
+         var rx = self.offX*ps, ry = self.offY*ps;
+         var rw = self.revealW*self.scale*ps, rh = self.revealH*self.scale*ps;
+         var prevOp = g.opacity;
+         g.opacity = self.overlay;
+         g.drawScaledBitmap( new Rect( Math.round( rx ), Math.round( ry ),
+                                       Math.round( rx + rw ), Math.round( ry + rh ) ), self.revealBmp );
+         g.opacity = prevOp;
+         g.pen = new Pen( 0xFF22D3EE, 2 );
+         g.drawRect( new Rect( Math.round( rx ), Math.round( ry ), Math.round( rx + rw ), Math.round( ry + rh ) ) );
+         g.end();
+      };
+      this.canvas.onMousePress = function( x, y, button, buttonState, modifiers )
+      {
+         this.__drag = { x: x, y: y, offX: self.offX, offY: self.offY };
+      };
+      this.canvas.onMouseMove = function( x, y, buttonState, modifiers )
+      {
+         if ( this.__drag == null )
+            return;
+         self.offX = this.__drag.offX + ( x - this.__drag.x )/self.previewScale;
+         self.offY = this.__drag.offY + ( y - this.__drag.y )/self.previewScale;
+         this.repaint();
+      };
+      this.canvas.onMouseRelease = function( x, y, button, buttonState, modifiers )
+      {
+         this.__drag = null;
+      };
+
+      // ---- controls ----
+      this.scaleControl = new NumericControl( this );
+      this.scaleControl.label.text = tr( "align.scale" );
+      this.scaleControl.setRange( 0.05, 10 );
+      this.scaleControl.setPrecision( 4 );
+      this.scaleControl.setValue( this.scale );
+      this.scaleControl.onValueUpdated = ( v ) => { self.scale = v; self.canvas.repaint(); };
+
+      this.opacityControl = new NumericControl( this );
+      this.opacityControl.label.text = tr( "align.opacity" );
+      this.opacityControl.setRange( 0.1, 1 );
+      this.opacityControl.setPrecision( 2 );
+      this.opacityControl.setValue( this.overlay );
+      this.opacityControl.onValueUpdated = ( v ) => { self.overlay = v; self.canvas.repaint(); };
+
+      this.fitButton = new PushButton( this );
+      this.fitButton.text = tr( "align.fit" );
+      this.fitButton.toolTip = tr( "align.fitHint" );
+      this.fitButton.onClick = () =>
+      {
+         self.scale = self.solvedW/self.revealW;
+         self.offX = 0;
+         self.offY = 0;
+         self.scaleControl.setValue( self.scale );
+         self.canvas.repaint();
+      };
+
+      this.okButton = new PushButton( this );
+      this.okButton.text = tr( "btn.ok" );
+      this.okButton.defaultButton = true;
+      this.okButton.onClick = () => { self.accepted = true; self.ok(); };
+
+      this.cancelButton = new PushButton( this );
+      this.cancelButton.text = tr( "btn.cancel" );
+      this.cancelButton.onClick = () => self.cancel();
+
+      this.ctrlSizer = new HorizontalSizer;
+      this.ctrlSizer.spacing = 8;
+      this.ctrlSizer.add( this.scaleControl, 100 );
+      this.ctrlSizer.addSpacing( 12 );
+      this.ctrlSizer.add( this.opacityControl, 100 );
+      this.ctrlSizer.addSpacing( 12 );
+      this.ctrlSizer.add( this.fitButton );
+
+      this.buttons = new HorizontalSizer;
+      this.buttons.spacing = 6;
+      this.buttons.addStretch();
+      this.buttons.add( this.okButton );
+      this.buttons.add( this.cancelButton );
+
+      this.sizer = new VerticalSizer;
+      this.sizer.margin = 8;
+      this.sizer.spacing = 8;
+      this.sizer.add( this.help );
+      this.sizer.add( this.canvas );
+      this.sizer.add( this.ctrlSizer );
       this.sizer.add( this.buttons );
       this.adjustToContents();
       this.setFixedSize();

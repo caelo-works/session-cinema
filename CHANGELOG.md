@@ -17,9 +17,16 @@ All notable changes to this project are documented here. The format is based on
   the image revealing itself at its true on-sky position, orientation and
   scale. Reads the embedded `AstrometricSolution` (WCS) via `View.propertyValue`
   and draws the sky from PixInsight's bundled catalogs (NamedStars,
-  ConstellationLines); the image's own dense stars bridge the range where the
-  bright-star catalog thins, so every star shown is genuine. Optional angular
-  scale bar, subtitle (e.g. the constellation) and distance overlays.
+  ConstellationLines, ConstellationBorders); constellation figures and names
+  (localized), named stars, an artificial horizon and an equatorial grid open
+  the sequence. A real-sky survey bridge (CDS/Aladin **hips2fits**, DSS2)
+  fetched over the network fills the mid-zoom with genuine stars and crossfades
+  into the photo. Optional angular scale bar, subtitle and distance overlays.
+- **Zoom Odyssey — two source images**: a plate-solved image provides the
+  coordinates while a separate finished image (JPEG/PNG/TIFF/FITS/XISF) is the
+  one revealed. A "different crop" option opens a visual alignment popup to
+  place the reveal image onto the solved one (drag + scale), used to build the
+  reveal WCS.
 - Honest screen-stretch options: fixed reference computed on the final stack
   (2 passes, default), on the first frame (1 pass), or per rendered frame.
 - Sober overlays showing measured facts only: title, frame counter, cumulative

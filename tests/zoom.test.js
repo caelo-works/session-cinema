@@ -125,6 +125,27 @@ const near = ( a, b, eps, msg ) => assert.ok( Math.abs( a - b ) <= ( eps || 1e-6
          M.wcsImageFraming( solved, 3840, 2160 ).fovDeg, 1e-9, "same field width" );
 }
 
+// cropWcs: a reveal image mapped by solvedPixel = offset + revealPixel*scale
+// lands on the sky the alignment implies.
+{
+   const s = 1/3600;
+   const solved = M.makeWcs( 100, 20, 1920, 1080, [ [ -s, 0 ], [ 0, s ] ] );
+   const offX = 300, offY = 150, scale = 0.5;
+   const rev = M.cropWcs( solved, offX, offY, scale );
+   // reveal pixel (rx,ry) must map to the sky at solved pixel (offX+rx*scale, offY+ry*scale)
+   for ( const [ rx, ry ] of [ [ 0, 0 ], [ 400, 220 ], [ 1000, 640 ] ] )
+   {
+      const a = M.wcsPixelToSky( rev, rx, ry );
+      const b = M.wcsPixelToSky( solved, offX + rx*scale, offY + ry*scale );
+      near( a.ra, b.ra, 1e-9, "cropWcs RA at " + rx + "," + ry );
+      near( a.dec, b.dec, 1e-9, "cropWcs Dec at " + rx + "," + ry );
+   }
+   // scale 1, offset 0 is the identity
+   const id = M.cropWcs( solved, 0, 0, 1 );
+   const c1 = M.wcsPixelToSky( id, 500, 500 ), c2 = M.wcsPixelToSky( solved, 500, 500 );
+   near( c1.ra, c2.ra, 1e-12 ); near( c1.dec, c2.dec, 1e-12 );
+}
+
 // constellation centroids from border segments (x in degrees)
 {
    const borders = JSON.stringify( [
