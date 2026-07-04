@@ -873,6 +873,17 @@ function smootherstep01( t )
    return t*t*t*( t*( t*6 - 15 ) + 10 );
 }
 
+// Cubic ease-OUT: fast from the start, decelerating to a stop. Used for the
+// zoom so the wide opening (and its horizon) is left behind quickly rather than
+// lingering during the roll.
+function easeOut01( t )
+{
+   if ( t <= 0 ) return 0;
+   if ( t >= 1 ) return 1;
+   var u = 1 - t;
+   return 1 - u*u*u;
+}
+
 // Great-circle separation between two sky points, in degrees.
 function angularSepDeg( ra1, dec1, ra2, dec2 )
 {
@@ -1068,7 +1079,7 @@ function altAzToRaDec( alt, az, lst, latDeg )
 // so the image drops in at its true orientation on reveal.
 function zoomCameraAt( t, target, startFovDeg, W, H )
 {
-   var e = smootherstep01( t );
+   var e = easeOut01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
    var nu = vnorm( [ -fEnd[0]*fEnd[2], -fEnd[1]*fEnd[2], 1 - fEnd[2]*fEnd[2] ] );   // north up
@@ -1133,7 +1144,7 @@ function locationStartFraming( targetAltDeg, W, H )
 // obs = { lst, lat, targetAlt, targetAz, startFov, altC }.
 function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
 {
-   var e = smootherstep01( t );
+   var e = easeOut01( t );
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
    // The look direction (centring) settles early so the target is framed by the
    // time the surveys appear. The camera ROLL is interpolated as an ANGLE about
@@ -2701,8 +2712,10 @@ Engine.prototype.runZoom = function()
          if ( cfg.ovStarNames )
             drawZoomStarNames( g, cam, cat.stars, unit );
          // The real horizon + opaque ground go LAST, so nothing shows below it.
+         // It belongs to the opening only: fade it out quickly so the big roll
+         // (which sweeps the sky) can't bring it back into frame mid-zoom.
          if ( obs )
-            drawLocationHorizon( g, cam, obs, unit );
+            drawLocationHorizon( g, cam, obs, unit, clamp01( ( 0.12 - t )/0.06 ) );
          PERF.labels += Date.now() - _t0;
       }
 
@@ -3011,8 +3024,11 @@ var CARDINALS_FR = { 0:"N", 45:"NE", 90:"E", 135:"SE", 180:"S", 225:"SO", 270:"O
 // point (in the target's azimuth), so it descends naturally as the camera
 // lifts. Below it, an opaque black+blue ground hides every sky element. Cardinal
 // points are placed at their real azimuth's screen X, sitting on the flat line.
-function drawLocationHorizon( g, cam, obs, unit )
+function drawLocationHorizon( g, cam, obs, unit, fade )
 {
+   fade = ( fade === undefined ) ? 1 : fade;
+   if ( fade <= 0 )
+      return;
    var W = cam.W, H = cam.H;
    var hc = altAzToRaDec( 0, obs.targetAz, obs.lst, obs.lat );
    var pC = projectToScreen( cam, hc.ra, hc.dec );
@@ -3020,7 +3036,7 @@ function drawLocationHorizon( g, cam, obs, unit )
       return;                                   // horizon out of frame
    var yr = Math.round( pC.y );
    var prevOp = g.opacity;
-   g.opacity = 1;
+   g.opacity = fade;
 
    // Airglow just above the horizon.
    g.brush = new Brush( 0x2222D3EE ); g.fillRect( new Rect( 0, Math.max( 0, yr - Math.round( 70*unit ) ), W, yr ) );
