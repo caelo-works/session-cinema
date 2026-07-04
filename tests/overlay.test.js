@@ -44,6 +44,23 @@ assert.strictEqual( M.slugify( "___" ), "session" );
    assert.ok( Math.abs( ov.progress - 128/300 ) < 1e-12 );
 }
 
+// info.title (the OBJECT-derived title injected by the engine) overrides cfg.ovTitle
+{
+   const cfg = Object.assign( {}, M.DEFAULT_CONFIG, { ovTitle: "" } );
+   const ov = M.buildOverlayInfo( cfg, {
+      style: M.STYLE_STACKING, index: 1, total: 10,
+      cumulativeExposure: 60, exposure: 60, dateObs: null,
+      sigmaFirst: 1, sigmaCurrent: 1, title: "M 16 - Eagle Nebula"
+   } );
+   assert.strictEqual( ov.title, "M 16 - Eagle Nebula" );
+   // no info.title -> falls back to cfg.ovTitle
+   const ov2 = M.buildOverlayInfo( Object.assign( {}, M.DEFAULT_CONFIG, { ovTitle: "Typed" } ), {
+      style: M.STYLE_STACKING, index: 1, total: 10,
+      cumulativeExposure: 60, exposure: 60, dateObs: null, sigmaFirst: 1, sigmaCurrent: 1
+   } );
+   assert.strictEqual( ov2.title, "Typed" );
+}
+
 // buildOverlayInfo — timelapse style shows the UT clock, not SNR
 {
    const cfg = Object.assign( {}, M.DEFAULT_CONFIG, { ovTitle: "" } );

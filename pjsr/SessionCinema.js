@@ -141,7 +141,7 @@ var STRINGS = {
 
       "overlay.title":     "Overlay",
       "overlay.videoTitle": "Title:",
-      "overlay.videoTitle.hint": "e.g. M 42 — Orion Nebula",
+      "overlay.videoTitle.hint": "blank = OBJECT from the frames",
       "overlay.counter":   "Frame counter",
       "overlay.exposure":  "Cumulative exposure",
       "overlay.time":      "UT clock (timelapse)",
@@ -234,7 +234,7 @@ var STRINGS = {
 
       "overlay.title":     "Habillage",
       "overlay.videoTitle": "Titre :",
-      "overlay.videoTitle.hint": "ex. M 42 — Nébuleuse d'Orion",
+      "overlay.videoTitle.hint": "vide = OBJECT lu dans les brutes",
       "overlay.counter":   "Compteur d'images",
       "overlay.exposure":  "Exposition cumulée",
       "overlay.time":      "Horloge TU (timelapse)",
@@ -487,7 +487,8 @@ function slugify( s )
 
 // The text lines of the overlay, as pure data (testable without a GUI).
 // info: { style, index, total, cumulativeExposure, exposure, dateObs,
-//         sigmaFirst, sigmaCurrent }
+//         sigmaFirst, sigmaCurrent, title? }. When info.title is given it wins
+// over cfg.ovTitle (that is how the engine injects the OBJECT-derived title).
 function buildOverlayInfo( cfg, info )
 {
    var subLeft = [];
@@ -523,7 +524,7 @@ function buildOverlayInfo( cfg, info )
          subLeft.push( formatDuration( info.cumulativeExposure ) );
    }
    return {
-      title: cfg.ovTitle || "",
+      title: ( info.title !== undefined ) ? info.title : ( cfg.ovTitle || "" ),
       subLeft: subLeft.join( "  ·  " ),
       right: right.join( "  ·  " ),
       signature: cfg.ovSignature || "",
@@ -571,6 +572,36 @@ function buildEncodeScriptText( isWin, ffmpegArgs )
    }
    return isWin ? ( "@echo off\r\n" + cmd + "\r\npause\r\n" )
                 : ( "#!/bin/sh\n" + cmd + "\n" );
+}
+
+// Most frequent non-empty OBJECT among the frames, "" if none carries one.
+// Used to default the overlay title to the imaged target read from headers,
+// so an untitled video is never mislabeled by a stale hand-typed name.
+function dominantObject( frames )
+{
+   var counts = {};
+   var best = "", bestN = 0;
+   for ( var i = 0; i < frames.length; ++i )
+   {
+      var o = frames[ i ].object;
+      if ( !o || !o.length )
+         continue;
+      counts[ o ] = ( counts[ o ] || 0 ) + 1;
+      if ( counts[ o ] > bestN )
+      {
+         bestN = counts[ o ];
+         best = o;
+      }
+   }
+   return best;
+}
+
+// The overlay title actually used: an explicit user title wins, otherwise the
+// OBJECT keyword read from the frames.
+function resolveTitle( cfg, frames )
+{
+   var t = cfg.ovTitle ? String( cfg.ovTitle ).trim() : "";
+   return t.length ? t : dominantObject( frames );
 }
 
 // Extract the frame metadata Session Cinema needs from a raw keyword map.
@@ -1073,6 +1104,9 @@ function Engine( cfg, frames )
 {
    this.cfg = cfg;
    this.frames = sortFrames( frames );
+   // Explicit user title, else the OBJECT keyword from the headers. Drives
+   // both the burned-in overlay and the output file names.
+   this.title = resolveTitle( cfg, this.frames );
    this.skipped = [];
    this.rendered = 0;
    this.aborted = false;
@@ -1080,7 +1114,7 @@ function Engine( cfg, frames )
 
 Engine.prototype.baseName = function()
 {
-   var slug = slugify( this.cfg.ovTitle || "session" );
+   var slug = slugify( this.title || "session" );
    var style = ( this.cfg.style == STYLE_TIMELAPSE ) ? "timelapse" : "stack";
    return slug + "-" + style;
 };
@@ -1220,7 +1254,8 @@ Engine.prototype.runTimelapse = function()
          exposure: frame.exposure,
          dateObs: frame.dateObs,
          sigmaFirst: 0,
-         sigmaCurrent: 0
+         sigmaCurrent: 0,
+         title: this.title
       } );
       var bmp = renderOutputBitmap( win.mainView, cfg, ov );
       win.forceClose();
@@ -1322,7 +1357,8 @@ Engine.prototype.runStacking = function()
          exposure: meanExposure,
          dateObs: frame.dateObs,
          sigmaFirst: sigmaFirst,
-         sigmaCurrent: sigma
+         sigmaCurrent: sigma,
+         title: self.title
       } );
       var bmp = renderOutputBitmap( mean.mainView, cfg, ov );
       mean.forceClose();
@@ -1442,7 +1478,8 @@ Engine.prototype.preview = function()
       exposure: frame.exposure,
       dateObs: frame.dateObs,
       sigmaFirst: 1,
-      sigmaCurrent: 1/Math.sqrt( mid + 1 )
+      sigmaCurrent: 1/Math.sqrt( mid + 1 ),
+      title: this.title
    } );
    var bmp = renderOutputBitmap( win.mainView, this.cfg, ov );
    win.forceClose();
@@ -1466,6 +1503,14 @@ class SessionCinemaDialog extends Dialog
       this.frames = frames;
       this.wantsLanguageReload = false;
       this.wantsGenerate = false;
+      // The title field auto-fills from the frames' OBJECT keyword until the
+      // user types their own. A title loaded from a prior session counts as
+      // user-owned so we never clobber it; but auto-derived titles are never
+      // persisted (see persistableConfig), so stale target names can't leak
+      // into a later session with different data.
+      this.titleTouched = !!( cfg.ovTitle && cfg.ovTitle.length );
+      this.autoTitle = "";
+      this.settingTitleText = false;
 
       this.windowTitle = SC_TITLE + " " + SC_VERSION;
       this.userResizable = true;
@@ -1606,7 +1651,13 @@ class SessionCinemaDialog extends Dialog
       this.titleEdit = new Edit( this );
       this.titleEdit.text = cfg.ovTitle;
       try { this.titleEdit.placeholderText = tr( "overlay.videoTitle.hint" ); } catch ( e ) {}
-      this.titleEdit.onTextUpdated = ( t ) => { self.cfg.ovTitle = t; };
+      this.titleEdit.onTextUpdated = ( t ) =>
+      {
+         if ( self.settingTitleText )   // programmatic auto-fill, not a user edit
+            return;
+         self.cfg.ovTitle = t;
+         self.titleTouched = true;
+      };
       this.titleSizer = new HorizontalSizer;
       this.titleSizer.spacing = 6;
       this.titleSizer.add( this.titleLabel );
@@ -1895,6 +1946,7 @@ class SessionCinemaDialog extends Dialog
       this.sizer.add( this.bottomSizer );
 
       this.adjustToContents();
+      this.autofillTitle();   // frames may already be loaded (e.g. language reload)
       this.refreshTree();
       this.updateStyleDependents();
       this.onDetectFfmpeg();
@@ -1957,6 +2009,22 @@ class SessionCinemaDialog extends Dialog
       this.updateEstimate();
    }
 
+   // Fill the (untouched) title field with the OBJECT keyword read from the
+   // loaded frames, so an untitled video is labeled with the actual target.
+   autofillTitle()
+   {
+      if ( this.titleTouched )
+         return;
+      var obj = dominantObject( this.frames );
+      if ( !obj.length || obj == this.autoTitle )
+         return;
+      this.autoTitle = obj;
+      this.settingTitleText = true;
+      this.titleEdit.text = obj;
+      this.settingTitleText = false;
+      this.cfg.ovTitle = obj;
+   }
+
    addPaths( paths )
    {
       var known = {};
@@ -1973,7 +2041,20 @@ class SessionCinemaDialog extends Dialog
          this.frames.push( scanFrameHeader( fresh[ k ] ) );
       }
       this.frames = sortFrames( this.frames );
+      this.autofillTitle();
       this.refreshTree();
+   }
+
+   // Config to persist: an auto-derived title is dropped so it never becomes a
+   // stale hand-typed name in a later session with different data.
+   persistableConfig()
+   {
+      var c = {};
+      for ( var k in this.cfg )
+         c[ k ] = this.cfg[ k ];
+      if ( !this.titleTouched )
+         c.ovTitle = "";
+      return c;
    }
 
    onAddFiles()
@@ -2038,7 +2119,7 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.validate( false ) )
          return;
-      saveConfig( this.cfg );
+      saveConfig( this.persistableConfig() );
       var engine = new Engine( this.cfg, this.frames );
       var path = engine.preview();
       if ( path.length )
@@ -2061,7 +2142,7 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.validate( true ) )
          return;
-      saveConfig( this.cfg );
+      saveConfig( this.persistableConfig() );
       this.wantsGenerate = true;
       this.ok();
    }
@@ -2127,12 +2208,17 @@ function main()
       var dialog = new SessionCinemaDialog( cfg, frames );
       var accepted = dialog.execute();
       frames = dialog.frames;
-      cfg = dialog.cfg;
       if ( dialog.wantsLanguageReload )
+      {
+         // Drop any auto-derived title so the reopened dialog re-derives it
+         // (and its touched-state) cleanly from the same frames.
+         cfg = dialog.persistableConfig();
          continue;
+      }
+      cfg = dialog.cfg;
       if ( !accepted || !dialog.wantsGenerate )
          return;
-      saveConfig( cfg );
+      saveConfig( dialog.persistableConfig() );
       var engine = new Engine( cfg, frames );
       engine.run();
       return;

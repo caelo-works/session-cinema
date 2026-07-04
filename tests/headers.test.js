@@ -63,4 +63,22 @@ assert.strictEqual( M.kwValue( undefined ), "" );
    assert.strictEqual( frames[ 0 ].path, "b/frame2.fits" );
 }
 
+// dominantObject: most frequent non-empty OBJECT, "" when none
+assert.strictEqual( M.dominantObject( [] ), "" );
+assert.strictEqual( M.dominantObject( [ { object: "" }, { object: "" } ] ), "" );
+assert.strictEqual( M.dominantObject( [ { object: "M 16 - Eagle Nebula" } ] ), "M 16 - Eagle Nebula" );
+assert.strictEqual( M.dominantObject(
+   [ { object: "NGC 6888" }, { object: "M 16" }, { object: "NGC 6888" } ] ), "NGC 6888" );
+// first-seen wins a tie (stable)
+assert.strictEqual( M.dominantObject(
+   [ { object: "A" }, { object: "B" }, { object: "A" }, { object: "B" } ] ), "A" );
+
+// resolveTitle: explicit user title wins, else the OBJECT keyword
+const frames = [ { object: "M 16 - Eagle Nebula" }, { object: "M 16 - Eagle Nebula" } ];
+assert.strictEqual( M.resolveTitle( { ovTitle: "My movie" }, frames ), "My movie" );
+assert.strictEqual( M.resolveTitle( { ovTitle: "" }, frames ), "M 16 - Eagle Nebula" );
+assert.strictEqual( M.resolveTitle( { ovTitle: "   " }, frames ), "M 16 - Eagle Nebula" );
+assert.strictEqual( M.resolveTitle( {}, frames ), "M 16 - Eagle Nebula" );
+assert.strictEqual( M.resolveTitle( { ovTitle: "" }, [ { object: "" } ] ), "" );
+
 console.log( "headers.test.js OK" );

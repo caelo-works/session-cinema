@@ -16,7 +16,10 @@ All notable changes to this project are documented here. The format is based on
   (2 passes, default), on the first frame (1 pass), or per rendered frame.
 - Sober overlays showing measured facts only: title, frame counter, cumulative
   exposure, UT clock (timelapse), noise-based SNR gain in dB (stacking,
-  scaled-MAD estimate on the central region), progress bar, free signature.
+  MRS/k-sigma noise estimate), progress bar, free signature.
+- Overlay title (and output file names) default to the `OBJECT` keyword read
+  from the frames when left blank, so an untitled video carries the real
+  target name; auto-derived titles are never persisted as a hand-typed value.
 - Output formats 16:9 (1080p/4K), 1:1 and 9:16 with fill-crop or letterbox
   framing; PNG sequence + H.264 encoding through a detected or user-provided
   ffmpeg; a ready-to-run encode script is always written next to the frames.

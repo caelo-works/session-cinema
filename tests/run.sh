@@ -74,6 +74,8 @@ module.exports = {
    kwValue: kwValue,
    frameMetaFromKeywords: frameMetaFromKeywords,
    sortFrames: sortFrames,
+   dominantObject: dominantObject,
+   resolveTitle: resolveTitle,
    computeRenderIndices: computeRenderIndices,
    computeCoverRect: computeCoverRect,
    formatDuration: formatDuration,
