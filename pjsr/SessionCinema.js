@@ -186,6 +186,9 @@ var STRINGS = {
       "align.loadFailed":  "Could not load the solved or reveal image for alignment.",
       "btn.ok":            "OK",
       "btn.cancel":        "Cancel",
+      "prog.title":        "Progress",
+      "prog.idle":         "Idle — press Generate to start.",
+      "prog.done":         "Done.",
       "stretch.label":     "Screen stretch:",
       "stretch.final":     "Fixed, computed on the final stack (2 passes — honest noise progression)",
       "stretch.first":     "Fixed, computed on the first frame (1 pass, faster)",
@@ -260,6 +263,8 @@ var STRINGS = {
       "zoom.revealFrom":   "Reveal image: %1 (%2×%3).",
       "zoom.errReveal":    "Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Downloading real-sky survey (CDS/Aladin hips2fits)…",
+      "zoom.fetchedNear":  "Survey (close-up) downloaded.",
+      "zoom.fetchedWide":  "Survey (wide field) downloaded.",
       "zoom.hipsRetry":    "Survey download attempt %1/%2 failed (%3).",
       "zoom.hipsFailed":   "Survey download unavailable — using the catalog star field only.",
       "zoom.noCatalogs":   "Star/constellation catalogs not found in the PixInsight install — the sky will be sparse.",
@@ -340,6 +345,9 @@ var STRINGS = {
       "align.loadFailed":  "Impossible de charger l'image résolue ou l'image à révéler pour l'alignement.",
       "btn.ok":            "OK",
       "btn.cancel":        "Annuler",
+      "prog.title":        "Progression",
+      "prog.idle":         "En attente — cliquez sur Générer.",
+      "prog.done":         "Terminé.",
       "stretch.label":     "Étirement d'affichage :",
       "stretch.final":     "Fixe, calculé sur le stack final (2 passes — progression du bruit honnête)",
       "stretch.first":     "Fixe, calculé sur la première brute (1 passe, plus rapide)",
@@ -414,6 +422,8 @@ var STRINGS = {
       "zoom.revealFrom":   "Image révélée : %1 (%2×%3).",
       "zoom.errReveal":    "Impossible de charger l'image à révéler. Vérifiez le fichier (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Téléchargement de l'imagerie réelle du ciel (CDS/Aladin hips2fits)…",
+      "zoom.fetchedNear":  "Survey (gros plan) téléchargé.",
+      "zoom.fetchedWide":  "Survey (grand champ) téléchargé.",
       "zoom.hipsRetry":    "Tentative de téléchargement du survey %1/%2 échouée (%3).",
       "zoom.hipsFailed":   "Téléchargement du survey indisponible — champ d'étoiles catalogue uniquement.",
       "zoom.noCatalogs":   "Catalogues d'étoiles/constellations introuvables dans l'install PixInsight — le ciel sera clairsemé.",
@@ -1563,7 +1573,7 @@ function fileSize( path )
    catch ( e ) { return -1; }
 }
 
-function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx )
+function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx, onTick )
 {
    var out = File.systemTempDirectory + "/sc-hips-" +
              Math.round( ra*1000 ) + "_" + Math.round( dec*1000 ) + "_" + Math.round( fovDeg*1000 ) + ".jpg";
@@ -1574,7 +1584,7 @@ function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx )
    {
       try { File.remove( out ); } catch ( e ) {}
       var r = runExternal( curl, [ "-s", "-S", "-L", "-o", out, "--connect-timeout", "20",
-                                   "--max-time", "90", url ], 100000, true );
+                                   "--max-time", "90", url ], 100000, true, onTick );
       var size = File.exists( out ) ? fileSize( out ) : -1;
       if ( r.started && r.exitCode == 0 && size > 2048 )
       {
@@ -1709,7 +1719,7 @@ function platformKind()
 }
 
 // Run a program to completion; returns { started, exitCode }.
-function runExternal( program, args, timeoutMs, keepUiAlive )
+function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
 {
    var result = { started: false, exitCode: -1 };
    try
@@ -1732,6 +1742,8 @@ function runExternal( program, args, timeoutMs, keepUiAlive )
          if ( P.waitForFinished( 250 ) )
             break;
          waited += 250;
+         if ( onTick )
+            try { onTick(); } catch ( et ) {}
          if ( keepUiAlive )
             processEvents();
          if ( timeoutMs > 0 && waited >= timeoutMs )
@@ -1821,10 +1833,11 @@ function Engine( cfg, frames )
 }
 
 // Report progress to a UI callback if one is attached (keeps the dialog alive).
-Engine.prototype.progress = function( done, total, message )
+// previewBmp, when given, is a thumbnail to show (a survey cutout or a frame).
+Engine.prototype.progress = function( done, total, message, previewBmp )
 {
    if ( this.onProgress )
-      try { this.onProgress( done, total, message ); } catch ( e ) {}
+      try { this.onProgress( done, total, message, previewBmp ); } catch ( e ) {}
 };
 
 Engine.prototype.baseName = function()
@@ -1976,7 +1989,8 @@ Engine.prototype.runTimelapse = function()
       var bmp = renderOutputBitmap( win.mainView, cfg, ov );
       win.forceClose();
       this.saveFrame( bmp, ++outIndex );
-      this.progress( outIndex, this.frames.length, tr( "run.render", outIndex, this.frames.length, frame.name ) );
+      this.progress( outIndex, this.frames.length, tr( "run.render", outIndex, this.frames.length, frame.name ),
+                     ( ( outIndex & 3 ) == 0 ) ? bmp : null );
       console.writeln( tr( "run.render", outIndex, this.frames.length, frame.name ) );
       if ( ( outIndex & 7 ) == 0 )
          gc();
@@ -2080,7 +2094,8 @@ Engine.prototype.runStacking = function()
       var bmp = renderOutputBitmap( mean.mainView, cfg, ov );
       mean.forceClose();
       self.saveFrame( bmp, ++outIndex );
-      self.progress( outIndex, totalRenders, tr( "run.render", outIndex, totalRenders, frame.name ) );
+      self.progress( outIndex, totalRenders, tr( "run.render", outIndex, totalRenders, frame.name ),
+                     ( ( outIndex & 3 ) == 0 ) ? bmp : null );
       console.writeln( tr( "run.render", outIndex, totalRenders, frame.name ) );
    } );
    acc.mainView.endProcess();
@@ -2180,14 +2195,22 @@ Engine.prototype.runZoom = function()
    var nearBmp = null, nearWcs = null, wideBmp = null, wideWcs = null;
    if ( cfg.hipsEnabled )
    {
+      var self0 = this;
+      var tick = function() { self0.progress( -1, 0, tr( "zoom.fetching" ) ); };
       this.progress( -1, 0, tr( "zoom.fetching" ) );
       console.writeln( tr( "zoom.fetching" ) );
-      nearBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, nearFov, NEAR_PX );
+      nearBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, nearFov, NEAR_PX, tick );
       if ( nearBmp )
+      {
          nearWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, nearFov, NEAR_PX );
-      wideBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, wideFov, WIDE_PX );
+         this.progress( -1, 0, tr( "zoom.fetchedNear" ), nearBmp );
+      }
+      wideBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, wideFov, WIDE_PX, tick );
       if ( wideBmp )
+      {
          wideWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, wideFov, WIDE_PX );
+         this.progress( -1, 0, tr( "zoom.fetchedWide" ), wideBmp );
+      }
       if ( !nearBmp && !wideBmp )
          console.warningln( tr( "zoom.hipsFailed" ) );
    }
@@ -2252,7 +2275,8 @@ Engine.prototype.runZoom = function()
       g.end();
 
       this.saveFrame( out, ++outIndex );
-      this.progress( outIndex, N, tr( "run.render", outIndex, N, formatAngle( fov ) ) );
+      this.progress( outIndex, N, tr( "run.render", outIndex, N, formatAngle( fov ) ),
+                     ( ( outIndex & 3 ) == 0 ) ? out : null );
       console.writeln( tr( "run.render", outIndex, N, formatAngle( fov ) ) );
       if ( ( outIndex & 7 ) == 0 )
          gc();
@@ -2492,25 +2516,31 @@ function drawZoomConstellationNames( g, cam, centroids, labels, unit )
    }
 }
 
-// Stylized artificial horizon at wide fields, a scale cue that fades as we zoom
-// in (auto in v1 — a decorative ground, not a location-accurate alt-az line).
-// Fully present on the opening whole-sky frames, gone by ~35°.
+// Stylized artificial horizon at wide fields — a clear ground + airglow band,
+// a scale/orientation cue that fades as we zoom in (auto in v1; a decorative
+// ground, not yet a location-accurate alt-az line). Full on the opening
+// whole-sky frames, gone by ~30°.
 function drawZoomHorizon( g, cam, unit )
 {
    var fov = cam.fovDeg;
-   var a = ( fov >= 90 ) ? 1 : ( fov <= 35 ? 0 : smoothstep01( ( fov - 35 )/55 ) );
+   var a = ( fov >= 90 ) ? 1 : ( fov <= 30 ? 0 : smoothstep01( ( fov - 30 )/60 ) );
    if ( a <= 0 )
       return;
    var W = cam.W, H = cam.H;
-   var y0 = Math.round( H*0.80 );
+   var y0 = Math.round( H*0.72 );          // horizon line, above the title band
    var prevOp = g.opacity;
    g.opacity = a;
-   // Ground: three stacked bands darkening toward the bottom.
-   g.fillRect( new Rect( 0, y0, W, H ), new Brush( 0x40060A12 ) );
-   g.fillRect( new Rect( 0, y0 + Math.round( ( H - y0 )*0.4 ), W, H ), new Brush( 0x66040709 ) );
-   g.fillRect( new Rect( 0, y0 + Math.round( ( H - y0 )*0.75 ), W, H ), new Brush( 0x99020405 ) );
-   // Horizon glow line.
-   g.pen = new Pen( argb( 0.5, 0x2A3A5A ), Math.max( 1, 2*unit ) );
+   // Airglow: a bright teal band just above the horizon fading upward.
+   var glowH = Math.round( 90*unit );
+   g.fillRect( new Rect( 0, y0 - Math.round( glowH*1.0 ), W, y0 ), new Brush( 0x14224D5C ) );
+   g.fillRect( new Rect( 0, y0 - Math.round( glowH*0.55 ), W, y0 ), new Brush( 0x1E2E6E7E ) );
+   g.fillRect( new Rect( 0, y0 - Math.round( glowH*0.22 ), W, y0 ), new Brush( 0x3341AEC4 ) );
+   // Ground: an opaque gradient so it clearly reads as land.
+   g.fillRect( new Rect( 0, y0, W, H ), new Brush( 0xCC0B1119 ) );
+   g.fillRect( new Rect( 0, y0 + Math.round( ( H - y0 )*0.35 ), W, H ), new Brush( 0xE6070C12 ) );
+   g.fillRect( new Rect( 0, y0 + Math.round( ( H - y0 )*0.7 ), W, H ), new Brush( 0xFF04070B ) );
+   // Bright horizon line.
+   g.pen = new Pen( argb( 0.85, 0x6FC7DA ), Math.max( 2, 2.5*unit ) );
    g.drawLine( 0, y0, W, y0 );
    g.opacity = prevOp;
 }
@@ -3350,6 +3380,64 @@ class SessionCinemaDialog extends Dialog
       this.statusLabel.text = "";
       this.statusLabel.textAlignment = 0x82;   // vert-center, left
 
+      // ---- progress panel: thumbnail + spinner + bar (full width, above buttons) ----
+      this.thumbCtrl = new Control( this );
+      this.thumbCtrl.setFixedSize( 176, 99 );
+      this.thumbCtrl.__bmp = null;
+      this.thumbCtrl.onPaint = function()
+      {
+         var g = new Graphics( this );
+         g.fillRect( 0, 0, this.width, this.height, new Brush( 0xFF0A0E16 ) );
+         if ( this.__bmp != null )
+            try { g.drawScaledBitmap( new Rect( 0, 0, this.width, this.height ), this.__bmp ); } catch ( e ) {}
+         g.pen = new Pen( 0xFF334155, 1 );
+         g.drawRect( new Rect( 0, 0, this.width - 1, this.height - 1 ) );
+         g.end();
+      };
+
+      this.progressStatus = new Label( this );
+      this.progressStatus.text = tr( "prog.idle" );
+      this.progressStatus.textAlignment = TextAlign.Left | TextAlign.VertCenter;
+
+      this.progressBar = new Control( this );
+      this.progressBar.setFixedHeight( 16 );
+      this.progressBar.__frac = 0;
+      this.progressBar.__indet = false;
+      this.progressBar.__phase = 0;
+      this.progressBar.onPaint = function()
+      {
+         var g = new Graphics( this );
+         var w = this.width, h = this.height;
+         g.fillRect( 0, 0, w, h, new Brush( 0xFF1E293B ) );
+         if ( this.__indet )
+         {
+            var cw = Math.round( w*0.28 );
+            var span = w + cw;
+            var x = ( ( this.__phase % span ) ) - cw;
+            g.fillRect( Math.max( 0, x ), 0, Math.min( w, x + cw ), h, new Brush( 0xFF22D3EE ) );
+         }
+         else
+            g.fillRect( 0, 0, Math.round( w*clamp01( this.__frac ) ), h, new Brush( 0xFF22D3EE ) );
+         g.pen = new Pen( 0xFF334155, 1 );
+         g.drawRect( new Rect( 0, 0, w - 1, h - 1 ) );
+         g.end();
+      };
+
+      this.progressInfo = new VerticalSizer;
+      this.progressInfo.spacing = 6;
+      this.progressInfo.addStretch();
+      this.progressInfo.add( this.progressStatus );
+      this.progressInfo.add( this.progressBar );
+      this.progressInfo.addStretch();
+
+      this.progressPanel = new GroupBox( this );
+      this.progressPanel.title = tr( "prog.title" );
+      this.progressPanel.sizer = new HorizontalSizer;
+      this.progressPanel.sizer.margin = 8;
+      this.progressPanel.sizer.spacing = 10;
+      this.progressPanel.sizer.add( this.thumbCtrl );
+      this.progressPanel.sizer.add( this.progressInfo, 100 );
+
       // The New Instance triangle: drag it to the workspace to save the current
       // settings as a process icon, like any PixInsight script.
       this.newInstanceButton = new ToolButton( this );
@@ -3370,8 +3458,7 @@ class SessionCinemaDialog extends Dialog
       this.bottomSizer.addSpacing( 8 );
       this.bottomSizer.add( this.langLabel );
       this.bottomSizer.add( this.langCombo );
-      this.bottomSizer.addSpacing( 12 );
-      this.bottomSizer.add( this.statusLabel, 100 );
+      this.bottomSizer.addStretch();
       this.bottomSizer.add( this.previewButton );
       this.bottomSizer.addSpacing( 12 );
       this.bottomSizer.add( this.generateButton );
@@ -3404,6 +3491,7 @@ class SessionCinemaDialog extends Dialog
       this.sizer.add( this.overlayGroup );
       this.sizer.add( this.videoGroup );
       this.sizer.add( this.outGroup );
+      this.sizer.add( this.progressPanel );
       this.sizer.add( this.bottomSizer );
 
       this.adjustToContents();
@@ -3760,12 +3848,31 @@ class SessionCinemaDialog extends Dialog
       this.setBusy( true );
       console.show();
 
+      var SPIN = [ "◐", "◓", "◑", "◒" ];
+      this._spin = 0;
       var engine = new Engine( this.cfg, this.frames );
-      engine.onProgress = ( done, total, msg ) =>
+      engine.onProgress = ( done, total, msg, previewBmp ) =>
       {
-         self.statusLabel.text = ( done >= 0 && total > 0 )
-            ? ( msg + "   (" + Math.round( 100*done/total ) + "%)" )
-            : msg;
+         self._spin = ( self._spin + 1 ) % SPIN.length;
+         var g = SPIN[ self._spin ];
+         if ( done >= 0 && total > 0 )
+         {
+            self.progressBar.__indet = false;
+            self.progressBar.__frac = done/total;
+            self.progressStatus.text = g + "   " + msg + "   (" + Math.round( 100*done/total ) + "%)";
+         }
+         else
+         {
+            self.progressBar.__indet = true;
+            self.progressBar.__phase += 14;
+            self.progressStatus.text = g + "   " + msg;
+         }
+         if ( previewBmp != null )
+         {
+            self.thumbCtrl.__bmp = previewBmp;
+            self.thumbCtrl.repaint();
+         }
+         self.progressBar.repaint();
          processEvents();
       };
 
@@ -3780,7 +3887,10 @@ class SessionCinemaDialog extends Dialog
       }
 
       this.setBusy( false );
-      this.statusLabel.text = "";
+      this.progressBar.__indet = false;
+      this.progressBar.__frac = ( result && result.ok ) ? 1 : 0;
+      this.progressBar.repaint();
+      this.progressStatus.text = tr( "prog.done" );
 
       if ( error.length )
       {
