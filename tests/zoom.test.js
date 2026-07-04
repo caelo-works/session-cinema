@@ -104,6 +104,27 @@ const near = ( a, b, eps, msg ) => assert.ok( Math.abs( a - b ) <= ( eps || 1e-6
    assert.ok( M.wcsPixelToSky( w, 800, 0 ).dec > -13.8, "survey top -> higher Dec (north)" );
 }
 
+// scaleWcsToDims: a WCS rescaled to a different-resolution image of the SAME
+// field maps corresponding pixels to the same sky (e.g. solved master -> JPEG).
+{
+   const s = 1/3600;
+   const solved = M.makeWcs( 100, 20, 1920, 1080, [ [ -s, 0 ], [ 0, s ] ] );
+   const jpg = M.scaleWcsToDims( solved, 3840, 2160, 1920, 1080 );   // half-res JPEG
+   // center of each maps to the same sky point
+   const cS = M.wcsPixelToSky( solved, 1920, 1080 );
+   const cJ = M.wcsPixelToSky( jpg, 960, 540 );
+   near( cJ.ra, cS.ra, 1e-9, "same center RA after rescale" );
+   near( cJ.dec, cS.dec, 1e-9, "same center Dec after rescale" );
+   // a corner maps to the same sky in both grids
+   const kS = M.wcsPixelToSky( solved, 3840, 2160 );
+   const kJ = M.wcsPixelToSky( jpg, 1920, 1080 );
+   near( kJ.ra, kS.ra, 1e-9, "same corner RA" );
+   near( kJ.dec, kS.dec, 1e-9, "same corner Dec" );
+   // the rescaled field width is unchanged
+   near( M.wcsImageFraming( jpg, 1920, 1080 ).fovDeg,
+         M.wcsImageFraming( solved, 3840, 2160 ).fovDeg, 1e-9, "same field width" );
+}
+
 // constellation centroids from border segments (x in degrees)
 {
    const borders = JSON.stringify( [

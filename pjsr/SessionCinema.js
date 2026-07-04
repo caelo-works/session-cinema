@@ -95,7 +95,9 @@ var DEFAULT_CONFIG = {
    keepFrames:      false,
    ffmpegPath:      "",
    // Zoom Odyssey
-   zoomImagePath:   "",          // solved final image to reveal
+   zoomImagePath:   "",          // plate-solved image (provides the WCS)
+   zoomRevealPath:  "",          // image inserted in the video (jpg/png/tiff/…);
+                                 // empty = reveal the solved image itself
    zoomStartFov:    180,         // whole-sky field of view (deg) at t=0
    ovShowScale:     true,        // angular scale bar
    ovSubtitle:      "",          // free subtitle, e.g. the constellation name
@@ -103,6 +105,7 @@ var DEFAULT_CONFIG = {
    ovConstNames:    true,        // draw constellation names
    ovStarNames:     true,        // draw the brightest named stars in the field
    ovShowHorizon:   true,        // artificial horizon for scale at wide fields
+   ovShowGrid:      true,        // equatorial coordinate grid at wide fields
    hipsEnabled:     true,        // bridge star field -> photo with a real survey image
    hipsSurvey:      "CDS/P/DSS2/color"  // Aladin/CDS hips2fits HiPS id
 };
@@ -147,9 +150,13 @@ var STRINGS = {
       "style.zoom":        "Zoom Odyssey — \"you are here\": whole sky → constellation → your image reveals itself",
       "style.zoomNote":    "Needs one plate-solved image (a WBPP master is already solved). " +
                            "Its embedded WCS drives the zoom; the sky is drawn from PixInsight's bundled catalogs.",
-      "zoom.image":        "Final image:",
-      "zoom.inputTitle":   "Final image",
-      "zoom.imageHint":    "A plate-solved image — a WBPP master is already solved. Otherwise solve it first with Script > Image Analysis > ImageSolver.",
+      "zoom.image":        "Solved image (WCS):",
+      "zoom.inputTitle":   "Zoom Odyssey — source images",
+      "zoom.imageHint":    "A plate-solved image providing the coordinates — a WBPP master is already solved. Otherwise solve it first with Script > Image Analysis > ImageSolver.",
+      "zoom.revealImage":  "Image to reveal:",
+      "zoom.revealHint":   "Optional — the finished image inserted in the video (JPEG/PNG/TIFF/FITS/XISF), used as-is. Leave empty to reveal the solved image itself. Assumes the same framing as the solved image.",
+      "zoom.revealFilter": "Images (JPEG/PNG/TIFF/FITS/XISF)",
+      "zoom.revealClear":  "Clear",
       "stretch.label":     "Screen stretch:",
       "stretch.final":     "Fixed, computed on the final stack (2 passes — honest noise progression)",
       "stretch.first":     "Fixed, computed on the first frame (1 pass, faster)",
@@ -169,6 +176,7 @@ var STRINGS = {
       "zoom.constNames":   "Constellation names",
       "zoom.starNames":    "Star names",
       "zoom.horizon":      "Horizon",
+      "zoom.grid":         "Coordinate grid",
       "zoom.hips":         "Real-sky survey bridge",
       "overlay.subtitle":  "Subtitle:",
       "overlay.subtitle.hint": "e.g. the constellation",
@@ -220,6 +228,8 @@ var STRINGS = {
       "run.styleStacking": "progressive stack",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Plate solve read: field %1, center RA %2° Dec %3°.",
+      "zoom.revealFrom":   "Reveal image: %1 (%2×%3).",
+      "zoom.errReveal":    "Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Downloading real-sky survey (CDS/Aladin hips2fits)…",
       "zoom.hipsFailed":   "Survey download unavailable — using the catalog star field only.",
       "zoom.noCatalogs":   "Star/constellation catalogs not found in the PixInsight install — the sky will be sparse.",
@@ -275,9 +285,13 @@ var STRINGS = {
       "style.zoom":        "Zoom Odyssey — « tu es ici » : ciel entier → constellation → ton image se révèle",
       "style.zoomNote":    "Nécessite une image résolue astrométriquement (un master WBPP l'est déjà). " +
                            "Son WCS embarqué pilote le zoom ; le ciel est tracé depuis les catalogues fournis avec PixInsight.",
-      "zoom.image":        "Image finale :",
-      "zoom.inputTitle":   "Image finale",
-      "zoom.imageHint":    "Une image résolue astrométriquement — un master WBPP l'est déjà. Sinon, résolvez-la avec Script > Image Analysis > ImageSolver.",
+      "zoom.image":        "Image résolue (WCS) :",
+      "zoom.inputTitle":   "Zoom Odyssey — images sources",
+      "zoom.imageHint":    "Une image résolue astrométriquement qui fournit les coordonnées — un master WBPP l'est déjà. Sinon, résolvez-la avec Script > Image Analysis > ImageSolver.",
+      "zoom.revealImage":  "Image à révéler :",
+      "zoom.revealHint":   "Optionnel — l'image finie insérée dans la vidéo (JPEG/PNG/TIFF/FITS/XISF), utilisée telle quelle. Laissez vide pour révéler l'image résolue elle-même. Suppose le même cadrage que l'image résolue.",
+      "zoom.revealFilter": "Images (JPEG/PNG/TIFF/FITS/XISF)",
+      "zoom.revealClear":  "Vider",
       "stretch.label":     "Étirement d'affichage :",
       "stretch.final":     "Fixe, calculé sur le stack final (2 passes — progression du bruit honnête)",
       "stretch.first":     "Fixe, calculé sur la première brute (1 passe, plus rapide)",
@@ -297,6 +311,7 @@ var STRINGS = {
       "zoom.constNames":   "Noms des constellations",
       "zoom.starNames":    "Noms des étoiles",
       "zoom.horizon":      "Horizon",
+      "zoom.grid":         "Grille de coordonnées",
       "zoom.hips":         "Pont imagerie réelle du ciel",
       "overlay.subtitle":  "Sous-titre :",
       "overlay.subtitle.hint": "ex. la constellation",
@@ -348,6 +363,8 @@ var STRINGS = {
       "run.styleStacking": "empilement progressif",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Solve astrométrique lu : champ %1, centre AD %2° Déc %3°.",
+      "zoom.revealFrom":   "Image révélée : %1 (%2×%3).",
+      "zoom.errReveal":    "Impossible de charger l'image à révéler. Vérifiez le fichier (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Téléchargement de l'imagerie réelle du ciel (CDS/Aladin hips2fits)…",
       "zoom.hipsFailed":   "Téléchargement du survey indisponible — champ d'étoiles catalogue uniquement.",
       "zoom.noCatalogs":   "Catalogues d'étoiles/constellations introuvables dans l'install PixInsight — le ciel sera clairsemé.",
@@ -878,6 +895,17 @@ function makeSurveyWcs( ra, dec, fovDeg, nPx )
    return makeWcs( ra, dec, nPx/2, nPx/2, [ [ -s, 0 ], [ 0, -s ] ] );
 }
 
+// Rescale a WCS from one pixel grid to another covering the SAME sky field
+// (e.g. a solved master vs a finished JPEG of the same framing at a different
+// resolution). Reference pixel scales with size; the CD (deg/px) scales inverse.
+function scaleWcsToDims( wcs, fromW, fromH, toW, toH )
+{
+   var sx = toW/fromW, sy = toH/fromH;
+   return makeWcs( wcs.refRA, wcs.refDec, wcs.refX*sx, wcs.refY*sy,
+      [ [ wcs.cd[ 0 ][ 0 ]/sx, wcs.cd[ 0 ][ 1 ]/sy ],
+        [ wcs.cd[ 1 ][ 0 ]/sx, wcs.cd[ 1 ][ 1 ]/sy ] ] );
+}
+
 // Unit-sphere centroid of each constellation from ConstellationBorders.json
 // (segments carry the two adjacent constellation codes c1/c2; x is in degrees).
 // Returns { CODE: { ra, dec } }.
@@ -1384,6 +1412,49 @@ function readTextFileSafe( path )
 {
    try { return File.readTextFile( path ); }
    catch ( e ) { return ""; }
+}
+
+var RASTER_EXTENSIONS = [ ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp" ];
+
+function isRasterPath( path )
+{
+   var ext = File.extractExtension( path ).toLowerCase();
+   for ( var i = 0; i < RASTER_EXTENSIONS.length; ++i )
+      if ( ext == RASTER_EXTENSIONS[ i ] )
+         return true;
+   return false;
+}
+
+// Load an ALREADY-FINISHED image (JPEG/PNG/TIFF or a processed FITS/XISF) as a
+// Bitmap, without applying any stretch. Returns null on failure.
+function loadFinishedBitmap( path )
+{
+   if ( isRasterPath( path ) )
+   {
+      try
+      {
+         var b = new Bitmap( path );
+         if ( b.width > 1 && b.height > 1 )
+            return b;
+      }
+      catch ( e )
+      {
+      }
+   }
+   try
+   {
+      var w = openFrameWindow( path );
+      if ( w != null )
+      {
+         var bmp = w.mainView.image.render();
+         w.forceClose();
+         return bmp;
+      }
+   }
+   catch ( e2 )
+   {
+   }
+   return null;
 }
 
 // Load the bundled catalogs once. Returns { stars, polys, centroids, labels, ok }.
@@ -1978,11 +2049,37 @@ Engine.prototype.runZoom = function()
    if ( !File.directoryExists( this.framesDir() ) )
       File.createDirectory( this.framesDir(), true );
 
-   // Revealed image: a stretched copy rendered once to a bitmap.
-   var stretch = computeStretchForImage( view.image, cfg.stretchLinked );
-   applyStretchToView( view, stretch );
-   var revealBmp = view.image.render();
-   win.forceClose();
+   // Revealed image. Two sources are supported: the solved image itself
+   // (auto-stretched), or a separate finished image (JPEG/PNG/TIFF/…) that is
+   // inserted as-is — the solved image only provides the WCS, which we rescale
+   // to the reveal image's pixel grid (same framing assumed).
+   var revealBmp, revealWcs, revealW, revealH;
+   var separateReveal = cfg.zoomRevealPath && String( cfg.zoomRevealPath ).length > 0;
+   if ( separateReveal )
+   {
+      win.forceClose();
+      revealBmp = loadFinishedBitmap( cfg.zoomRevealPath );
+      if ( revealBmp == null )
+      {
+         this.zoomError = "reveal";
+         return;
+      }
+      revealW = revealBmp.width;
+      revealH = revealBmp.height;
+      revealWcs = scaleWcsToDims( wcs, imgW, imgH, revealW, revealH );
+      console.writeln( tr( "zoom.revealFrom", File.extractName( cfg.zoomRevealPath ) +
+                           File.extractExtension( cfg.zoomRevealPath ), revealW, revealH ) );
+   }
+   else
+   {
+      var stretch = computeStretchForImage( view.image, cfg.stretchLinked );
+      applyStretchToView( view, stretch );
+      revealBmp = view.image.render();
+      win.forceClose();
+      revealWcs = wcs;
+      revealW = imgW;
+      revealH = imgH;
+   }
    gc();
 
    var cat = loadZoomCatalogs();
@@ -1991,27 +2088,32 @@ Engine.prototype.runZoom = function()
 
    var P = framing.fovDeg;
 
-   // Real-sky survey bridge (CDS/Aladin hips2fits): a near cutout at the image
-   // field and a wide one, fetched once. Their dense real stars carry the range
-   // where the bright-star catalog thins, then the photo takes over. Optional
-   // and best-effort — a failed fetch just falls back to the catalog stars.
-   var SURVEY_PX = 1600;
-   var nearBmp = null, nearWcs = null, wideBmp = null, wideWcs = null;
+   // Real-sky survey bridge (CDS/Aladin hips2fits): a near cutout ~2.5x the
+   // image field (so the photo reveals as a zoom-IN within it, never a
+   // side-by-side comparison) and a wide one, fetched once at high resolution.
+   // Their dense real stars carry the range where the bright-star catalog
+   // thins, then the photo takes over. Best-effort — a failed fetch falls back
+   // to the catalog stars.
+   var NEAR_PX = 3200, WIDE_PX = 2000;
+   var nearFov = P*2.5;
    var wideFov = Math.max( 12, Math.min( 45, P*20 ) );
+   var nearBmp = null, nearWcs = null, wideBmp = null, wideWcs = null;
    if ( cfg.hipsEnabled )
    {
       this.progress( -1, 0, tr( "zoom.fetching" ) );
       console.writeln( tr( "zoom.fetching" ) );
-      nearBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, P, SURVEY_PX );
+      nearBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, nearFov, NEAR_PX );
       if ( nearBmp )
-         nearWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, P, SURVEY_PX );
-      wideBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, wideFov, SURVEY_PX );
+         nearWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, nearFov, NEAR_PX );
+      wideBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, wideFov, WIDE_PX );
       if ( wideBmp )
-         wideWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, wideFov, SURVEY_PX );
+         wideWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, wideFov, WIDE_PX );
       if ( !nearBmp && !wideBmp )
          console.warningln( tr( "zoom.hipsFailed" ) );
    }
-   var photoWideMult = nearBmp ? 2 : 6;   // crisp handoff when a survey bridges
+   // Photo reveals within the still-larger near survey: start at ~1.6x the
+   // image field so the survey (2.5x) is always bigger during the handoff.
+   var photoWideMult = nearBmp ? 1.6 : 6;
 
    var fmt = OUTPUT_FORMATS[ cfg.formatIndex ];
    var W = fmt.w, H = fmt.h, unit = H/1080;
@@ -2033,30 +2135,38 @@ Engine.prototype.runZoom = function()
       g.antialiasing = true;
       try { g.textAntialiasing = true; } catch ( e ) {}
 
+      // Wide-field cues, then catalog star dots — all UNDER the survey images.
       if ( cfg.ovShowHorizon )
          drawZoomHorizon( g, cam, unit );
+      if ( cfg.ovShowGrid )
+         drawEquatorialGrid( g, cam, unit );
       drawZoomStars( g, cam, cat.stars, unit );
+
+      // Real-sky survey layers (DSS2), covering the star dots with real stars.
+      if ( wideBmp )
+      {
+         var wa = fadeBand( fov, wideFov*3, wideFov*1.2, P*3, P*1.5 );
+         if ( wa > 0 )
+            drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
+      }
+      if ( nearBmp )
+      {
+         var na = fadeBand( fov, nearFov*3, nearFov*1.2, P*1.2, P*0.85 );
+         if ( na > 0 )
+            drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
+      }
+
+      // Constellation figures and all labels are drawn OVER the surveys.
       drawZoomConstellations( g, cam, cat.polys, unit );
       if ( cfg.ovConstNames )
          drawZoomConstellationNames( g, cam, cat.centroids, cat.labels, unit );
       if ( cfg.ovStarNames )
          drawZoomStarNames( g, cam, cat.stars, unit );
 
-      if ( wideBmp )
-      {
-         var wa = fadeBand( fov, wideFov*3, wideFov*1.2, P*3, P*1.5 );
-         if ( wa > 0 )
-            drawZoomReveal( g, cam, wideWcs, SURVEY_PX, SURVEY_PX, wideBmp, wa );
-      }
-      if ( nearBmp )
-      {
-         var na = fadeBand( fov, P*7, P*3, P*1.3, P*1.05 );
-         if ( na > 0 )
-            drawZoomReveal( g, cam, nearWcs, SURVEY_PX, SURVEY_PX, nearBmp, na );
-      }
+      // Only the user's own image sits on top of everything.
       var ra = revealAlpha( fov, P, photoWideMult );
       if ( ra > 0 )
-         drawZoomReveal( g, cam, wcs, imgW, imgH, revealBmp, ra );
+         drawZoomReveal( g, cam, revealWcs, revealW, revealH, revealBmp, ra );
 
       drawZoomOverlay( g, cam, cfg, this.title, t );
       g.end();
@@ -2145,6 +2255,11 @@ Engine.prototype.run = function()
    if ( this.zoomError == "unsolved" )
    {
       console.criticalln( tr( "zoom.errUnsolved" ) );
+      return result;
+   }
+   if ( this.zoomError == "reveal" )
+   {
+      console.criticalln( tr( "zoom.errReveal" ) );
       return result;
    }
    if ( this.skipped.length )
@@ -2252,18 +2367,41 @@ function drawZoomStarNames( g, cam, stars, unit )
    }
 }
 
-// Constellation name labels at each constellation's centroid.
+// French constellation names by IAU 3-letter code (the bundled labels are
+// English). Latin names are shown as-is when no French form is listed.
+var CONST_NAMES_FR = {
+   AND:"Andromède", ANT:"Machine pneumatique", APS:"Oiseau de paradis", AQR:"Verseau",
+   AQL:"Aigle", ARA:"Autel", ARI:"Bélier", AUR:"Cocher", BOO:"Bouvier", CAE:"Burin",
+   CAM:"Girafe", CNC:"Cancer", CVN:"Chiens de chasse", CMA:"Grand Chien", CMI:"Petit Chien",
+   CAP:"Capricorne", CAR:"Carène", CAS:"Cassiopée", CEN:"Centaure", CEP:"Céphée",
+   CET:"Baleine", CHA:"Caméléon", CIR:"Compas", COL:"Colombe", COM:"Chevelure de Bérénice",
+   CRA:"Couronne australe", CRB:"Couronne boréale", CRV:"Corbeau", CRT:"Coupe", CRU:"Croix du Sud",
+   CYG:"Cygne", DEL:"Dauphin", DOR:"Dorade", DRA:"Dragon", EQU:"Petit Cheval", ERI:"Éridan",
+   FOR:"Fourneau", GEM:"Gémeaux", GRU:"Grue", HER:"Hercule", HOR:"Horloge", HYA:"Hydre",
+   HYI:"Hydre mâle", IND:"Indien", LAC:"Lézard", LEO:"Lion", LMI:"Petit Lion", LEP:"Lièvre",
+   LIB:"Balance", LUP:"Loup", LYN:"Lynx", LYR:"Lyre", MEN:"Table", MIC:"Microscope",
+   MON:"Licorne", MUS:"Mouche", NOR:"Règle", OCT:"Octant", OPH:"Ophiuchus", ORI:"Orion",
+   PAV:"Paon", PEG:"Pégase", PER:"Persée", PHE:"Phénix", PIC:"Peintre", PSC:"Poissons",
+   PSA:"Poisson austral", PUP:"Poupe", PYX:"Boussole", RET:"Réticule", SGE:"Flèche",
+   SGR:"Sagittaire", SCO:"Scorpion", SCL:"Sculpteur", SCT:"Écu de Sobieski", SER:"Serpent",
+   SEX:"Sextant", TAU:"Taureau", TEL:"Télescope", TRI:"Triangle", TRA:"Triangle austral",
+   TUC:"Toucan", UMA:"Grande Ourse", UMI:"Petite Ourse", VEL:"Voiles", VIR:"Vierge",
+   VOL:"Poisson volant", VUL:"Petit Renard"
+};
+
+// Constellation name labels at each constellation's centroid, in the UI language.
 function drawZoomConstellationNames( g, cam, centroids, labels, unit )
 {
    var alpha = constellationLabelAlpha( cam.fovDeg );
    if ( alpha <= 0 )
       return;
+   var fr = ( gLanguage == "fr" );
    var f = zoomFont( 17*unit, false );
    g.font = f;
    g.pen = new Pen( argb( 0.7*alpha, 0x9FE4F5 ) );
    for ( var code in centroids )
    {
-      var name = labels[ code ];
+      var name = ( fr && CONST_NAMES_FR[ code ] ) ? CONST_NAMES_FR[ code ] : labels[ code ];
       if ( !name )
          continue;
       var c = centroids[ code ];
@@ -2276,9 +2414,11 @@ function drawZoomConstellationNames( g, cam, centroids, labels, unit )
 
 // Stylized artificial horizon at wide fields, a scale cue that fades as we zoom
 // in (auto in v1 — a decorative ground, not a location-accurate alt-az line).
+// Fully present on the opening whole-sky frames, gone by ~35°.
 function drawZoomHorizon( g, cam, unit )
 {
-   var a = fadeBand( cam.fovDeg, 200, 100, 100, 35 );
+   var fov = cam.fovDeg;
+   var a = ( fov >= 90 ) ? 1 : ( fov <= 35 ? 0 : smoothstep01( ( fov - 35 )/55 ) );
    if ( a <= 0 )
       return;
    var W = cam.W, H = cam.H;
@@ -2293,6 +2433,49 @@ function drawZoomHorizon( g, cam, unit )
    g.pen = new Pen( argb( 0.5, 0x2A3A5A ), Math.max( 1, 2*unit ) );
    g.drawLine( 0, y0, W, y0 );
    g.opacity = prevOp;
+}
+
+// Equatorial coordinate grid (RA meridians + Dec parallels) in a distinct
+// green, a wide-field cue that fades as we zoom in. Segments crossing behind
+// the projection or wrapping across the sky are dropped.
+function drawEquatorialGrid( g, cam, unit )
+{
+   var fov = cam.fovDeg;
+   var a = ( fov >= 90 ) ? 1 : ( fov <= 25 ? 0 : smoothstep01( ( fov - 25 )/65 ) );
+   if ( a <= 0 )
+      return;
+   g.pen = new Pen( argb( 0.28*a, 0x5FBF7F ), Math.max( 1, 1*unit ) );
+   var maxSeg = cam.W*0.6, maxSeg2 = maxSeg*maxSeg;
+   function poly( pts )
+   {
+      var prev = null;
+      for ( var k = 0; k < pts.length; ++k )
+      {
+         var p = projectToScreen( cam, pts[ k ][ 0 ], pts[ k ][ 1 ] );
+         if ( p.front && prev != null )
+         {
+            var dx = p.x - prev.x, dy = p.y - prev.y;
+            if ( dx*dx + dy*dy < maxSeg2 )
+               g.drawLine( prev.x, prev.y, p.x, p.y );
+         }
+         prev = p.front ? p : null;
+      }
+   }
+   var dec, ra;
+   for ( dec = -60; dec <= 60; dec += 30 )   // parallels
+   {
+      var par = [];
+      for ( ra = 0; ra <= 360; ra += 5 )
+         par.push( [ ra, dec ] );
+      poly( par );
+   }
+   for ( ra = 0; ra < 360; ra += 30 )        // meridians (every 2h)
+   {
+      var mer = [];
+      for ( dec = -80; dec <= 80; dec += 5 )
+         mer.push( [ ra, dec ] );
+      poly( mer );
+   }
 }
 
 // Constellation figure lines, fading in around the constellation phase.
@@ -2590,6 +2773,46 @@ class SessionCinemaDialog extends Dialog
       this.zoomHint.wordWrapping = true;
       this.zoomHint.enabled = false;
 
+      // Optional second source: the finished image inserted in the video.
+      this.revealImageLabel = new Label( this );
+      this.revealImageLabel.text = tr( "zoom.revealImage" );
+      this.revealImageLabel.minWidth = labelWidth;
+      this.revealImageEdit = new Edit( this );
+      this.revealImageEdit.text = cfg.zoomRevealPath;
+      this.revealImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomRevealPath = t; };
+      this.revealImageBrowse = new PushButton( this );
+      this.revealImageBrowse.text = tr( "out.browse" );
+      this.revealImageBrowse.onClick = () =>
+      {
+         var d = new OpenFileDialog;
+         d.multipleSelections = false;
+         d.caption = tr( "zoom.revealImage" );
+         d.filters = [ [ tr( "zoom.revealFilter" ), "*.jpg", "*.jpeg", "*.png", "*.tif", "*.tiff", "*.fit", "*.fits", "*.fts", "*.xisf" ] ];
+         if ( d.execute() && d.fileNames.length )
+         {
+            self.cfg.zoomRevealPath = d.fileNames[ 0 ];
+            self.revealImageEdit.text = d.fileNames[ 0 ];
+         }
+      };
+      this.revealClearButton = new PushButton( this );
+      this.revealClearButton.text = tr( "zoom.revealClear" );
+      this.revealClearButton.onClick = () =>
+      {
+         self.cfg.zoomRevealPath = "";
+         self.revealImageEdit.text = "";
+      };
+      this.revealImageSizer = new HorizontalSizer;
+      this.revealImageSizer.spacing = 6;
+      this.revealImageSizer.add( this.revealImageLabel );
+      this.revealImageSizer.add( this.revealImageEdit, 100 );
+      this.revealImageSizer.add( this.revealImageBrowse );
+      this.revealImageSizer.add( this.revealClearButton );
+
+      this.revealHint = new Label( this );
+      this.revealHint.text = tr( "zoom.revealHint" );
+      this.revealHint.wordWrapping = true;
+      this.revealHint.enabled = false;
+
       // Input group for Zoom Odyssey — takes the place of the frame list.
       this.zoomGroup = new GroupBox( this );
       this.zoomGroup.title = tr( "zoom.inputTitle" );
@@ -2598,6 +2821,8 @@ class SessionCinemaDialog extends Dialog
       this.zoomGroup.sizer.spacing = 6;
       this.zoomGroup.sizer.add( this.zoomImageSizer );
       this.zoomGroup.sizer.add( this.zoomHint );
+      this.zoomGroup.sizer.add( this.revealImageSizer );
+      this.zoomGroup.sizer.add( this.revealHint );
 
       this.stretchLabel = new Label( this );
       this.stretchLabel.text = tr( "stretch.label" );
@@ -2718,6 +2943,11 @@ class SessionCinemaDialog extends Dialog
       this.horizonCheck.checked = cfg.ovShowHorizon;
       this.horizonCheck.onCheck = ( c ) => { self.cfg.ovShowHorizon = c; };
 
+      this.gridCheck = new CheckBox( this );
+      this.gridCheck.text = tr( "zoom.grid" );
+      this.gridCheck.checked = cfg.ovShowGrid;
+      this.gridCheck.onCheck = ( c ) => { self.cfg.ovShowGrid = c; };
+
       this.hipsCheck = new CheckBox( this );
       this.hipsCheck.text = tr( "zoom.hips" );
       this.hipsCheck.checked = cfg.hipsEnabled;
@@ -2728,6 +2958,7 @@ class SessionCinemaDialog extends Dialog
       this.checksRow3.add( this.constNamesCheck );
       this.checksRow3.add( this.starNamesCheck );
       this.checksRow3.add( this.horizonCheck );
+      this.checksRow3.add( this.gridCheck );
       this.checksRow3.add( this.hipsCheck );
       this.checksRow3.addStretch();
 
@@ -3118,6 +3349,7 @@ class SessionCinemaDialog extends Dialog
       this.constNamesCheck.enabled = isZoom;
       this.starNamesCheck.enabled = isZoom;
       this.horizonCheck.enabled = isZoom;
+      this.gridCheck.enabled = isZoom;
       this.hipsCheck.enabled = isZoom;
       this.subtitleLabel.enabled = isZoom;
       this.subtitleEdit.enabled = isZoom;

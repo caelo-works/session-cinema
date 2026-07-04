@@ -100,6 +100,7 @@ module.exports = {
    constellationLabelAlpha: constellationLabelAlpha,
    fadeBand: fadeBand,
    makeSurveyWcs: makeSurveyWcs,
+   scaleWcsToDims: scaleWcsToDims,
    constellationCentroids: constellationCentroids,
    hips2fitsUrl: hips2fitsUrl,
    limitingMagnitude: limitingMagnitude,
