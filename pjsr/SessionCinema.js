@@ -225,6 +225,9 @@ var STRINGS = {
       "zoom.lon":          "Lon:",
       "zoom.date":         "UTC:",
       "zoom.date.hint":    "blank = DATE-OBS from headers",
+      "zoom.fromSub":      "From a sub…",
+      "zoom.fromSub.hint": "Pick a raw/calibrated sub to fill lat/lon/UTC — integrated masters often drop SITELAT/SITELONG.",
+      "zoom.subNoData":    "That file has no SITELAT/SITELONG/DATE-OBS to read.",
       "overlay.subtitle":  "Subtitle:",
       "overlay.subtitle.hint": "e.g. the constellation",
       "overlay.distance":  "Distance:",
@@ -397,6 +400,9 @@ var STRINGS = {
       "zoom.lon":          "Lon :",
       "zoom.date":         "UTC :",
       "zoom.date.hint":    "vide = DATE-OBS des en-têtes",
+      "zoom.fromSub":      "Depuis une brute…",
+      "zoom.fromSub.hint": "Choisissez une brute (calibrée/registered) pour remplir lat/lon/UTC — les masters intégrés perdent souvent SITELAT/SITELONG.",
+      "zoom.subNoData":    "Ce fichier n'a pas de SITELAT/SITELONG/DATE-OBS à lire.",
       "overlay.subtitle":  "Sous-titre :",
       "overlay.subtitle.hint": "ex. la constellation",
       "overlay.distance":  "Distance :",
@@ -796,8 +802,9 @@ function resolveTitle( cfg, frames )
 function frameMetaFromKeywords( map )
 {
    var meta = { dateObs: null, exposure: 0, object: "", filter: "", cfa: false,
-                siteLat: null, siteLong: null };
-   meta.dateObs = parseDateObs( kwValue( map[ "DATE-OBS" ] ) );
+                siteLat: null, siteLong: null, dateObsStr: "" };
+   meta.dateObsStr = kwValue( map[ "DATE-OBS" ] );
+   meta.dateObs = parseDateObs( meta.dateObsStr );
    var la = parseFloat( kwValue( map[ "SITELAT" ] || map[ "LAT-OBS" ] || map[ "OBSGEO-B" ] || "" ) );
    if ( isFinite( la ) ) meta.siteLat = la;
    var lo = parseFloat( kwValue( map[ "SITELONG" ] || map[ "LONG-OBS" ] || map[ "OBSGEO-L" ] || "" ) );
@@ -3418,6 +3425,13 @@ class SessionCinemaDialog extends Dialog
       try { this.dateEdit.placeholderText = tr( "zoom.date.hint" ); } catch ( ex ) {}
       this.dateEdit.onTextUpdated = ( t ) => { self.cfg.observerDateUtc = t; };
 
+      // Pick a raw/calibrated sub to fill lat/lon/UTC (integrated masters often
+      // drop SITELAT/SITELONG; the subs keep them).
+      this.fromSubButton = new PushButton( this );
+      this.fromSubButton.text = tr( "zoom.fromSub" );
+      this.fromSubButton.toolTip = tr( "zoom.fromSub.hint" );
+      this.fromSubButton.onClick = () => this.onReadSubLocation();
+
       this.locationSizer = new HorizontalSizer;
       this.locationSizer.spacing = 6;
       this.locationSizer.add( this.locationCheck );
@@ -3428,6 +3442,8 @@ class SessionCinemaDialog extends Dialog
       this.locationSizer.add( this.lonEdit );
       this.locationSizer.add( this.dateLabel );
       this.locationSizer.add( this.dateEdit, 100 );
+      this.locationSizer.addSpacing( 8 );
+      this.locationSizer.add( this.fromSubButton );
 
       this.subtitleLabel = new Label( this );
       this.subtitleLabel.text = tr( "overlay.subtitle" );
@@ -4016,6 +4032,40 @@ class SessionCinemaDialog extends Dialog
       this.latLabel.enabled = on; this.latEdit.enabled = on;
       this.lonLabel.enabled = on; this.lonEdit.enabled = on;
       this.dateLabel.enabled = on; this.dateEdit.enabled = on;
+      this.fromSubButton.enabled = on;
+   }
+
+   // Pick a sub and fill lat/lon/UTC from its headers.
+   onReadSubLocation()
+   {
+      var d = new OpenFileDialog;
+      d.multipleSelections = false;
+      d.caption = tr( "zoom.fromSub" );
+      d.filters = [ [ "FITS / XISF", "*.fit", "*.fits", "*.fts", "*.xisf" ] ];
+      if ( !d.execute() || !d.fileNames.length )
+         return;
+      var meta = scanFrameHeader( d.fileNames[ 0 ] );
+      var filled = 0;
+      if ( meta.siteLat != null )
+      {
+         this.cfg.observerLat = meta.siteLat;
+         this.latEdit.text = meta.siteLat.toFixed( 4 );
+         ++filled;
+      }
+      if ( meta.siteLong != null )
+      {
+         this.cfg.observerLong = meta.siteLong;
+         this.lonEdit.text = meta.siteLong.toFixed( 4 );
+         ++filled;
+      }
+      if ( meta.dateObsStr && meta.dateObsStr.length )
+      {
+         this.cfg.observerDateUtc = meta.dateObsStr;
+         this.dateEdit.text = meta.dateObsStr;
+         ++filled;
+      }
+      if ( filled == 0 )
+         ( new MessageBox( tr( "zoom.subNoData" ), tr( "err.title" ), StdIcon.Warning, StdButton.Ok ) ).execute();
    }
 
    // Fill the (untouched) title field with the OBJECT keyword read from the
