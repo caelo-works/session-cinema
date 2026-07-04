@@ -99,7 +99,12 @@ var DEFAULT_CONFIG = {
    zoomStartFov:    180,         // whole-sky field of view (deg) at t=0
    ovShowScale:     true,        // angular scale bar
    ovSubtitle:      "",          // free subtitle, e.g. the constellation name
-   ovDistance:      ""           // free distance label, e.g. "5000 ly"
+   ovDistance:      "",          // free distance label, e.g. "5000 ly"
+   ovConstNames:    true,        // draw constellation names
+   ovStarNames:     true,        // draw the brightest named stars in the field
+   ovShowHorizon:   true,        // artificial horizon for scale at wide fields
+   hipsEnabled:     true,        // bridge star field -> photo with a real survey image
+   hipsSurvey:      "CDS/P/DSS2/color"  // Aladin/CDS hips2fits HiPS id
 };
 
 var SETTINGS_KEY = "SessionCinema/config";
@@ -161,6 +166,10 @@ var STRINGS = {
       "overlay.snr":       "Measured SNR gain (stacking)",
       "overlay.bar":       "Progress bar",
       "overlay.scale":     "Angular scale bar (zoom)",
+      "zoom.constNames":   "Constellation names",
+      "zoom.starNames":    "Star names",
+      "zoom.horizon":      "Horizon",
+      "zoom.hips":         "Real-sky survey bridge",
       "overlay.subtitle":  "Subtitle:",
       "overlay.subtitle.hint": "e.g. the constellation",
       "overlay.distance":  "Distance:",
@@ -198,6 +207,7 @@ var STRINGS = {
       "btn.preview":       "Preview frame",
       "btn.generate":      "Generate",
       "btn.close":         "Close",
+      "btn.newInstance":   "New Instance — drag to the workspace to save a process icon",
       "lang.label":        "Language:",
 
       "err.noFrames":      "Add at least 2 light frames.",
@@ -210,6 +220,8 @@ var STRINGS = {
       "run.styleStacking": "progressive stack",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Plate solve read: field %1, center RA %2° Dec %3°.",
+      "zoom.fetching":     "Downloading real-sky survey (CDS/Aladin hips2fits)…",
+      "zoom.hipsFailed":   "Survey download unavailable — using the catalog star field only.",
       "zoom.noCatalogs":   "Star/constellation catalogs not found in the PixInsight install — the sky will be sparse.",
       "zoom.errUnsolved":  "This image has no astrometric solution. Solve it first (Script > Image Analysis > ImageSolver), then run Session Cinema again.",
       "run.pass1":         "Pass 1 of 2 — integrating %1 frames to compute the reference stretch…",
@@ -223,7 +235,18 @@ var STRINGS = {
       "run.encodeScript":  "ffmpeg not available — PNG sequence kept, run %1 to encode.",
       "run.framesKept":    "Frame sequence: %1",
       "run.done":          "Done. %1 frame(s) rendered in %2.",
-      "run.previewDone":   "Preview written and opened: %1"
+      "run.previewDone":   "Preview written and opened: %1",
+      "run.error":         "Generation failed: %1",
+
+      "result.title":      "Session Cinema — done",
+      "result.rendered":   "%1 frame(s) rendered.",
+      "result.video":      "Video: %1",
+      "result.script":     "ffmpeg not found — PNG sequence kept. Run the encode script: %1",
+      "result.skipped":    "%1 input(s) were skipped (unreadable or geometry mismatch).",
+      "result.aborted":    "Aborted. %1 frame(s) were rendered.",
+      "result.nothing":    "Nothing was rendered.",
+      "result.openVideo":  "Open video",
+      "result.openFolder": "Open folder"
    },
 
    fr: {
@@ -271,6 +294,10 @@ var STRINGS = {
       "overlay.snr":       "Gain de SNR mesuré (empilement)",
       "overlay.bar":       "Barre de progression",
       "overlay.scale":     "Barre d'échelle angulaire (zoom)",
+      "zoom.constNames":   "Noms des constellations",
+      "zoom.starNames":    "Noms des étoiles",
+      "zoom.horizon":      "Horizon",
+      "zoom.hips":         "Pont imagerie réelle du ciel",
       "overlay.subtitle":  "Sous-titre :",
       "overlay.subtitle.hint": "ex. la constellation",
       "overlay.distance":  "Distance :",
@@ -308,6 +335,7 @@ var STRINGS = {
       "btn.preview":       "Aperçu d'une image",
       "btn.generate":      "Générer",
       "btn.close":         "Fermer",
+      "btn.newInstance":   "New Instance — glissez sur l'espace de travail pour créer une icône de process",
       "lang.label":        "Langue :",
 
       "err.noFrames":      "Ajoutez au moins 2 brutes.",
@@ -320,6 +348,8 @@ var STRINGS = {
       "run.styleStacking": "empilement progressif",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Solve astrométrique lu : champ %1, centre AD %2° Déc %3°.",
+      "zoom.fetching":     "Téléchargement de l'imagerie réelle du ciel (CDS/Aladin hips2fits)…",
+      "zoom.hipsFailed":   "Téléchargement du survey indisponible — champ d'étoiles catalogue uniquement.",
       "zoom.noCatalogs":   "Catalogues d'étoiles/constellations introuvables dans l'install PixInsight — le ciel sera clairsemé.",
       "zoom.errUnsolved":  "Cette image n'a pas de solution astrométrique. Résolvez-la d'abord (Script > Image Analysis > ImageSolver), puis relancez Session Cinema.",
       "run.pass1":         "Passe 1 sur 2 — intégration des %1 brutes pour calculer l'étirement de référence…",
@@ -333,7 +363,18 @@ var STRINGS = {
       "run.encodeScript":  "ffmpeg indisponible — séquence PNG conservée, lancez %1 pour encoder.",
       "run.framesKept":    "Séquence d'images : %1",
       "run.done":          "Terminé. %1 image(s) rendues en %2.",
-      "run.previewDone":   "Aperçu écrit et ouvert : %1"
+      "run.previewDone":   "Aperçu écrit et ouvert : %1",
+      "run.error":         "Échec de la génération : %1",
+
+      "result.title":      "Session Cinema — terminé",
+      "result.rendered":   "%1 image(s) rendues.",
+      "result.video":      "Vidéo : %1",
+      "result.script":     "ffmpeg introuvable — séquence PNG conservée. Lancez le script d'encodage : %1",
+      "result.skipped":    "%1 entrée(s) ignorée(s) (illisibles ou géométrie différente).",
+      "result.aborted":    "Interrompu. %1 image(s) rendues.",
+      "result.nothing":    "Rien n'a été rendu.",
+      "result.openVideo":  "Ouvrir la vidéo",
+      "result.openFolder": "Ouvrir le dossier"
    }
 };
 
@@ -782,32 +823,99 @@ function zoomCameraAt( t, target, startFovDeg, W, H )
 // image starts appearing several times wider than its own field: its dense,
 // real stars bridge the range where the bright-star catalog runs thin, so the
 // zoom never crosses an empty gap — and every star shown there is genuine.
-function revealAlpha( fovDeg, imageFovDeg )
+function revealAlpha( fovDeg, imageFovDeg, wideMult )
 {
-   var wide = imageFovDeg*6;
+   var wide = imageFovDeg*( wideMult || 6 );
    if ( fovDeg <= imageFovDeg ) return 1;
    if ( fovDeg >= wide ) return 0;
    return smoothstep01( ( wide - fovDeg )/( wide - imageFovDeg ) );
 }
 
-// Opacity of the constellation figures: absent on the whole-sky shot, strongest
-// at medium fields, gone once we dive into the target field.
+// Opacity of the constellation figures: present from the very first frame
+// (whole sky, a touch calmer to avoid clutter), full across medium fields,
+// gone once we dive into the target field.
 function constellationAlpha( fovDeg )
 {
-   var inA = 120, inB = 70, outA = 12, outB = 6;
-   if ( fovDeg >= inA ) return 0;
-   if ( fovDeg > inB ) return smoothstep01( ( inA - fovDeg )/( inA - inB ) );
-   if ( fovDeg >= outA ) return 1;
-   if ( fovDeg > outB ) return smoothstep01( ( fovDeg - outB )/( outA - outB ) );
+   if ( fovDeg <= 4 ) return 0;
+   if ( fovDeg < 8 ) return smoothstep01( ( fovDeg - 4 )/4 );
+   if ( fovDeg <= 60 ) return 1;
+   if ( fovDeg < 160 ) return 0.45 + 0.55*smoothstep01( ( 160 - fovDeg )/100 );
+   return 0.45;
+}
+
+// Opacity of constellation NAME labels — a narrower band than the figures, so
+// names appear once the figure is readable and vanish before the dive.
+function constellationLabelAlpha( fovDeg )
+{
+   return ( fovDeg > 6 && fovDeg < 150 ) ? constellationAlpha( fovDeg ) : 0;
+}
+
+// Generic fade band over a DECREASING quantity (the FOV): 0 at inStart, ramps
+// to 1 by inFull, holds to outFull, ramps back to 0 by outEnd.
+// inStart > inFull >= outFull > outEnd.
+function fadeBand( x, inStart, inFull, outFull, outEnd )
+{
+   if ( x >= inStart ) return 0;
+   if ( x > inFull ) return smoothstep01( ( inStart - x )/( inStart - inFull ) );
+   if ( x >= outFull ) return 1;
+   if ( x > outEnd ) return smoothstep01( ( x - outEnd )/( outFull - outEnd ) );
    return 0;
 }
 
-// Limiting magnitude shown at a given FOV: brighter-only wide, deeper closer in
-// (NamedStars runs out near mag 7).
+// Limiting magnitude shown at a given FOV: the bright naked-eye set on the
+// whole-sky shot, everything the catalog has (to ~mag 7) once we close in.
 function limitingMagnitude( fovDeg )
 {
    var f = Math.min( 60, Math.max( 5, fovDeg ) );
-   return 5.5 + 1.5*smoothstep01( ( 60 - f )/55 );
+   return 6.5 + 0.5*smoothstep01( ( 60 - f )/55 );
+}
+
+// Synthetic WCS for a HiPS survey image: a TAN cutout centered on (ra,dec),
+// north up, east left (the hips2fits default), nPx square, fovDeg across.
+function makeSurveyWcs( ra, dec, fovDeg, nPx )
+{
+   var s = fovDeg/nPx;   // deg/px
+   return makeWcs( ra, dec, nPx/2, nPx/2, [ [ -s, 0 ], [ 0, -s ] ] );
+}
+
+// Unit-sphere centroid of each constellation from ConstellationBorders.json
+// (segments carry the two adjacent constellation codes c1/c2; x is in degrees).
+// Returns { CODE: { ra, dec } }.
+function constellationCentroids( bordersJson )
+{
+   var data = ( typeof bordersJson == "string" ) ? JSON.parse( bordersJson ) : bordersJson;
+   var acc = {};
+   function add( code, ra, dec )
+   {
+      if ( !code )
+         return;
+      var a = deg2rad( ra ), d = deg2rad( dec );
+      var v = acc[ code ] || ( acc[ code ] = { x: 0, y: 0, z: 0 } );
+      v.x += Math.cos( d )*Math.cos( a );
+      v.y += Math.cos( d )*Math.sin( a );
+      v.z += Math.sin( d );
+   }
+   for ( var i = 0; i < data.length; ++i )
+   {
+      var pol = data[ i ].pol;
+      if ( !pol )
+         continue;
+      for ( var j = 0; j < pol.length; ++j )
+      {
+         add( data[ i ].c1, pol[ j ].x, pol[ j ].y );
+         add( data[ i ].c2, pol[ j ].x, pol[ j ].y );
+      }
+   }
+   var out = {};
+   for ( var code in acc )
+   {
+      var v = acc[ code ];
+      out[ code ] = {
+         ra: ( rad2deg( Math.atan2( v.y, v.x ) ) + 360 ) % 360,
+         dec: rad2deg( Math.atan2( v.z, Math.sqrt( v.x*v.x + v.y*v.y ) ) )
+      };
+   }
+   return out;
 }
 
 // Dot radius (px) for a star of given magnitude at the given magnitude limit.
@@ -846,8 +954,9 @@ function scaleBar( fovDeg, W )
 }
 
 // NamedStars.csv / Messier.csv share "id,alpha(deg),delta(deg),magnitude,..."
-// -> [{ ra, dec, mag }], optionally magnitude-limited.
-function parseStarCatalog( csvText, maxMag )
+// -> [{ ra, dec, mag, name }], optionally magnitude-limited. nameCol picks the
+// common-name column (7 for NamedStars); "" when absent or not requested.
+function parseStarCatalog( csvText, maxMag, nameCol )
 {
    var out = [];
    var lines = String( csvText ).split( "\n" );
@@ -861,7 +970,8 @@ function parseStarCatalog( csvText, maxMag )
          continue;
       if ( maxMag !== undefined && mag > maxMag )
          continue;
-      out.push( { ra: ra, dec: dec, mag: mag } );
+      var name = ( nameCol !== undefined && f.length > nameCol ) ? f[ nameCol ].trim() : "";
+      out.push( { ra: ra, dec: dec, mag: mag, name: name } );
    }
    return out;
 }
@@ -921,6 +1031,40 @@ function saveConfig( cfg )
    catch ( e )
    {
    }
+}
+
+// ---------------------------------------------------------------------------
+// Process-instance parameters — let the New Instance triangle save the current
+// settings as a draggable process icon, like any PixInsight script.
+
+function exportParameters( cfg )
+{
+   for ( var k in DEFAULT_CONFIG )
+      try { Parameters.set( k, cfg[ k ] ); } catch ( e ) {}
+}
+
+// Overlay any parameters carried by a launched process icon onto cfg.
+function importParameters( cfg )
+{
+   for ( var k in DEFAULT_CONFIG )
+   {
+      try
+      {
+         if ( !Parameters.has( k ) )
+            continue;
+         var def = DEFAULT_CONFIG[ k ];
+         if ( typeof def == "boolean" )
+            cfg[ k ] = Parameters.getBoolean( k );
+         else if ( typeof def == "number" )
+            cfg[ k ] = Number.isInteger( def ) ? Math.round( Parameters.getReal( k ) ) : Parameters.getReal( k );
+         else
+            cfg[ k ] = Parameters.getString( k );
+      }
+      catch ( e )
+      {
+      }
+   }
+   return cfg;
 }
 
 // ============================================================================
@@ -1242,24 +1386,66 @@ function readTextFileSafe( path )
    catch ( e ) { return ""; }
 }
 
-// Load the bundled catalogs once. Returns { stars, polys, ok }.
+// Load the bundled catalogs once. Returns { stars, polys, centroids, labels, ok }.
 var gZoomCatalogs = null;
 function loadZoomCatalogs()
 {
    if ( gZoomCatalogs != null )
       return gZoomCatalogs;
    var root = piInstallRoot();
-   var cat = { root: root, stars: [], polys: [], ok: false };
+   var cat = { root: root, stars: [], polys: [], centroids: {}, labels: {}, ok: false };
    if ( root.length )
    {
-      cat.stars = parseStarCatalog( readTextFileSafe( root + "/include/pjsr/astrometry/NamedStars.csv" ), 7.0 );
+      cat.stars = parseStarCatalog( readTextFileSafe( root + "/include/pjsr/astrometry/NamedStars.csv" ), 7.0, 7 );
       var linesText = readTextFileSafe( root + "/src/scripts/AnnotateImage/ConstellationLines.json" );
       if ( linesText.length )
          try { cat.polys = parseConstellationLines( linesText ); } catch ( e ) {}
+      var bordersText = readTextFileSafe( root + "/src/scripts/AnnotateImage/ConstellationBorders.json" );
+      if ( bordersText.length )
+         try { cat.centroids = constellationCentroids( bordersText ); } catch ( e ) {}
+      var labelsText = readTextFileSafe( root + "/src/scripts/AnnotateImage/ConstellationLabels.json" );
+      if ( labelsText.length )
+         try { cat.labels = JSON.parse( labelsText ); } catch ( e ) {}
       cat.ok = cat.stars.length > 0;
    }
    gZoomCatalogs = cat;
    return cat;
+}
+
+// hips2fits URL for a square TAN cutout centered on (ra,dec).
+function hips2fitsUrl( hips, ra, dec, fovDeg, nPx )
+{
+   return "https://alasky.cds.unistra.fr/hips-image-services/hips2fits?" +
+          "hips=" + encodeURIComponent( hips ) +
+          "&width=" + nPx + "&height=" + nPx +
+          "&fov=" + fovDeg +
+          "&projection=TAN&coordsys=icrs&format=jpg" +
+          "&ra=" + ra + "&dec=" + dec;
+}
+
+// Download a HiPS survey cutout from the CDS/Aladin public service and load it
+// as a Bitmap. Returns null on any failure (offline, timeout, bad image) — the
+// zoom then simply falls back to the catalog star field.
+function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx )
+{
+   var out = File.systemTempDirectory + "/sc-hips-" +
+             Math.round( ra*1000 ) + "_" + Math.round( dec*1000 ) + "_" + Math.round( fovDeg*1000 ) + ".jpg";
+   var url = hips2fitsUrl( hips, ra, dec, fovDeg, nPx );
+   var curl = ( platformKind() == "windows" ) ? "curl.exe" : "curl";
+   try { File.remove( out ); } catch ( e ) {}
+   var r = runExternal( curl, [ "-s", "-L", "-o", out, "--max-time", "60", url ], 70000, true );
+   if ( !r.started || r.exitCode != 0 || !File.exists( out ) )
+      return null;
+   try
+   {
+      var bmp = new Bitmap( out );
+      if ( bmp.width > 1 && bmp.height > 1 )
+         return bmp;
+   }
+   catch ( e )
+   {
+   }
+   return null;
 }
 
 // Overlay renderer. All facts come precomputed in `ov` (buildOverlayInfo).
@@ -1459,6 +1645,18 @@ function writeEncodeScript( framesDir, ffmpegArgs )
    return scriptPath;
 }
 
+// Reveal a file or folder in the OS file browser (best-effort, non-blocking).
+function openInFileBrowser( path )
+{
+   var kind = platformKind();
+   if ( kind == "windows" )
+      runExternal( "explorer.exe", [ path.split( "/" ).join( "\\" ) ], 4000, false );
+   else if ( kind == "macos" )
+      runExternal( "open", [ path ], 4000, false );
+   else
+      runExternal( "xdg-open", [ path ], 4000, false );
+}
+
 // ============================================================================
 // ENGINE
 // ============================================================================
@@ -1473,7 +1671,15 @@ function Engine( cfg, frames )
    this.skipped = [];
    this.rendered = 0;
    this.aborted = false;
+   this.onProgress = null;   // optional (done, total, message); done<0 = indeterminate
 }
+
+// Report progress to a UI callback if one is attached (keeps the dialog alive).
+Engine.prototype.progress = function( done, total, message )
+{
+   if ( this.onProgress )
+      try { this.onProgress( done, total, message ); } catch ( e ) {}
+};
 
 Engine.prototype.baseName = function()
 {
@@ -1624,6 +1830,7 @@ Engine.prototype.runTimelapse = function()
       var bmp = renderOutputBitmap( win.mainView, cfg, ov );
       win.forceClose();
       this.saveFrame( bmp, ++outIndex );
+      this.progress( outIndex, this.frames.length, tr( "run.render", outIndex, this.frames.length, frame.name ) );
       console.writeln( tr( "run.render", outIndex, this.frames.length, frame.name ) );
       if ( ( outIndex & 7 ) == 0 )
          gc();
@@ -1727,6 +1934,7 @@ Engine.prototype.runStacking = function()
       var bmp = renderOutputBitmap( mean.mainView, cfg, ov );
       mean.forceClose();
       self.saveFrame( bmp, ++outIndex );
+      self.progress( outIndex, totalRenders, tr( "run.render", outIndex, totalRenders, frame.name ) );
       console.writeln( tr( "run.render", outIndex, totalRenders, frame.name ) );
    } );
    acc.mainView.endProcess();
@@ -1781,9 +1989,33 @@ Engine.prototype.runZoom = function()
    if ( !cat.ok )
       console.warningln( tr( "zoom.noCatalogs" ) );
 
+   var P = framing.fovDeg;
+
+   // Real-sky survey bridge (CDS/Aladin hips2fits): a near cutout at the image
+   // field and a wide one, fetched once. Their dense real stars carry the range
+   // where the bright-star catalog thins, then the photo takes over. Optional
+   // and best-effort — a failed fetch just falls back to the catalog stars.
+   var SURVEY_PX = 1600;
+   var nearBmp = null, nearWcs = null, wideBmp = null, wideWcs = null;
+   var wideFov = Math.max( 12, Math.min( 45, P*20 ) );
+   if ( cfg.hipsEnabled )
+   {
+      this.progress( -1, 0, tr( "zoom.fetching" ) );
+      console.writeln( tr( "zoom.fetching" ) );
+      nearBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, P, SURVEY_PX );
+      if ( nearBmp )
+         nearWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, P, SURVEY_PX );
+      wideBmp = fetchHipsBitmap( cfg.hipsSurvey, framing.centerRA, framing.centerDec, wideFov, SURVEY_PX );
+      if ( wideBmp )
+         wideWcs = makeSurveyWcs( framing.centerRA, framing.centerDec, wideFov, SURVEY_PX );
+      if ( !nearBmp && !wideBmp )
+         console.warningln( tr( "zoom.hipsFailed" ) );
+   }
+   var photoWideMult = nearBmp ? 2 : 6;   // crisp handoff when a survey bridges
+
    var fmt = OUTPUT_FORMATS[ cfg.formatIndex ];
    var W = fmt.w, H = fmt.h, unit = H/1080;
-   var startFov = Math.max( framing.fovDeg*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
+   var startFov = Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
    var N = Math.max( 2, Math.round( cfg.fps*cfg.targetDuration ) );
    var outIndex = 0;
 
@@ -1793,6 +2025,7 @@ Engine.prototype.runZoom = function()
          break;
       var t = i/( N - 1 );
       var cam = zoomCameraAt( t, framing, startFov, W, H );
+      var fov = cam.fovDeg;
 
       var out = new Bitmap( W, H );
       out.fill( 0xFF05070D );
@@ -1800,16 +2033,37 @@ Engine.prototype.runZoom = function()
       g.antialiasing = true;
       try { g.textAntialiasing = true; } catch ( e ) {}
 
+      if ( cfg.ovShowHorizon )
+         drawZoomHorizon( g, cam, unit );
       drawZoomStars( g, cam, cat.stars, unit );
       drawZoomConstellations( g, cam, cat.polys, unit );
-      var ra = revealAlpha( cam.fovDeg, framing.fovDeg );
+      if ( cfg.ovConstNames )
+         drawZoomConstellationNames( g, cam, cat.centroids, cat.labels, unit );
+      if ( cfg.ovStarNames )
+         drawZoomStarNames( g, cam, cat.stars, unit );
+
+      if ( wideBmp )
+      {
+         var wa = fadeBand( fov, wideFov*3, wideFov*1.2, P*3, P*1.5 );
+         if ( wa > 0 )
+            drawZoomReveal( g, cam, wideWcs, SURVEY_PX, SURVEY_PX, wideBmp, wa );
+      }
+      if ( nearBmp )
+      {
+         var na = fadeBand( fov, P*7, P*3, P*1.3, P*1.05 );
+         if ( na > 0 )
+            drawZoomReveal( g, cam, nearWcs, SURVEY_PX, SURVEY_PX, nearBmp, na );
+      }
+      var ra = revealAlpha( fov, P, photoWideMult );
       if ( ra > 0 )
          drawZoomReveal( g, cam, wcs, imgW, imgH, revealBmp, ra );
+
       drawZoomOverlay( g, cam, cfg, this.title, t );
       g.end();
 
       this.saveFrame( out, ++outIndex );
-      console.writeln( tr( "run.render", outIndex, N, formatAngle( cam.fovDeg ) ) );
+      this.progress( outIndex, N, tr( "run.render", outIndex, N, formatAngle( fov ) ) );
+      console.writeln( tr( "run.render", outIndex, N, formatAngle( fov ) ) );
       if ( ( outIndex & 7 ) == 0 )
          gc();
    }
@@ -1835,6 +2089,7 @@ Engine.prototype.encode = function()
       return { encoded: false, scriptPath: scriptPath };
    }
    console.writeln( tr( "run.encoding" ) );
+   this.progress( -1, 0, tr( "run.encoding" ) );
    var r = runExternal( ffmpeg, args, 0, true );
    // The written file is the ground truth — exit codes can lie (see above).
    if ( r.started && r.exitCode == 0 && File.exists( this.videoPath() ) )
@@ -1973,6 +2228,71 @@ function drawZoomStars( g, cam, stars, unit )
       g.brush = new Brush( argb( a, 0xFFFFFF ) );
       g.fillCircle( p.x, p.y, r );
    }
+}
+
+// Labels for the brightest named stars currently on screen (capped, so the
+// famous anchors are named without cluttering the field).
+function drawZoomStarNames( g, cam, stars, unit )
+{
+   var f = zoomFont( 15*unit, false );
+   g.font = f;
+   g.pen = new Pen( 0xB0EAF2FF );
+   var magLimit = Math.min( limitingMagnitude( cam.fovDeg ), 3.2 );
+   var drawn = 0;
+   for ( var i = 0; i < stars.length && drawn < 14; ++i )
+   {
+      var st = stars[ i ];
+      if ( !st.name || !st.name.length || st.mag > magLimit )
+         continue;
+      var p = projectToScreen( cam, st.ra, st.dec );
+      if ( !p.front || p.x < 40 || p.x > cam.W - 40 || p.y < 30 || p.y > cam.H - 60 )
+         continue;
+      g.drawText( p.x + Math.round( 8*unit ), p.y - Math.round( 6*unit ), st.name );
+      ++drawn;
+   }
+}
+
+// Constellation name labels at each constellation's centroid.
+function drawZoomConstellationNames( g, cam, centroids, labels, unit )
+{
+   var alpha = constellationLabelAlpha( cam.fovDeg );
+   if ( alpha <= 0 )
+      return;
+   var f = zoomFont( 17*unit, false );
+   g.font = f;
+   g.pen = new Pen( argb( 0.7*alpha, 0x9FE4F5 ) );
+   for ( var code in centroids )
+   {
+      var name = labels[ code ];
+      if ( !name )
+         continue;
+      var c = centroids[ code ];
+      var p = projectToScreen( cam, c.ra, c.dec );
+      if ( !p.front || p.x < 20 || p.x > cam.W - 20 || p.y < 20 || p.y > cam.H - 40 )
+         continue;
+      g.drawText( p.x - Math.round( f.width( name )/2 ), p.y, name );
+   }
+}
+
+// Stylized artificial horizon at wide fields, a scale cue that fades as we zoom
+// in (auto in v1 — a decorative ground, not a location-accurate alt-az line).
+function drawZoomHorizon( g, cam, unit )
+{
+   var a = fadeBand( cam.fovDeg, 200, 100, 100, 35 );
+   if ( a <= 0 )
+      return;
+   var W = cam.W, H = cam.H;
+   var y0 = Math.round( H*0.80 );
+   var prevOp = g.opacity;
+   g.opacity = a;
+   // Ground: three stacked bands darkening toward the bottom.
+   g.fillRect( new Rect( 0, y0, W, H ), new Brush( 0x40060A12 ) );
+   g.fillRect( new Rect( 0, y0 + Math.round( ( H - y0 )*0.4 ), W, H ), new Brush( 0x66040709 ) );
+   g.fillRect( new Rect( 0, y0 + Math.round( ( H - y0 )*0.75 ), W, H ), new Brush( 0x99020405 ) );
+   // Horizon glow line.
+   g.pen = new Pen( argb( 0.5, 0x2A3A5A ), Math.max( 1, 2*unit ) );
+   g.drawLine( 0, y0, W, y0 );
+   g.opacity = prevOp;
 }
 
 // Constellation figure lines, fading in around the constellation phase.
@@ -2382,6 +2702,35 @@ class SessionCinemaDialog extends Dialog
       this.checksRow2.add( this.scaleCheck );
       this.checksRow2.addStretch();
 
+      // Zoom Odyssey sky options.
+      this.constNamesCheck = new CheckBox( this );
+      this.constNamesCheck.text = tr( "zoom.constNames" );
+      this.constNamesCheck.checked = cfg.ovConstNames;
+      this.constNamesCheck.onCheck = ( c ) => { self.cfg.ovConstNames = c; };
+
+      this.starNamesCheck = new CheckBox( this );
+      this.starNamesCheck.text = tr( "zoom.starNames" );
+      this.starNamesCheck.checked = cfg.ovStarNames;
+      this.starNamesCheck.onCheck = ( c ) => { self.cfg.ovStarNames = c; };
+
+      this.horizonCheck = new CheckBox( this );
+      this.horizonCheck.text = tr( "zoom.horizon" );
+      this.horizonCheck.checked = cfg.ovShowHorizon;
+      this.horizonCheck.onCheck = ( c ) => { self.cfg.ovShowHorizon = c; };
+
+      this.hipsCheck = new CheckBox( this );
+      this.hipsCheck.text = tr( "zoom.hips" );
+      this.hipsCheck.checked = cfg.hipsEnabled;
+      this.hipsCheck.onCheck = ( c ) => { self.cfg.hipsEnabled = c; };
+
+      this.checksRow3 = new HorizontalSizer;
+      this.checksRow3.spacing = 12;
+      this.checksRow3.add( this.constNamesCheck );
+      this.checksRow3.add( this.starNamesCheck );
+      this.checksRow3.add( this.horizonCheck );
+      this.checksRow3.add( this.hipsCheck );
+      this.checksRow3.addStretch();
+
       this.subtitleLabel = new Label( this );
       this.subtitleLabel.text = tr( "overlay.subtitle" );
       this.subtitleLabel.minWidth = labelWidth;
@@ -2423,6 +2772,7 @@ class SessionCinemaDialog extends Dialog
       this.overlayGroup.sizer.add( this.titleSizer );
       this.overlayGroup.sizer.add( this.checksRow1 );
       this.overlayGroup.sizer.add( this.checksRow2 );
+      this.overlayGroup.sizer.add( this.checksRow3 );
       this.overlayGroup.sizer.add( this.subtitleSizer );
       this.overlayGroup.sizer.add( this.signatureSizer );
 
@@ -2646,11 +2996,32 @@ class SessionCinemaDialog extends Dialog
       this.closeButton.text = tr( "btn.close" );
       this.closeButton.onClick = () => this.cancel();
 
+      this.statusLabel = new Label( this );
+      this.statusLabel.text = "";
+      this.statusLabel.textAlignment = 0x82;   // vert-center, left
+
+      // The New Instance triangle: drag it to the workspace to save the current
+      // settings as a process icon, like any PixInsight script.
+      this.newInstanceButton = new ToolButton( this );
+      try { this.newInstanceButton.icon = this.scaledResource( ":/process-interface/new-instance.png" ); } catch ( e ) {}
+      try { this.newInstanceButton.setScaledFixedSize( 24, 24 ); } catch ( e ) {}
+      this.newInstanceButton.toolTip = tr( "btn.newInstance" );
+      this.newInstanceButton.onMousePress = () =>
+      {
+         self.newInstanceButton.hasFocus = true;
+         exportParameters( self.cfg );
+         self.newInstanceButton.pushed = false;
+         self.newInstance();
+      };
+
       this.bottomSizer = new HorizontalSizer;
       this.bottomSizer.spacing = 6;
+      this.bottomSizer.add( this.newInstanceButton );
+      this.bottomSizer.addSpacing( 8 );
       this.bottomSizer.add( this.langLabel );
       this.bottomSizer.add( this.langCombo );
-      this.bottomSizer.addStretch();
+      this.bottomSizer.addSpacing( 12 );
+      this.bottomSizer.add( this.statusLabel, 100 );
       this.bottomSizer.add( this.previewButton );
       this.bottomSizer.addSpacing( 12 );
       this.bottomSizer.add( this.generateButton );
@@ -2744,6 +3115,10 @@ class SessionCinemaDialog extends Dialog
       this.counterCheck.enabled = !isZoom;
       this.exposureCheck.enabled = !isZoom;
       this.scaleCheck.enabled = isZoom;
+      this.constNamesCheck.enabled = isZoom;
+      this.starNamesCheck.enabled = isZoom;
+      this.horizonCheck.enabled = isZoom;
+      this.hipsCheck.enabled = isZoom;
       this.subtitleLabel.enabled = isZoom;
       this.subtitleEdit.enabled = isZoom;
       this.distanceLabel.enabled = isZoom;
@@ -2895,13 +3270,133 @@ class SessionCinemaDialog extends Dialog
       }
    }
 
+   // Enable/disable the controls while a generation runs (the dialog stays open).
+   setBusy( busy )
+   {
+      this.generateButton.enabled = !busy;
+      this.previewButton.enabled = !busy && ( this.cfg.style != STYLE_ZOOM );
+      this.closeButton.enabled = !busy;
+      this.styleGroup.enabled = !busy;
+      this.overlayGroup.enabled = !busy;
+      this.videoGroup.enabled = !busy;
+      this.outGroup.enabled = !busy;
+      this.framesGroup.enabled = !busy;
+      this.zoomGroup.enabled = !busy;
+   }
+
+   // Generation runs inline so the dialog stays open, shows live progress, and
+   // ends on a result popup with links. The window closes only on Close.
    onGenerate()
    {
       if ( !this.validate( true ) )
          return;
       saveConfig( this.persistableConfig() );
-      this.wantsGenerate = true;
-      this.ok();
+
+      var self = this;
+      this.setBusy( true );
+      console.show();
+
+      var engine = new Engine( this.cfg, this.frames );
+      engine.onProgress = ( done, total, msg ) =>
+      {
+         self.statusLabel.text = ( done >= 0 && total > 0 )
+            ? ( msg + "   (" + Math.round( 100*done/total ) + "%)" )
+            : msg;
+         processEvents();
+      };
+
+      var result = null, error = "";
+      try
+      {
+         result = engine.run();
+      }
+      catch ( e )
+      {
+         error = e.message || String( e );
+      }
+
+      this.setBusy( false );
+      this.statusLabel.text = "";
+
+      if ( error.length )
+      {
+         ( new MessageBox( tr( "run.error", error ), tr( "err.title" ),
+                           StdIcon.Error, StdButton.Ok ) ).execute();
+         return;
+      }
+      if ( result )
+         ( new SessionCinemaResultDialog( result, this.cfg ) ).execute();
+   }
+}
+
+// ============================================================================
+// RESULT DIALOG — end-of-run summary with links; the main dialog stays open.
+// ============================================================================
+
+class SessionCinemaResultDialog extends Dialog
+{
+   constructor( result, cfg )
+   {
+      super();
+      var self = this;
+      this.windowTitle = tr( "result.title" );
+
+      var lines = [];
+      if ( result.aborted )
+         lines.push( tr( "result.aborted", result.rendered ) );
+      else if ( !result.ok || result.rendered == 0 )
+         lines.push( tr( "result.nothing" ) );
+      else
+      {
+         lines.push( tr( "result.rendered", result.rendered ) );
+         if ( result.videoPath && result.videoPath.length )
+            lines.push( tr( "result.video", result.videoPath ) );
+         else if ( result.scriptPath && result.scriptPath.length )
+            lines.push( tr( "result.script", result.scriptPath ) );
+         if ( result.skipped && result.skipped.length )
+            lines.push( tr( "result.skipped", result.skipped.length ) );
+      }
+
+      this.info = new Label( this );
+      this.info.text = lines.join( "\n" );
+      this.info.wordWrapping = true;
+      this.info.minWidth = 460;
+      this.info.margin = 8;
+      this.info.frameStyle = FrameStyle.Box;
+
+      this.buttons = new HorizontalSizer;
+      this.buttons.spacing = 6;
+
+      if ( result.videoPath && result.videoPath.length )
+      {
+         this.openVideoButton = new PushButton( this );
+         this.openVideoButton.text = tr( "result.openVideo" );
+         this.openVideoButton.onClick = () => openInFileBrowser( result.videoPath );
+         this.buttons.add( this.openVideoButton );
+      }
+      if ( result.framesDir && result.framesDir.length )
+      {
+         this.openFolderButton = new PushButton( this );
+         this.openFolderButton.text = tr( "result.openFolder" );
+         this.openFolderButton.onClick = () =>
+            openInFileBrowser( cfg.outputDir.length ? cfg.outputDir : result.framesDir );
+         this.buttons.add( this.openFolderButton );
+      }
+      this.buttons.addStretch();
+
+      this.closeButton = new PushButton( this );
+      this.closeButton.text = tr( "btn.close" );
+      this.closeButton.defaultButton = true;
+      this.closeButton.onClick = () => self.ok();
+      this.buttons.add( this.closeButton );
+
+      this.sizer = new VerticalSizer;
+      this.sizer.margin = 8;
+      this.sizer.spacing = 8;
+      this.sizer.add( this.info );
+      this.sizer.add( this.buttons );
+      this.adjustToContents();
+      this.setFixedSize();
    }
 }
 
@@ -2957,13 +3452,17 @@ function main()
    }
 
    var cfg = loadConfig();
+   importParameters( cfg );   // a launched process icon overrides saved settings
    gLanguage = cfg.language || "en";
 
+   // Generation runs inside the dialog (it stays open, shows progress, ends on
+   // a result popup). Here we only loop to rebuild the dialog on a live language
+   // switch; otherwise execute() returns when the user closes the window.
    var frames = [];
    for ( ;; )
    {
       var dialog = new SessionCinemaDialog( cfg, frames );
-      var accepted = dialog.execute();
+      dialog.execute();
       frames = dialog.frames;
       if ( dialog.wantsLanguageReload )
       {
@@ -2973,11 +3472,7 @@ function main()
          continue;
       }
       cfg = dialog.cfg;
-      if ( !accepted || !dialog.wantsGenerate )
-         return;
       saveConfig( dialog.persistableConfig() );
-      var engine = new Engine( cfg, frames );
-      engine.run();
       return;
    }
 }

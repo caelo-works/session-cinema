@@ -72,10 +72,58 @@ const near = ( a, b, eps, msg ) => assert.ok( Math.abs( a - b ) <= ( eps || 1e-6
    assert.strictEqual( M.revealAlpha( 6, 1 ), 0 );
    assert.ok( M.revealAlpha( 3, 1 ) > 0 && M.revealAlpha( 3, 1 ) < 1 );
    assert.ok( M.revealAlpha( 2, 1 ) > M.revealAlpha( 4, 1 ), "reveal grows as fov shrinks" );
-   assert.strictEqual( M.constellationAlpha( 150 ), 0 );
+   // constellations present from the whole-sky view (calmer), full mid-field, gone deep
+   assert.ok( M.constellationAlpha( 180 ) > 0 && M.constellationAlpha( 180 ) < 1, "present but calm at whole sky" );
    assert.strictEqual( M.constellationAlpha( 30 ), 1 );
    assert.strictEqual( M.constellationAlpha( 3 ), 0 );
+   assert.ok( M.constellationLabelAlpha( 180 ) === 0, "no names on the whole-sky shot" );
+   assert.ok( M.constellationLabelAlpha( 30 ) > 0, "names in the constellation phase" );
    assert.ok( M.limitingMagnitude( 5 ) > M.limitingMagnitude( 120 ), "deeper when zoomed in" );
+}
+
+// fadeBand over a decreasing quantity (fov)
+{
+   assert.strictEqual( M.fadeBand( 100, 90, 40, 20, 10 ), 0, "0 above inStart" );
+   assert.strictEqual( M.fadeBand( 40, 90, 40, 20, 10 ), 1, "1 at inFull" );
+   assert.strictEqual( M.fadeBand( 30, 90, 40, 20, 10 ), 1, "1 in hold band" );
+   assert.strictEqual( M.fadeBand( 10, 90, 40, 20, 10 ), 0, "0 at outEnd" );
+   assert.ok( M.fadeBand( 65, 90, 40, 20, 10 ) > 0 && M.fadeBand( 65, 90, 40, 20, 10 ) < 1, "ramping in" );
+   assert.ok( M.fadeBand( 15, 90, 40, 20, 10 ) > 0 && M.fadeBand( 15, 90, 40, 20, 10 ) < 1, "ramping out" );
+}
+
+// makeSurveyWcs round-trips its center and scale like a TAN cutout
+{
+   const w = M.makeSurveyWcs( 274.7, -13.8, 2.0, 1600 );
+   const c = M.wcsPixelToSky( w, 800, 800 );
+   near( c.ra, 274.7, 1e-6, "survey center RA" );
+   near( c.dec, -13.8, 1e-6, "survey center Dec" );
+   const fr = M.wcsImageFraming( w, 1600, 1600 );
+   near( fr.fovDeg, 2.0, 1e-4, "survey fov" );
+   // +x is west (east-left), +y is south (north-up)
+   assert.ok( M.wcsPixelToSky( w, 1600, 800 ).ra < 274.7, "survey +x -> lower RA (west)" );
+   assert.ok( M.wcsPixelToSky( w, 800, 0 ).dec > -13.8, "survey top -> higher Dec (north)" );
+}
+
+// constellation centroids from border segments (x in degrees)
+{
+   const borders = JSON.stringify( [
+      { c1: "AAA", c2: "BBB", pol: [ { x: 10, y: 20 }, { x: 12, y: 22 } ] },
+      { c1: "AAA", c2: "CCC", pol: [ { x: 8, y: 18 } ] }
+   ] );
+   const cen = M.constellationCentroids( borders );
+   assert.ok( cen.AAA && cen.BBB && cen.CCC );
+   near( cen.BBB.ra, 11, 0.5, "BBB centroid RA ~ mean of its two points" );
+   assert.ok( cen.AAA.dec > 17 && cen.AAA.dec < 23, "AAA centroid dec in range" );
+}
+
+// hips2fits URL points at the CDS/Aladin service with the right params
+{
+   const u = M.hips2fitsUrl( "CDS/P/DSS2/color", 274.7, -13.8, 1.5, 1600 );
+   assert.ok( u.indexOf( "alasky.cds.unistra.fr" ) > 0, "CDS host" );
+   assert.ok( u.indexOf( "hips2fits" ) > 0 );
+   assert.ok( u.indexOf( "projection=TAN" ) > 0 );
+   assert.ok( u.indexOf( "ra=274.7" ) > 0 && u.indexOf( "dec=-13.8" ) > 0 );
+   assert.ok( u.indexOf( "fov=1.5" ) > 0 && u.indexOf( "width=1600" ) > 0 );
 }
 
 // --- scale bar / angle formatting ---
