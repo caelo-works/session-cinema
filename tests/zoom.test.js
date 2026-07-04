@@ -248,6 +248,21 @@ assert.ok( M.smootherstep01( 0.3 ) < M.smootherstep01( 0.7 ), "monotone" );
    const id = M.cropWcs( solved, 0, 0, 1 );
    const c1 = M.wcsPixelToSky( id, 500, 500 ), c2 = M.wcsPixelToSky( solved, 500, 500 );
    near( c1.ra, c2.ra, 1e-12 ); near( c1.dec, c2.dec, 1e-12 );
+
+   // cropWcs with rotation + flip: revealPixel maps to solved(offset + R·S·F·revealPixel)
+   const rot = 30, fh = true, fv = false, sc = 0.7, ox = 400, oy = 250;
+   const rc = M.cropWcs( solved, ox, oy, sc, rot, fh, fv );
+   const th = rot*Math.PI/180, cc = Math.cos( th ), ss = Math.sin( th );
+   const fxs = -1, fys = 1;
+   for ( const [ rx, ry ] of [ [ 0, 0 ], [ 640, 360 ], [ 100, 900 ] ] )
+   {
+      const mx = cc*( sc*fxs*rx ) - ss*( sc*fys*ry );
+      const my = ss*( sc*fxs*rx ) + cc*( sc*fys*ry );
+      const a = M.wcsPixelToSky( rc, rx, ry );
+      const b = M.wcsPixelToSky( solved, ox + mx, oy + my );
+      near( a.ra, b.ra, 1e-9, "crop rot/flip RA at " + rx + "," + ry );
+      near( a.dec, b.dec, 1e-9, "crop rot/flip Dec at " + rx + "," + ry );
+   }
 }
 
 // constellation centroids from border segments (x in degrees)

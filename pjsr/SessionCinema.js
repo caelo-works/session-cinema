@@ -109,6 +109,9 @@ var DEFAULT_CONFIG = {
    zoomRevealOffX:  0,           // reveal→solved alignment: offset X (solved px)
    zoomRevealOffY:  0,           //  … offset Y (solved px)
    zoomRevealScale: 1.0,         //  … reveal-pixel to solved-pixel scale
+   zoomRevealRot:   0,           //  … rotation (deg)
+   zoomRevealFlipH: false,       //  … horizontal flip
+   zoomRevealFlipV: false,       //  … vertical flip
    zoomStartFov:    180,         // whole-sky field of view (deg) at t=0
    ovShowScale:     true,        // angular scale bar
    ovSubtitle:      "",          // free subtitle, e.g. the constellation name
@@ -183,7 +186,11 @@ var STRINGS = {
       "align.title":       "Align the reveal image on the solved image",
       "align.help":        "Drag the reveal image to position it, and adjust the scale so it matches the solved image behind. The overlay slider fades it to check the alignment.",
       "align.scale":       "Scale:",
+      "align.rotation":    "Rotation:",
       "align.opacity":     "Overlay:",
+      "align.flipH":       "Flip H",
+      "align.flipV":       "Flip V",
+      "align.rot90":       "Rotate 90°",
       "align.fit":         "Fit to solved",
       "align.fitHint":     "Assume the reveal covers the whole solved frame.",
       "align.loading":     "Loading images for alignment…",
@@ -358,7 +365,11 @@ var STRINGS = {
       "align.title":       "Aligner l'image à révéler sur l'image résolue",
       "align.help":        "Faites glisser l'image à révéler pour la positionner, et ajustez l'échelle pour qu'elle coïncide avec l'image résolue derrière. Le curseur d'opacité l'estompe pour vérifier l'alignement.",
       "align.scale":       "Échelle :",
+      "align.rotation":    "Rotation :",
       "align.opacity":     "Superposition :",
+      "align.flipH":       "Miroir H",
+      "align.flipV":       "Miroir V",
+      "align.rot90":       "Rotation 90°",
       "align.fit":         "Ajuster à l'image résolue",
       "align.fitHint":     "Suppose que l'image à révéler couvre tout le cadre résolu.",
       "align.loading":     "Chargement des images pour l'alignement…",
@@ -1190,14 +1201,26 @@ function scaleWcsToDims( wcs, fromW, fromH, toW, toH )
         [ wcs.cd[ 1 ][ 0 ]/sx, wcs.cd[ 1 ][ 1 ]/sy ] ] );
 }
 
-// WCS for a reveal image that maps onto the solved image by the affine
-// solvedPixel = offset + revealPixel * scale (uniform scale, no rotation) — the
-// output of the visual alignment tool when the reveal has a different crop.
-function cropWcs( wcs, offX, offY, scale )
+// WCS for a reveal image that maps onto the solved image by the similarity
+//   solvedPixel = offset + M · revealPixel,   M = R(rotDeg) · diag(scale·fx, scale·fy)
+// (fx/fy = -1 for a horizontal/vertical flip) — the full output of the visual
+// alignment tool (drag + scale + rotate + flip). With rotDeg=0 and no flip this
+// reduces to the plain offset+scale crop.
+function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
 {
-   return makeWcs( wcs.refRA, wcs.refDec, ( wcs.refX - offX )/scale, ( wcs.refY - offY )/scale,
-      [ [ wcs.cd[ 0 ][ 0 ]*scale, wcs.cd[ 0 ][ 1 ]*scale ],
-        [ wcs.cd[ 1 ][ 0 ]*scale, wcs.cd[ 1 ][ 1 ]*scale ] ] );
+   var th = deg2rad( rotDeg || 0 );
+   var c = Math.cos( th ), s = Math.sin( th );
+   var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
+   var m00 = c*scale*fx, m01 = -s*scale*fy;
+   var m10 = s*scale*fx, m11 = c*scale*fy;
+   var cd = wcs.cd;
+   var CD = [ [ cd[0][0]*m00 + cd[0][1]*m10, cd[0][0]*m01 + cd[0][1]*m11 ],
+              [ cd[1][0]*m00 + cd[1][1]*m10, cd[1][0]*m01 + cd[1][1]*m11 ] ];
+   var det = m00*m11 - m01*m10;
+   var dx = wcs.refX - offX, dy = wcs.refY - offY;
+   var refX = (  m11*dx - m01*dy )/det;   // inv(M) · (refPixSolved - offset)
+   var refY = ( -m10*dx + m00*dy )/det;
+   return makeWcs( wcs.refRA, wcs.refDec, refX, refY, CD );
 }
 
 // Unit-sphere centroid of each constellation from ConstellationBorders.json
@@ -2440,7 +2463,8 @@ Engine.prototype.runZoom = function()
       revealW = revealBmp.width;
       revealH = revealBmp.height;
       revealWcs = ( cfg.zoomRevealCropped && cfg.zoomRevealScale > 0 )
-                  ? cropWcs( wcs, cfg.zoomRevealOffX, cfg.zoomRevealOffY, cfg.zoomRevealScale )
+                  ? cropWcs( wcs, cfg.zoomRevealOffX, cfg.zoomRevealOffY, cfg.zoomRevealScale,
+                             cfg.zoomRevealRot, cfg.zoomRevealFlipH, cfg.zoomRevealFlipV )
                   : scaleWcsToDims( wcs, imgW, imgH, revealW, revealH );
       console.writeln( tr( "zoom.revealFrom", File.extractName( cfg.zoomRevealPath ) +
                            File.extractExtension( cfg.zoomRevealPath ), revealW, revealH ) );
@@ -4354,6 +4378,9 @@ class SessionCinemaDialog extends Dialog
          this.cfg.zoomRevealOffX = dlg.offX;
          this.cfg.zoomRevealOffY = dlg.offY;
          this.cfg.zoomRevealScale = dlg.scale;
+         this.cfg.zoomRevealRot = dlg.rotDeg;
+         this.cfg.zoomRevealFlipH = dlg.flipH;
+         this.cfg.zoomRevealFlipV = dlg.flipV;
          this.cfg.zoomRevealCropped = true;
          this.croppedCheck.checked = true;
       }
@@ -4570,6 +4597,9 @@ class ZoomAlignDialog extends Dialog
       this.offX = cfg.zoomRevealOffX;
       this.offY = cfg.zoomRevealOffY;
       this.scale = ( cfg.zoomRevealScale > 0 ) ? cfg.zoomRevealScale : ( this.solvedW/this.revealW );
+      this.rotDeg = cfg.zoomRevealRot || 0;
+      this.flipH = !!cfg.zoomRevealFlipH;
+      this.flipV = !!cfg.zoomRevealFlipV;
       this.overlay = 0.6;
       this.accepted = false;
 
@@ -4593,15 +4623,33 @@ class ZoomAlignDialog extends Dialog
          g.fillRect( 0, 0, this.width, this.height, new Brush( 0xFF0A0E16 ) );
          var ps = self.previewScale;
          g.drawScaledBitmap( new Rect( 0, 0, Math.round( self.solvedW*ps ), Math.round( self.solvedH*ps ) ), self.solvedBmp );
-         var rx = self.offX*ps, ry = self.offY*ps;
-         var rw = self.revealW*self.scale*ps, rh = self.revealH*self.scale*ps;
+
+         // Reveal drawn with the same similarity used at render time:
+         // screen = off·ps + R(rot)·diag(scale·ps·flip)·revealPixel
+         var fx = self.flipH ? -1 : 1, fy = self.flipV ? -1 : 1;
+         var sx = self.scale*ps*fx, sy = self.scale*ps*fy;
          var prevOp = g.opacity;
+         g.antialiasing = true;
          g.opacity = self.overlay;
-         g.drawScaledBitmap( new Rect( Math.round( rx ), Math.round( ry ),
-                                       Math.round( rx + rw ), Math.round( ry + rh ) ), self.revealBmp );
+         g.resetTransformation();
+         g.translateTransformation( self.offX*ps, self.offY*ps );
+         g.rotateTransformation( deg2rad( self.rotDeg ) );
+         g.scaleTransformation( sx, sy );
+         g.drawBitmap( 0, 0, self.revealBmp );
+         g.resetTransformation();
          g.opacity = prevOp;
+
+         // Outline the (possibly rotated/flipped) reveal quad.
+         var th = deg2rad( self.rotDeg ), c = Math.cos( th ), s = Math.sin( th );
+         function mp( px, py )
+         {
+            var X = c*( sx*px ) - s*( sy*py ), Y = s*( sx*px ) + c*( sy*py );
+            return { x: self.offX*ps + X, y: self.offY*ps + Y };
+         }
+         var q = [ mp( 0, 0 ), mp( self.revealW, 0 ), mp( self.revealW, self.revealH ), mp( 0, self.revealH ) ];
          g.pen = new Pen( 0xFF22D3EE, 2 );
-         g.drawRect( new Rect( Math.round( rx ), Math.round( ry ), Math.round( rx + rw ), Math.round( ry + rh ) ) );
+         for ( var k = 0; k < 4; ++k )
+            g.drawLine( q[ k ].x, q[ k ].y, q[ ( k + 1 )%4 ].x, q[ ( k + 1 )%4 ].y );
          g.end();
       };
       this.canvas.onMousePress = function( x, y, button, buttonState, modifiers )
@@ -4629,12 +4677,34 @@ class ZoomAlignDialog extends Dialog
       this.scaleControl.setValue( this.scale );
       this.scaleControl.onValueUpdated = ( v ) => { self.scale = v; self.canvas.repaint(); };
 
+      this.rotControl = new NumericControl( this );
+      this.rotControl.label.text = tr( "align.rotation" );
+      this.rotControl.setRange( -180, 180 );
+      this.rotControl.setPrecision( 2 );
+      this.rotControl.setValue( this.rotDeg );
+      this.rotControl.onValueUpdated = ( v ) => { self.rotDeg = v; self.canvas.repaint(); };
+
       this.opacityControl = new NumericControl( this );
       this.opacityControl.label.text = tr( "align.opacity" );
       this.opacityControl.setRange( 0.1, 1 );
       this.opacityControl.setPrecision( 2 );
       this.opacityControl.setValue( this.overlay );
       this.opacityControl.onValueUpdated = ( v ) => { self.overlay = v; self.canvas.repaint(); };
+
+      this.flipHButton = new PushButton( this );
+      this.flipHButton.text = tr( "align.flipH" );
+      this.flipHButton.onClick = () => { self.flipH = !self.flipH; self.canvas.repaint(); };
+      this.flipVButton = new PushButton( this );
+      this.flipVButton.text = tr( "align.flipV" );
+      this.flipVButton.onClick = () => { self.flipV = !self.flipV; self.canvas.repaint(); };
+      this.rot90Button = new PushButton( this );
+      this.rot90Button.text = tr( "align.rot90" );
+      this.rot90Button.onClick = () =>
+      {
+         self.rotDeg = ( ( self.rotDeg + 90 + 180 ) % 360 ) - 180;
+         self.rotControl.setValue( self.rotDeg );
+         self.canvas.repaint();
+      };
 
       this.fitButton = new PushButton( this );
       this.fitButton.text = tr( "align.fit" );
@@ -4644,7 +4714,11 @@ class ZoomAlignDialog extends Dialog
          self.scale = self.solvedW/self.revealW;
          self.offX = 0;
          self.offY = 0;
+         self.rotDeg = 0;
+         self.flipH = false;
+         self.flipV = false;
          self.scaleControl.setValue( self.scale );
+         self.rotControl.setValue( 0 );
          self.canvas.repaint();
       };
 
@@ -4661,9 +4735,17 @@ class ZoomAlignDialog extends Dialog
       this.ctrlSizer.spacing = 8;
       this.ctrlSizer.add( this.scaleControl, 100 );
       this.ctrlSizer.addSpacing( 12 );
-      this.ctrlSizer.add( this.opacityControl, 100 );
+      this.ctrlSizer.add( this.rotControl, 100 );
       this.ctrlSizer.addSpacing( 12 );
-      this.ctrlSizer.add( this.fitButton );
+      this.ctrlSizer.add( this.opacityControl, 100 );
+
+      this.ctrlSizer2 = new HorizontalSizer;
+      this.ctrlSizer2.spacing = 6;
+      this.ctrlSizer2.add( this.flipHButton );
+      this.ctrlSizer2.add( this.flipVButton );
+      this.ctrlSizer2.add( this.rot90Button );
+      this.ctrlSizer2.addStretch();
+      this.ctrlSizer2.add( this.fitButton );
 
       this.buttons = new HorizontalSizer;
       this.buttons.spacing = 6;
@@ -4677,6 +4759,7 @@ class ZoomAlignDialog extends Dialog
       this.sizer.add( this.help );
       this.sizer.add( this.canvas );
       this.sizer.add( this.ctrlSizer );
+      this.sizer.add( this.ctrlSizer2 );
       this.sizer.add( this.buttons );
       this.adjustToContents();
       this.setFixedSize();
