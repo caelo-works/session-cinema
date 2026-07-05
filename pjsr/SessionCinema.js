@@ -2,9 +2,9 @@
  * SessionCinema.js — entry point.
  *
  * Session Cinema turns one or more nights of raw light frames into videos:
- * a sky timelapse (clouds, meteors, field rotation) or a "watch your stack
- * build itself" progressive-integration movie, with sober, honest overlays
- * (frame count, cumulative exposure, measured SNR gain) ready for sharing.
+ * a "watch your stack build itself" progressive-integration movie (mono or a
+ * multi-filter colour composite), with sober, honest overlays (frame count,
+ * cumulative exposure, measured SNR gain) ready for sharing.
  *
  * Copyright (C) 2026 CaeloWorks
  *
@@ -20,9 +20,9 @@
 
 #feature-id    Utilities > Session Cinema
 #feature-icon  @script_icons_dir/SessionCinema.svg
-#feature-info  Turn a night of raw subs into a timelapse or a progressive \
-               live-stacking video with sober scientific overlays (frame \
-               count, cumulative exposure, measured SNR gain).
+#feature-info  Turn a night of raw subs into a progressive live-stacking video \
+               (mono or multi-filter colour) with sober scientific overlays \
+               (frame count, cumulative exposure, measured SNR gain).
 
 #define SC_VERSION "0.1.0"
 #define SC_TITLE   "Session Cinema"
@@ -58,9 +58,22 @@ function ensureMinimumVersion( maj, min, rel )
 // STYLES AND DEFAULT CONFIGURATION
 // ============================================================================
 
-var STYLE_TIMELAPSE = 0;   // one video frame per sub: clouds, meteors, rotation
 var STYLE_STACKING  = 1;   // cumulative mean integration, 1..N subs
 var STYLE_ZOOM      = 2;   // "you are here": whole sky -> constellation -> image
+
+// Progressive-stack brightness ramp: the balanced, stretched composite is dimmed
+// by one global factor (total_subs_so_far / total_subs)^gamma, so the light
+// visibly grows — dark at the start, exactly the optimal stretch on the final
+// frame — while the SHO colour stays balanced throughout. Applied AFTER the
+// per-channel stretch (dimming the linear signal would clip the faint channels
+// below their black point and green-dominate the buildup). gamma < 1 brightens
+// earlier than a linear ramp (gamma = 1).
+var STACK_RAMP_GAMMA = 0.5;
+
+// Default duration (s) of the end reveal (cross-fade from the final stack to the
+// aligned presentation image while zooming it to fill the frame); overridable
+// per run via cfg.stackRevealSec.
+var STACK_REVEAL_SEC = 2.0;
 
 var STRETCH_REF_FINAL = 0; // fixed stretch computed on the final stack (2 passes)
 var STRETCH_REF_FIRST = 1; // fixed stretch computed on the first frame (1 pass)
@@ -94,13 +107,30 @@ var DEFAULT_CONFIG = {
    ovTitle:         "",
    ovShowCounter:   true,
    ovShowExposure:  true,
-   ovShowTime:      true,        // timelapse: UT clock from DATE-OBS
+   ovShowTime:      true,        // UT clock of the current sub, from DATE-OBS
    ovShowSnr:       true,        // stacking: measured noise-based SNR gain
    ovShowBar:       true,
    ovSignature:     "",
    outputDir:       "",
    keepFrames:      false,
    ffmpegPath:      "",
+   // Multi-filter colour + registration (progressive stack)
+   alignEnabled:    true,        // register subs (StarAlignment): dithering + meridian flip
+   colorEnabled:    true,        // combine filters into an RGB composite (else mono)
+   palette:         "SHO",       // preset id resolving the filter→channel mapping
+   chR:             "",          // FILTER value feeding the Red channel   ("" = from palette)
+   chG:             "",          //  … Green
+   chB:             "",          //  … Blue
+   removeGreen:     false,       // SCNR: cap green at the R/B neutral (kills the green cast)
+   // Presentation image revealed at the end of the stack (aligned onto the stack)
+   stackRevealPath: "",          // finished image (JPEG/TIFF/…); "" = no reveal
+   stackRevealOffX: 0,           // reveal→stack alignment: centre offset X (stack px)
+   stackRevealOffY: 0,           //  … Y
+   stackRevealScale: 1.0,        //  … reveal-pixel to stack-pixel scale
+   stackRevealRot:  0,           //  … rotation (deg)
+   stackRevealFlipH: false,      //  … horizontal flip
+   stackRevealFlipV: false,      //  … vertical flip
+   stackRevealSec:  2.0,         // reveal cross-fade + zoom-to-fill duration (s)
    // Zoom Odyssey
    zoomImagePath:   "",          // plate-solved image (provides the WCS)
    zoomRevealPath:  "",          // image inserted in the video (jpg/png/tiff/…);
@@ -163,14 +193,27 @@ var STRINGS = {
       "style.title":       "Style",
       "tab.sequence":      "From subs",
       "tab.zoom":          "Zoom Odyssey",
-      "tagline.timelapse": "Watch the night happen — clouds, meteors, field rotation.",
       "tagline.stacking":  "Watch your stack build itself, from 1 to N subs.",
       "tagline.zoom":      "You are here — from the whole sky down to your image.",
       "stretch.groupTitle": "Rendering",
-      "style.timelapse":   "Timelapse — one video frame per sub (clouds, meteors, field rotation)",
+      "seq.colorGroup":    "Colour (multi-filter)",
+      "seq.align":         "Register subs (corrects dithering + meridian flip)",
+      "seq.color":         "Colour composite — map filters to R / G / B",
+      "seq.removeGreen":   "Remove dominant green (SCNR)",
+      "seq.palette":       "Palette:",
+      "seq.chNone":        "(none)",
+      "seq.chR":           "R ←",
+      "seq.chG":           "G ←",
+      "seq.chB":           "B ←",
+      "seq.filtersFound":  "Filters detected: %1",
+      "seq.noFilters":     "Load subs to detect filters.",
+      "seq.revealGroup":   "Final image (revealed at the end)",
+      "seq.reveal":        "Presentation image:",
+      "seq.revealHint":    "Your finished, processed image — cross-faded in and held at the end. Align it onto the stack so the switch is seamless.",
+      "seq.revealDur":     "Reveal duration (s):",
       "style.stacking":    "Progressive stack — watch the integration build from 1 to N subs",
-      "style.stackNote":   "Stacking mode expects registered frames (e.g. the registered output of WBPP). " +
-                           "Unregistered subs will show as drifting stars, not a clean stack.",
+      "style.stackNote":   "Raw subs are registered automatically (dithering + meridian flip). " +
+                           "With several filters, map them to R/G/B for a colour composite.",
       "style.zoom":        "Zoom Odyssey — \"you are here\": whole sky → constellation → your image reveals itself",
       "style.zoomNote":    "Needs one plate-solved image (a WBPP master is already solved). " +
                            "Its embedded WCS drives the zoom; the sky is drawn from PixInsight's bundled catalogs.",
@@ -222,7 +265,7 @@ var STRINGS = {
       "overlay.videoTitle.hint": "blank = OBJECT from the frames",
       "overlay.counter":   "Frame counter",
       "overlay.exposure":  "Cumulative exposure",
-      "overlay.time":      "UT clock (timelapse)",
+      "overlay.time":      "UT clock",
       "overlay.snr":       "Measured SNR gain (stacking)",
       "overlay.bar":       "Progress bar",
       "overlay.scale":     "Angular scale bar (zoom)",
@@ -274,7 +317,6 @@ var STRINGS = {
       "out.ffmpegFound":   "ffmpeg found: %1",
       "out.ffmpegMissing": "ffmpeg not found — the PNG sequence and an encoding script will be generated instead.",
 
-      "btn.preview":       "Preview frame",
       "btn.generate":      "Generate",
       "btn.close":         "Close",
       "btn.newInstance":   "New Instance — drag to the workspace to save a process icon",
@@ -286,7 +328,6 @@ var STRINGS = {
       "err.title":         "Session Cinema",
 
       "run.start":         "Session Cinema %1 — %2 frames, style: %3",
-      "run.styleTimelapse": "timelapse",
       "run.styleStacking": "progressive stack",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Plate solve read: field %1, center RA %2° Dec %3°.",
@@ -303,6 +344,9 @@ var STRINGS = {
       "zoom.errUnsolved":  "This image has no astrometric solution. Solve it first (Script > Image Analysis > ImageSolver), then run Session Cinema again.",
       "run.pass1":         "Pass 1 of 2 — integrating %1 frames to compute the reference stretch…",
       "run.pass1Done":     "Reference stretch computed on the final stack.",
+      "run.registering":   "Registering %1 sub(s) (StarAlignment: dithering + meridian flip)…",
+      "run.regCached":     "Registration reused from cache.",
+      "run.regRef":        "Alignment reference: %1",
       "run.render":        "Rendered %1 / %2 (%3)",
       "run.skipped":       "Skipped (unreadable or geometry mismatch): %1",
       "run.aborted":       "Aborted by user. %1 frame(s) were rendered.",
@@ -312,7 +356,6 @@ var STRINGS = {
       "run.encodeScript":  "ffmpeg not available — PNG sequence kept, run %1 to encode.",
       "run.framesKept":    "Frame sequence: %1",
       "run.done":          "Done. %1 frame(s) rendered in %2.",
-      "run.previewDone":   "Preview written and opened: %1",
       "run.error":         "Generation failed: %1",
 
       "result.title":      "Session Cinema — done",
@@ -347,14 +390,27 @@ var STRINGS = {
       "style.title":       "Style",
       "tab.sequence":      "Depuis des brutes",
       "tab.zoom":          "Zoom Odyssey",
-      "tagline.timelapse": "Regarde la nuit se dérouler — nuages, météores, rotation de champ.",
       "tagline.stacking":  "Regarde ton empilement se construire, de 1 à N brutes.",
       "tagline.zoom":      "Tu es ici — du ciel entier jusqu'à ton image.",
       "stretch.groupTitle": "Rendu",
-      "style.timelapse":   "Timelapse — une image vidéo par brute (nuages, météores, rotation de champ)",
+      "seq.colorGroup":    "Couleur (multi-filtre)",
+      "seq.align":         "Recaler les brutes (corrige dithering + flip méridien)",
+      "seq.color":         "Composite couleur — associer les filtres à R / V / B",
+      "seq.removeGreen":   "Supprimer la dominante verte (SCNR)",
+      "seq.palette":       "Palette :",
+      "seq.chNone":        "(aucun)",
+      "seq.chR":           "R ←",
+      "seq.chG":           "V ←",
+      "seq.chB":           "B ←",
+      "seq.filtersFound":  "Filtres détectés : %1",
+      "seq.noFilters":     "Chargez des brutes pour détecter les filtres.",
+      "seq.revealGroup":   "Image finale (révélée à la fin)",
+      "seq.reveal":        "Image à présenter :",
+      "seq.revealHint":    "Ton image traitée finale — fondu enchaîné puis maintenue à la fin. Aligne-la sur le stack pour que le passage soit invisible.",
+      "seq.revealDur":     "Durée du reveal (s) :",
       "style.stacking":    "Empilement progressif — l'intégration se construit de 1 à N brutes",
-      "style.stackNote":   "Le mode empilement attend des brutes alignées (ex. la sortie registered de WBPP). " +
-                           "Des brutes non alignées donneront des étoiles qui dérivent, pas un empilement propre.",
+      "style.stackNote":   "Les brutes sont recalées automatiquement (dithering + flip méridien). " +
+                           "Avec plusieurs filtres, associez-les à R/V/B pour un composite couleur.",
       "style.zoom":        "Zoom Odyssey — « tu es ici » : ciel entier → constellation → ton image se révèle",
       "style.zoomNote":    "Nécessite une image résolue astrométriquement (un master WBPP l'est déjà). " +
                            "Son WCS embarqué pilote le zoom ; le ciel est tracé depuis les catalogues fournis avec PixInsight.",
@@ -406,7 +462,7 @@ var STRINGS = {
       "overlay.videoTitle.hint": "vide = OBJECT lu dans les brutes",
       "overlay.counter":   "Compteur d'images",
       "overlay.exposure":  "Exposition cumulée",
-      "overlay.time":      "Horloge TU (timelapse)",
+      "overlay.time":      "Horloge TU",
       "overlay.snr":       "Gain de SNR mesuré (empilement)",
       "overlay.bar":       "Barre de progression",
       "overlay.scale":     "Barre d'échelle angulaire (zoom)",
@@ -458,7 +514,6 @@ var STRINGS = {
       "out.ffmpegFound":   "ffmpeg trouvé : %1",
       "out.ffmpegMissing": "ffmpeg introuvable — la séquence PNG et un script d'encodage seront générés.",
 
-      "btn.preview":       "Aperçu d'une image",
       "btn.generate":      "Générer",
       "btn.close":         "Fermer",
       "btn.newInstance":   "New Instance — glissez sur l'espace de travail pour créer une icône de process",
@@ -470,7 +525,6 @@ var STRINGS = {
       "err.title":         "Session Cinema",
 
       "run.start":         "Session Cinema %1 — %2 brutes, style : %3",
-      "run.styleTimelapse": "timelapse",
       "run.styleStacking": "empilement progressif",
       "run.styleZoom":     "zoom odyssey",
       "zoom.solved":       "Solve astrométrique lu : champ %1, centre AD %2° Déc %3°.",
@@ -487,6 +541,9 @@ var STRINGS = {
       "zoom.errUnsolved":  "Cette image n'a pas de solution astrométrique. Résolvez-la d'abord (Script > Image Analysis > ImageSolver), puis relancez Session Cinema.",
       "run.pass1":         "Passe 1 sur 2 — intégration des %1 brutes pour calculer l'étirement de référence…",
       "run.pass1Done":     "Étirement de référence calculé sur le stack final.",
+      "run.registering":   "Recalage de %1 brute(s) (StarAlignment : dithering + flip méridien)…",
+      "run.regCached":     "Recalage réutilisé depuis le cache.",
+      "run.regRef":        "Référence d'alignement : %1",
       "run.render":        "Rendu %1 / %2 (%3)",
       "run.skipped":       "Ignorées (illisibles ou géométrie différente) : %1",
       "run.aborted":       "Interrompu par l'utilisateur. %1 image(s) rendues.",
@@ -496,7 +553,6 @@ var STRINGS = {
       "run.encodeScript":  "ffmpeg indisponible — séquence PNG conservée, lancez %1 pour encoder.",
       "run.framesKept":    "Séquence d'images : %1",
       "run.done":          "Terminé. %1 image(s) rendues en %2.",
-      "run.previewDone":   "Aperçu écrit et ouvert : %1",
       "run.error":         "Échec de la génération : %1",
 
       "result.title":      "Session Cinema — terminé",
@@ -708,36 +764,26 @@ function buildOverlayInfo( cfg, info )
 {
    var subLeft = [];
    var right = [];
-   if ( info.style == STYLE_STACKING )
+   var parts = [];
+   if ( cfg.ovShowCounter )
+      parts.push( info.index + ( info.exposure > 0 ? " × " + Math.round( info.exposure ) + " s" : "" ) );
+   if ( cfg.ovShowExposure && info.cumulativeExposure > 0 )
+      parts.push( formatDuration( info.cumulativeExposure ) );
+   if ( cfg.ovShowSnr )
    {
-      var parts = [];
-      if ( cfg.ovShowCounter )
-         parts.push( info.index + ( info.exposure > 0 ? " × " + Math.round( info.exposure ) + " s" : "" ) );
-      if ( cfg.ovShowExposure && info.cumulativeExposure > 0 )
-         parts.push( formatDuration( info.cumulativeExposure ) );
-      if ( cfg.ovShowSnr )
-      {
-         var db = formatSnrGainDb( info.sigmaFirst, info.sigmaCurrent );
-         if ( db.length )
-            parts.push( "SNR " + db );
-      }
-      if ( parts.length )
-         subLeft.push( parts.join( "  ·  " ) );
-      if ( cfg.ovShowCounter )
-         right.push( info.index + "/" + info.total );
+      var db = formatSnrGainDb( info.sigmaFirst, info.sigmaCurrent );
+      if ( db.length )
+         parts.push( "SNR " + db );
    }
-   else
-   {
-      var tparts = [];
-      if ( cfg.ovShowTime && info.dateObs !== null && info.dateObs !== undefined )
-         tparts.push( "UT " + formatClockUT( info.dateObs ) );
-      if ( cfg.ovShowCounter )
-         tparts.push( info.index + "/" + info.total );
-      if ( tparts.length )
-         right.push( tparts.join( "  ·  " ) );
-      if ( cfg.ovShowExposure && info.cumulativeExposure > 0 )
-         subLeft.push( formatDuration( info.cumulativeExposure ) );
-   }
+   if ( parts.length )
+      subLeft.push( parts.join( "  ·  " ) );
+   var tright = [];
+   if ( cfg.ovShowTime && info.dateObs !== null && info.dateObs !== undefined )
+      tright.push( "UT " + formatClockUT( info.dateObs ) );
+   if ( cfg.ovShowCounter )
+      tright.push( info.index + "/" + info.total );
+   if ( tright.length )
+      right.push( tright.join( "  ·  " ) );
    return {
       title: ( info.title !== undefined ) ? info.title : ( cfg.ovTitle || "" ),
       subLeft: subLeft.join( "  ·  " ),
@@ -838,6 +884,108 @@ function frameMetaFromKeywords( map )
    var pat = kwValue( map[ "BAYERPAT" ] || map[ "COLORTYP" ] || "" );
    meta.cfa = pat.length > 0 && pat.toUpperCase() != "NONE";
    return meta;
+}
+
+// ============================================================================
+// MULTI-FILTER COLOUR — filter detection, palettes, channel mapping (pure)
+// ============================================================================
+//
+// A night may span several filters interleaved in time (H, O, S, …). The
+// progressive stack can combine them into an RGB composite: each channel is fed
+// by one filter, chosen from a palette preset or overridden by the user. All of
+// the following is free of PixInsight APIs and unit-tested.
+
+// Map a raw FILTER keyword to a canonical narrowband/broadband role token so
+// palettes can match "H"/"Ha"/"Halpha" alike. Unknown names pass through
+// uppercased, so an exact-name palette/override still works.
+function canonicalFilter( name )
+{
+   var s = String( name || "" ).trim().toUpperCase().replace( /[\s_\-]/g, "" );
+   if ( s == "" ) return "";
+   if ( s == "HA" || s == "H" || s == "HALPHA" || s == "HALPH" ) return "Ha";
+   if ( s == "OIII" || s == "O3" || s == "O" || s == "OII" ) return "OIII";
+   if ( s == "SII" || s == "S2" || s == "S" ) return "SII";
+   if ( s == "L" || s == "LUM" || s == "LUMINANCE" || s == "CLEAR" ) return "L";
+   if ( s == "R" || s == "RED" ) return "R";
+   if ( s == "G" || s == "GREEN" ) return "G";
+   if ( s == "B" || s == "BLUE" ) return "B";
+   return s;
+}
+
+// Palette presets: channel → canonical role. Resolved against the filters
+// actually present. "custom" means: use the explicit chR/chG/chB overrides.
+var PALETTES = {
+   SHO:  { R: "SII", G: "Ha",   B: "OIII", label: "SHO (Hubble)" },
+   HOO:  { R: "Ha",  G: "OIII", B: "OIII", label: "HOO (bicolour)" },
+   HOS:  { R: "Ha",  G: "OIII", B: "SII",  label: "HOS" },
+   RGB:  { R: "R",   G: "G",    B: "B",    label: "RGB" },
+   LRGB: { R: "R",   G: "G",    B: "B",    label: "LRGB" }
+};
+var PALETTE_ORDER = [ "SHO", "HOO", "HOS", "RGB", "LRGB" ];
+
+// Distinct FILTER values present, in first-appearance (shoot) order, with counts.
+function detectFilters( frames )
+{
+   var seen = {}, out = [];
+   for ( var i = 0; i < frames.length; ++i )
+   {
+      var f = String( ( frames[ i ] && frames[ i ].filter ) || "" ).trim();
+      if ( !f.length ) continue;
+      if ( seen.hasOwnProperty( f ) ) { out[ seen[ f ] ].count++; continue; }
+      seen[ f ] = out.length;
+      out.push( { filter: f, count: 1 } );
+   }
+   return out;
+}
+
+// Resolve {R,G,B} → actual FILTER name (or "" for an unfed channel). Explicit
+// chR/chG/chB win; otherwise the palette's canonical roles are matched against
+// the detected filters. `filters` is the detectFilters() array.
+function resolveChannelMap( cfg, filters )
+{
+   var byCanon = {};
+   for ( var i = 0; i < filters.length; ++i )
+   {
+      var c = canonicalFilter( filters[ i ].filter );
+      if ( !byCanon.hasOwnProperty( c ) ) byCanon[ c ] = filters[ i ].filter;  // first wins
+   }
+   var present = {};
+   for ( var j = 0; j < filters.length; ++j ) present[ filters[ j ].filter ] = true;
+
+   function pick( override, role )
+   {
+      var o = String( override || "" ).trim();
+      if ( o.length && present[ o ] ) return o;            // explicit, and present
+      if ( role && byCanon.hasOwnProperty( role ) ) return byCanon[ role ];
+      return "";
+   }
+   var pal = PALETTES[ cfg.palette ] || PALETTES.SHO;
+   return {
+      R: pick( cfg.chR, pal.R ),
+      G: pick( cfg.chG, pal.G ),
+      B: pick( cfg.chB, pal.B )
+   };
+}
+
+// Channels ('R'/'G'/'B') a given FILTER value feeds under a channel map (a
+// filter may feed several channels, e.g. OIII → G and B in HOO).
+function channelsFedBy( filter, map )
+{
+   var out = [];
+   if ( map.R && filter == map.R ) out.push( "R" );
+   if ( map.G && filter == map.G ) out.push( "G" );
+   if ( map.B && filter == map.B ) out.push( "B" );
+   return out;
+}
+
+// Colour mode is meaningful only when at least two distinct filters feed the
+// channels; otherwise fall back to mono. Returns the list of distinct filters used.
+function mappedFilters( map )
+{
+   var s = {}, out = [];
+   [ "R", "G", "B" ].forEach( function( c ) { if ( map[ c ] ) s[ map[ c ] ] = true; } );
+   for ( var k in s ) out.push( k );
+   return out;
 }
 
 // ============================================================================
@@ -1971,16 +2119,6 @@ function drawOverlay( g, W, H, ov )
 {
    var u = H/1080;
    var margin = Math.round( 40*u );
-   var hasBottom = ov.title.length || ov.subLeft.length || ov.right.length;
-
-   if ( hasBottom )
-   {
-      // Pseudo-gradient scrim: three stacked translucent bands.
-      var scrimTop = H - Math.round( 150*u );
-      g.fillRect( new Rect( 0, scrimTop, W, H ), new Brush( 0x26000000 ) );
-      g.fillRect( new Rect( 0, scrimTop + Math.round( 50*u ), W, H ), new Brush( 0x33000000 ) );
-      g.fillRect( new Rect( 0, scrimTop + Math.round( 100*u ), W, H ), new Brush( 0x40000000 ) );
-   }
 
    var titleFont = new Font( "Open Sans" );
    titleFont.pixelSize = Math.round( 34*u );
@@ -2036,7 +2174,8 @@ function renderOutputBitmap( view, cfg, ov )
    try { g.textAntialiasing = true; } catch ( e ) {}
    var r = computeCoverRect( src.width, src.height, W, H, cfg.fitMode );
    g.drawScaledBitmap( new Rect( r.x0, r.y0, r.x1, r.y1 ), src );
-   drawOverlay( g, W, H, ov );
+   if ( ov )                       // ov null → bare image (e.g. the reveal base, overlay drawn fixed on top)
+      drawOverlay( g, W, H, ov );
    g.end();
    return out;
 }
@@ -2048,6 +2187,26 @@ function makeWorkWindow( img, id )
                             32, true, img.isColor, id );
    w.mainView.beginProcess( UndoFlag.NoSwapFile );
    w.mainView.image.assign( img );
+   w.mainView.endProcess();
+   return w;
+}
+
+// A zeroed single-channel 32-bit float accumulator window of the given size.
+function makeAccWindow( width, height, id )
+{
+   var w = new ImageWindow( width, height, 1, 32, true, false, id );
+   w.mainView.beginProcess( UndoFlag.NoSwapFile );
+   w.mainView.image.fill( 0 );
+   w.mainView.endProcess();
+   return w;
+}
+
+// The denoised mean of an accumulator: a copy divided by the sub count.
+function meanOf( accImg, n, id )
+{
+   var w = makeWorkWindow( accImg, id );
+   w.mainView.beginProcess( UndoFlag.NoSwapFile );
+   w.mainView.image.apply( 1.0/n, ImageOp.Mul );
    w.mainView.endProcess();
    return w;
 }
@@ -2194,6 +2353,9 @@ function Engine( cfg, frames )
    // both the burned-in overlay and the output file names.
    this.title = resolveTitle( cfg, this.frames );
    this.skipped = [];
+   this.regDropped = [];     // subs dropped at registration (survives per-pass skip resets)
+   this.colorActive = false; // set in run(): multi-filter RGB composite in effect
+   this.paletteTag = "";     // palette id woven into the output name when colour is active
    this.rendered = 0;
    this.aborted = false;
    this.onProgress = null;   // optional (done, total, message, previewBmp?)
@@ -2211,9 +2373,9 @@ Engine.prototype.progress = function( done, total, message, previewBmp )
 Engine.prototype.baseName = function()
 {
    var slug = slugify( this.title || "session" );
-   var style = ( this.cfg.style == STYLE_TIMELAPSE ) ? "timelapse"
-             : ( this.cfg.style == STYLE_ZOOM ) ? "zoom" : "stack";
-   return slug + "-" + style;
+   var style = ( this.cfg.style == STYLE_ZOOM ) ? "zoom" : "stack";
+   var tag = ( this.colorActive && this.paletteTag ) ? ( this.paletteTag.toLowerCase() + "-" ) : "";
+   return slug + "-" + tag + style;
 };
 
 Engine.prototype.framesDir = function()
@@ -2319,52 +2481,106 @@ Engine.prototype.saveFrame = function( bmp, index )
 };
 
 // --------------------------------------------------------------------------
-// Timelapse: each sub is stretched and rendered as one video frame.
-Engine.prototype.runTimelapse = function()
+// Registration (StarAlignment). Raw subs from a dithered, meridian-flipping
+// session are not mutually aligned; the progressive stack needs them registered
+// to a common reference first. StarAlignment's
+// star-pattern matching is rotation-invariant, so one pass corrects the
+// dithering translation AND the ~180° meridian flip together, across filters
+// (faint OIII/SII subs match the same stars as the Ha reference). Registered
+// frames are cached on disk (keyed by the reference file) so re-runs are cheap.
+
+// Cache dir for a given reference file — under TEMP, namespaced by the
+// reference so a different input set (hence a different reference) never
+// reuses stale alignments.
+Engine.prototype.regCacheDir = function( refPath )
+{
+   return File.systemTempDirectory + "/sc-reg/" + File.extractName( refPath );
+};
+
+// Alignment reference: the first sub (shoot order) of the most-populated
+// filter — a dense-star frame the faint narrowband subs match cleanly against.
+function pickReference( frames )
+{
+   var filters = detectFilters( frames );
+   var dom = "", best = -1;
+   for ( var i = 0; i < filters.length; ++i )
+      if ( filters[ i ].count > best ) { best = filters[ i ].count; dom = filters[ i ].filter; }
+   for ( var j = 0; j < frames.length; ++j )
+      if ( !dom.length || frames[ j ].filter == dom )
+         return frames[ j ];
+   return frames[ 0 ];
+}
+Engine.prototype.pickReference = function() { return pickReference( this.frames ); };
+
+// Register this.frames to a common reference; returns a new frame list whose
+// paths point at the registered copies (metadata preserved). Frames that fail
+// to register are dropped (recorded in this.skipped). No-op if disabled.
+Engine.prototype.registerFrames = function()
 {
    var cfg = this.cfg;
-   var fixedStretch = null;
-   var cumExposure = 0;
-   var outIndex = 0;
+   if ( !cfg.alignEnabled || this.frames.length < 2 )
+      return this.frames;
+
+   var ref = this.pickReference();
+   var cacheDir = this.regCacheDir( ref.path );
+   if ( !File.directoryExists( cacheDir ) )
+      File.createDirectory( cacheDir, true );
+   console.noteln( tr( "run.regRef", ref.name ) );
+
+   function outFor( fr ) { return cacheDir + "/" + File.extractName( fr.path ) + "_r.xisf"; }
+
+   // Only (re)register subs whose registered output is missing (immutable
+   // captures ⇒ existence is a sufficient cache key).
+   var todo = [];
    for ( var i = 0; i < this.frames.length; ++i )
+      if ( !File.exists( outFor( this.frames[ i ] ) ) )
+         todo.push( this.frames[ i ] );
+
+   if ( todo.length )
    {
-      if ( this.checkAbort() )
-         break;
-      var frame = this.frames[ i ];
-      var win = this.openFrame( frame );
-      if ( win == null )
-         continue;
-      var stretch;
-      if ( cfg.stretchRef == STRETCH_REF_EACH )
-         stretch = computeStretchForImage( win.mainView.image, cfg.stretchLinked );
-      else
-      {
-         if ( fixedStretch == null )
-            fixedStretch = computeStretchForImage( win.mainView.image, cfg.stretchLinked );
-         stretch = fixedStretch;
-      }
-      applyStretchToView( win.mainView, stretch );
-      cumExposure += frame.exposure;
-      var ov = buildOverlayInfo( cfg, {
-         style: STYLE_TIMELAPSE,
-         index: i + 1,
-         total: this.frames.length,
-         cumulativeExposure: cumExposure,
-         exposure: frame.exposure,
-         dateObs: frame.dateObs,
-         sigmaFirst: 0,
-         sigmaCurrent: 0,
-         title: this.title
-      } );
-      var bmp = renderOutputBitmap( win.mainView, cfg, ov );
-      win.forceClose();
-      this.saveFrame( bmp, ++outIndex );
-      this.progress( outIndex, this.frames.length, tr( "run.render", outIndex, this.frames.length, frame.name ),
-                     ( ( outIndex & 3 ) == 0 ) ? bmp : null );
-      console.writeln( tr( "run.render", outIndex, this.frames.length, frame.name ) );
-      if ( ( outIndex & 7 ) == 0 )
-         gc();
+      console.noteln( tr( "run.registering", todo.length ) );
+      this.progress( 0, todo.length, tr( "run.registering", todo.length ) );
+      var SA = new StarAlignment;
+      SA.referenceImage        = ref.path;
+      SA.referenceIsFile       = true;                          // path is a file, not a view id
+      // mode defaults to RegisterMatch (0); the enum constant isn't reliably
+      // resolvable here, and setting it is unnecessary.
+      SA.restrictToPreviews    = false;
+      SA.generateDrizzleData   = false;
+      SA.generateMasks         = false;
+      SA.generateDistortionMaps = false;
+      SA.distortionCorrection  = false;                         // similarity: translation + rotation
+      SA.noGUIMessages         = true;
+      SA.overwriteExistingFiles = true;
+      SA.outputDirectory       = cacheDir;
+      SA.outputExtension       = ".xisf";
+      SA.outputPostfix         = "_r";
+      var tlist = [];
+      for ( var t = 0; t < todo.length; ++t )
+         tlist.push( [ true, true, todo[ t ].path ] );
+      SA.targets = tlist;
+      var ok = false;
+      try { ok = SA.executeGlobal(); }
+      catch ( e ) { console.criticalln( "StarAlignment failed: " + ( e.message || e ) ); }
+      if ( !ok )
+         console.warningln( "StarAlignment reported errors; using whatever registered outputs exist." );
    }
+   else
+      console.noteln( tr( "run.regCached" ) );
+
+   var out = [];
+   for ( var k = 0; k < this.frames.length; ++k )
+   {
+      var fr = this.frames[ k ];
+      var op = outFor( fr );
+      if ( File.exists( op ) )
+         out.push( { path: op, name: fr.name, dateObs: fr.dateObs, dateObsStr: fr.dateObsStr,
+                     exposure: fr.exposure, object: fr.object, filter: fr.filter,
+                     cfa: false, siteLat: fr.siteLat, siteLong: fr.siteLong } );
+      else
+         this.regDropped.push( fr.name + " (registration failed)" );
+   }
+   return out;
 };
 
 // --------------------------------------------------------------------------
@@ -2397,11 +2613,8 @@ Engine.prototype.runStacking = function()
          acc1.forceClose();
          return;
       }
-      var meanFinal = makeWorkWindow( acc1.mainView.image, "__sc_meanF" );
+      var meanFinal = meanOf( acc1.mainView.image, n1, "__sc_meanF" );
       acc1.forceClose();
-      meanFinal.mainView.beginProcess( UndoFlag.NoSwapFile );
-      meanFinal.mainView.image.apply( 1.0/n1, ImageOp.Mul );
-      meanFinal.mainView.endProcess();
       stretch = computeStretchForImage( meanFinal.mainView.image, cfg.stretchLinked );
       meanFinal.forceClose();
       gc();
@@ -2429,10 +2642,7 @@ Engine.prototype.runStacking = function()
       if ( !renderSet[ n ] )
          return;
 
-      var mean = makeWorkWindow( accImg, "__sc_mean" );
-      mean.mainView.beginProcess( UndoFlag.NoSwapFile );
-      mean.mainView.image.apply( 1.0/n, ImageOp.Mul );
-      mean.mainView.endProcess();
+      var mean = meanOf( accImg, n, "__sc_mean" );
 
       var sigma = estimateSigma( mean.mainView.image );
       if ( n == 1 || sigmaFirst <= 0 )
@@ -2451,7 +2661,6 @@ Engine.prototype.runStacking = function()
       mean.mainView.endProcess();
 
       var ov = buildOverlayInfo( cfg, {
-         style: STYLE_STACKING,
          index: n,
          total: N,
          cumulativeExposure: cumExposure,
@@ -2471,6 +2680,339 @@ Engine.prototype.runStacking = function()
    acc.mainView.endProcess();
    acc.forceClose();
    gc();
+};
+
+// --------------------------------------------------------------------------
+// MULTI-FILTER COLOUR rendering — SHO/HOO/… composites for the progressive stack.
+//
+// Subs are registered first (done in run()); each channel is stretched with a
+// fixed per-channel transfer computed on that channel's full integration
+// (honest, flicker-free), and RGB is assembled by writing each stretched mono
+// channel into its slot with the 4-arg apply(image, op, point, channel) form
+// (channel-selection reads/writes via first/lastSelectedChannel are unreliable
+// under #engine v8; the explicit-channel apply is not).
+
+// Resolve whether colour compositing applies to the current frames, and how.
+// Active only when enabled and at least two distinct filters feed the channels.
+Engine.prototype.colorPlan = function()
+{
+   var filters = detectFilters( this.frames );
+   var map = resolveChannelMap( this.cfg, filters );
+   var active = !!this.cfg.colorEnabled && mappedFilters( map ).length >= 2;
+   return { active: active, map: map, filters: filters };
+};
+
+// Assemble an RGB bitmap from up to three stretched mono channel images
+// ({R,G,B}; nulls render black). Geometry is taken from any present channel.
+function composeColorBitmap( chImages, cfg, ov )
+{
+   var ref = chImages.R || chImages.G || chImages.B;
+   var w = ref.width, h = ref.height;
+   var cw = new ImageWindow( w, h, 3, 32, true, true, "__sc_rgb" );
+   cw.mainView.beginProcess( UndoFlag.NoSwapFile );
+   var img = cw.mainView.image;
+   img.fill( 0 );
+   var keys = [ "R", "G", "B" ];
+   for ( var c = 0; c < 3; ++c )
+      if ( chImages[ keys[ c ] ] )
+         img.apply( chImages[ keys[ c ] ], ImageOp.Mov, new Point( 0, 0 ), c );
+   cw.mainView.endProcess();
+   var bmp = renderOutputBitmap( cw.mainView, cfg, ov );
+   cw.forceClose();
+   return bmp;
+}
+
+// Full integration (mean) of every sub of one filter; null if none.
+Engine.prototype.integrateFilter = function( filterName )
+{
+   var acc = null, n = 0;
+   for ( var i = 0; i < this.frames.length; ++i )
+   {
+      if ( this.checkAbort() ) break;
+      var fr = this.frames[ i ];
+      if ( fr.filter != filterName ) continue;
+      var win = this.openFrame( fr );
+      if ( win == null ) continue;
+      var im = win.mainView.image;
+      if ( acc == null )
+         acc = makeAccWindow( im.width, im.height, "__sc_int" );
+      acc.mainView.beginProcess( UndoFlag.NoSwapFile );
+      acc.mainView.image.apply( im, ImageOp.Add );
+      acc.mainView.endProcess();
+      win.forceClose();
+      if ( ( ++n & 7 ) == 0 ) gc();
+   }
+   if ( acc == null || n == 0 ) { if ( acc ) acc.forceClose(); return null; }
+   acc.mainView.beginProcess( UndoFlag.NoSwapFile );
+   acc.mainView.image.apply( 1.0/n, ImageOp.Mul );
+   acc.mainView.endProcess();
+   return { win: acc, n: n };
+};
+
+// Fixed per-channel stretch (2-pass FINAL): integrate each mapped filter once,
+// derive its transfer from the final mean. Distinct filters are integrated
+// once and shared across channels (HOO: OIII feeds G and B with one stretch).
+Engine.prototype.channelStretches = function( map )
+{
+   var distinct = mappedFilters( map );
+   var byFilter = {};
+   for ( var d = 0; d < distinct.length; ++d )
+   {
+      var r = this.integrateFilter( distinct[ d ] );
+      byFilter[ distinct[ d ] ] = r ? computeStretchForImage( r.win.mainView.image, false ) : null;
+      if ( r ) r.win.forceClose();
+      gc();
+   }
+   return { R: map.R ? byFilter[ map.R ] : null,
+            G: map.G ? byFilter[ map.G ] : null,
+            B: map.B ? byFilter[ map.B ] : null };
+};
+
+// Progressive stack, colour: subs (shoot order) accumulate into per-channel
+// means; the RGB composite builds over time. The displayed light grows with the
+// integrated flux (STACK_RAMP_GAMMA), so it starts dark and reaches the optimal
+// stretch exactly on the final frame. Rendering starts at the first frame where
+// every mapped channel has at least one sub (no lone single-channel opening).
+Engine.prototype.runStackingColor = function( map )
+{
+   var cfg = this.cfg;
+   var N = this.frames.length;
+   var keys = [ "R", "G", "B" ];
+
+   // Which channels are actually fed (their filter survives in this.frames), and
+   // the total number of channel-feeding subs (drives the global brightness ramp).
+   var fed = { R: false, G: false, B: false }, mappedFrames = 0;
+   for ( var f = 0; f < N; ++f )
+   {
+      var fch = channelsFedBy( this.frames[ f ].filter, map );
+      if ( fch.length ) ++mappedFrames;
+      for ( var fc = 0; fc < fch.length; ++fc ) fed[ fch[ fc ] ] = true;
+   }
+   var need = [];
+   for ( var nk = 0; nk < 3; ++nk )
+      if ( map[ keys[ nk ] ] && fed[ keys[ nk ] ] ) need.push( keys[ nk ] );
+   var seen = { R: 0, G: 0, B: 0 }, firstFullN = N;
+   for ( var s0 = 0; s0 < N; ++s0 )
+   {
+      var sch = channelsFedBy( this.frames[ s0 ].filter, map );
+      for ( var sc = 0; sc < sch.length; ++sc ) seen[ sch[ sc ] ] = 1;
+      var all = true;
+      for ( var an = 0; an < need.length; ++an ) if ( !seen[ need[ an ] ] ) all = false;
+      if ( all ) { firstFullN = s0 + 1; break; }
+   }
+
+   // Spread the render cadence over [firstFullN, N] so the first rendered frame
+   // is the first full-colour one and the last is the complete integration.
+   var T = computeRenderIndices( N, cfg.fps, cfg.targetDuration ).length;
+   var renderSet = {}, totalRenders = 0;
+   for ( var kk = 0; kk < T; ++kk )
+   {
+      var rn = ( T > 1 ) ? ( firstFullN + Math.round( kk*( N - firstFullN )/( T - 1 ) ) ) : N;
+      if ( !renderSet[ rn ] ) { renderSet[ rn ] = true; ++totalRenders; }
+   }
+
+   console.writeln( tr( "run.pass1", N ) );
+   var stretches = this.channelStretches( map );
+   console.writeln( tr( "run.pass1Done" ) );
+
+   var acc = { R: null, G: null, B: null }, cnt = { R: 0, G: 0, B: 0 };
+   var outIndex = 0, cumExposure = 0, integrated = 0;
+   var revealBase = null, lastOv = null, geomW = 0, geomH = 0;
+
+   for ( var i = 0; i < N; ++i )
+   {
+      if ( this.checkAbort() ) break;
+      var fr = this.frames[ i ];
+      var chans = channelsFedBy( fr.filter, map );
+      if ( !chans.length ) continue;
+      var win = this.openFrame( fr );
+      if ( win == null ) continue;
+      ++integrated;
+      var im = win.mainView.image;
+      if ( !geomW ) { geomW = im.width; geomH = im.height; }
+      for ( var c = 0; c < chans.length; ++c )
+      {
+         var ch = chans[ c ];
+         if ( acc[ ch ] == null )
+            acc[ ch ] = makeAccWindow( im.width, im.height, "__sc_acc" + ch );
+         acc[ ch ].mainView.beginProcess( UndoFlag.NoSwapFile );
+         acc[ ch ].mainView.image.apply( im, ImageOp.Add );
+         acc[ ch ].mainView.endProcess();
+         cnt[ ch ]++;
+      }
+      win.forceClose();
+      cumExposure += fr.exposure;
+
+      var n = i + 1;
+      if ( renderSet[ n ] )
+      {
+         // One global brightness factor (keeps SHO colour balanced as it grows).
+         var ramp = Math.pow( integrated/mappedFrames, STACK_RAMP_GAMMA );
+         var chImgs = { R: null, G: null, B: null }, mwByKey = {};
+         for ( var k = 0; k < 3; ++k )
+         {
+            var key = keys[ k ];
+            if ( acc[ key ] != null && cnt[ key ] > 0 && stretches[ key ] )
+            {
+               var mw = meanOf( acc[ key ].mainView.image, cnt[ key ], "__sc_m" + key );
+               applyStretchToView( mw.mainView, stretches[ key ] );
+               // Dim the *stretched* (balanced) channel by the global ramp: scaling
+               // the linear signal instead would push the faint channels below their
+               // black point and clip them, leaving a green-dominant buildup.
+               mw.mainView.beginProcess( UndoFlag.NoSwapFile );
+               mw.mainView.image.apply( ramp, ImageOp.Mul );
+               mw.mainView.endProcess();
+               chImgs[ key ] = mw.mainView.image;
+               mwByKey[ key ] = mw;
+            }
+         }
+         // Remove the dominant green (SCNR, average-neutral): cap the green channel
+         // at the R/B neutral so it never exceeds it — kills the green cast typical
+         // of SHO without touching genuinely green regions.
+         if ( cfg.removeGreen && mwByKey.G && ( mwByKey.R || mwByKey.B ) )
+         {
+            var neutral;
+            if ( mwByKey.R && mwByKey.B )
+            {
+               neutral = makeWorkWindow( mwByKey.R.mainView.image, "__sc_neu" );
+               neutral.mainView.beginProcess( UndoFlag.NoSwapFile );
+               neutral.mainView.image.apply( mwByKey.B.mainView.image, ImageOp.Add );
+               neutral.mainView.image.apply( 0.5, ImageOp.Mul );
+               neutral.mainView.endProcess();
+            }
+            else
+               neutral = makeWorkWindow( ( mwByKey.R || mwByKey.B ).mainView.image, "__sc_neu" );
+            mwByKey.G.mainView.beginProcess( UndoFlag.NoSwapFile );
+            mwByKey.G.mainView.image.apply( neutral.mainView.image, ImageOp.Min );
+            mwByKey.G.mainView.endProcess();
+            neutral.forceClose();
+         }
+         var ov = buildOverlayInfo( cfg, {
+            index: n, total: N,
+            cumulativeExposure: cumExposure, exposure: fr.exposure, dateObs: fr.dateObs,
+            sigmaFirst: 0, sigmaCurrent: 0, title: this.title } );
+         var bmp = composeColorBitmap( chImgs, cfg, ov );
+         if ( n == N )                                   // final frame → overlay-free reveal base
+         {
+            revealBase = composeColorBitmap( chImgs, cfg, null );
+            lastOv = ov;
+         }
+         for ( var kc in mwByKey ) mwByKey[ kc ].forceClose();
+         this.saveFrame( bmp, ++outIndex );
+         this.progress( outIndex, totalRenders, tr( "run.render", outIndex, totalRenders, fr.name ),
+                        ( ( outIndex & 3 ) == 0 ) ? bmp : null );
+         console.writeln( tr( "run.render", outIndex, totalRenders, fr.name ) );
+         if ( ( outIndex & 7 ) == 0 ) gc();
+      }
+   }
+   for ( var kf = 0; kf < 3; ++kf )
+      if ( acc[ keys[ kf ] ] ) acc[ keys[ kf ] ].forceClose();
+   gc();
+
+   // End reveal: cross-fade the final stack into the aligned presentation image
+   // while zooming it to fill the frame (held afterwards by the encoder). The
+   // base is overlay-free; the overlay is redrawn fixed on top of every reveal
+   // frame so it does not zoom with the image.
+   if ( !this.aborted && revealBase && geomW )
+      this.renderStackReveal( revealBase, geomW, geomH, lastOv, outIndex );
+};
+
+// Append the end-reveal frames: over STACK_REVEAL_SEC, cross-fade the final
+// stack composite (stackBmp, at output resolution) into the presentation image
+// aligned onto the stack (stackReveal* config), while a view zoom carries that
+// image from its stack-aligned placement to filling the video frame (contain
+// fit, no crop). stackW/stackH are the sub/accumulator dimensions.
+Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, outIndex )
+{
+   var cfg = this.cfg;
+   if ( !cfg.stackRevealPath || !cfg.stackRevealPath.length )
+      return outIndex;
+   var reveal = loadFinishedBitmap( cfg.stackRevealPath );
+   if ( reveal == null )
+   {
+      this.skipped.push( "presentation image unreadable" );
+      return outIndex;
+   }
+   var rw = reveal.width, rh = reveal.height;
+   var fmtDef = OUTPUT_FORMATS[ cfg.formatIndex ];
+   var W = fmtDef.w, H = fmtDef.h;
+
+   // stack px -> screen px (same cover mapping as renderOutputBitmap).
+   var cover = computeCoverRect( stackW, stackH, W, H, cfg.fitMode );
+   var sx = ( cover.x1 - cover.x0 )/stackW, sy = ( cover.y1 - cover.y0 )/stackH;
+   function toScreen( x, y ) { return { x: cover.x0 + x*sx, y: cover.y0 + y*sy }; }
+
+   // Reveal placement in stack px (shared with the align popup preview so what
+   // was aligned is what renders), mapped to screen.
+   var aligned = cfg.stackRevealScale > 0;
+   var pl = revealPlacement( aligned ? cfg.stackRevealOffX : stackW/2,
+                             aligned ? cfg.stackRevealOffY : stackH/2,
+                             aligned ? cfg.stackRevealScale : ( stackW/rw ),
+                             cfg.stackRevealRot, cfg.stackRevealFlipH, cfg.stackRevealFlipV,
+                             rw/2, rh/2 );
+   var cA  = toScreen( pl.c.x,  pl.c.y );
+   var exA = toScreen( pl.ex.x, pl.ex.y );
+   var eyA = toScreen( pl.ey.x, pl.ey.y );
+
+   // Contain-fit factor that brings the reveal to fill the frame (one dimension
+   // exact, no crop), zooming about the reveal centre toward the frame centre.
+   var halfW = Math.sqrt( ( exA.x - cA.x )*( exA.x - cA.x ) + ( exA.y - cA.y )*( exA.y - cA.y ) );
+   var halfH = Math.sqrt( ( eyA.x - cA.x )*( eyA.x - cA.x ) + ( eyA.y - cA.y )*( eyA.y - cA.y ) );
+   var kFill = Math.min( ( W/2 )/Math.max( 1e-6, halfW ), ( H/2 )/Math.max( 1e-6, halfH ) );
+   var fcx = W/2, fcy = H/2;
+
+   // View zoom about the reveal centre toward the frame centre (loop-invariant
+   // anchors captured once). e = eased progress, kView = current zoom factor.
+   function V( px, py, e, kView )
+   {
+      return { x: cA.x + ( fcx - cA.x )*e + kView*( px - cA.x ),
+               y: cA.y + ( fcy - cA.y )*e + kView*( py - cA.y ) };
+   }
+   // The fixed overlay is rendered once to a transparent layer and blitted on
+   // each frame (unscaled), so it stays anchored while the image zooms under it.
+   var ovBmp = null;
+   if ( ov )
+   {
+      ovBmp = new Bitmap( W, H );
+      ovBmp.fill( 0x00000000 );
+      var og = new Graphics( ovBmp );
+      og.antialiasing = true;
+      drawOverlay( og, W, H, ov );
+      og.end();
+   }
+
+   var revealSec = ( cfg.stackRevealSec > 0 ) ? cfg.stackRevealSec : STACK_REVEAL_SEC;
+   var tailFrames = Math.max( 1, Math.round( cfg.fps*revealSec ) );
+   for ( var tf = 1; tf <= tailFrames; ++tf )
+   {
+      if ( this.checkAbort() ) break;
+      var e = smootherstep01( tf/tailFrames );
+      var a = e;                               // reveal alpha (cross-fade in)
+      var kView = 1 + ( kFill - 1 )*e;         // zoom about the reveal centre
+      var out = new Bitmap( W, H );
+      out.fill( 0xFF000000 );
+      var g = new Graphics( out );
+      g.antialiasing = true;
+      // The final stack (full-frame bmp) under the same view zoom, fading out.
+      var tl = V( 0, 0, e, kView ), br = V( W, H, e, kView );
+      g.opacity = 1 - a;
+      g.drawScaledBitmap( new Rect( Math.round( tl.x ), Math.round( tl.y ),
+                                    Math.round( br.x ), Math.round( br.y ) ), stackBmp );
+      // The presentation image, aligned then zoomed to fill, fading in.
+      var cV = V( cA.x, cA.y, e, kView ), exV = V( exA.x, exA.y, e, kView ), eyV = V( eyA.x, eyA.y, e, kView );
+      blitOriented( g, cV, exV, eyV, rw, rh, reveal, a );
+      if ( ovBmp )
+      {
+         g.opacity = 1;
+         g.resetTransformation();
+         g.drawBitmap( 0, 0, ovBmp );
+      }
+      g.end();
+      this.saveFrame( out, ++outIndex );
+      this.progress( outIndex, tailFrames, tr( "run.render", outIndex, tailFrames, "reveal" ),
+                     ( ( tf & 1 ) == 0 ) ? out : null );
+   }
+   return outIndex;
 };
 
 // --------------------------------------------------------------------------
@@ -2827,23 +3369,36 @@ Engine.prototype.run = function()
    var cfg = this.cfg;
    console.show();
    try { console.abortEnabled = true; } catch ( e ) {}
-   var styleLabel = ( cfg.style == STYLE_TIMELAPSE ) ? tr( "run.styleTimelapse" )
-                  : ( cfg.style == STYLE_ZOOM ) ? tr( "run.styleZoom" )
-                  : tr( "run.styleStacking" );
+   var styleLabel = ( cfg.style == STYLE_ZOOM ) ? tr( "run.styleZoom" )
+                                                : tr( "run.styleStacking" );
    var inputCount = ( cfg.style == STYLE_ZOOM ) ? 1 : this.frames.length;
    console.noteln( tr( "run.start", SC_VERSION, inputCount, styleLabel ) );
+   // Resolve the colour plan (filter→channel) before naming: the palette id is
+   // woven into the output name. Filters survive registration, so decide now.
+   var plan = { active: false, map: null };
+   if ( cfg.style == STYLE_STACKING )
+   {
+      plan = this.colorPlan();
+      this.colorActive = plan.active;
+      this.paletteTag = plan.active ? cfg.palette : "";
+   }
+
    // Zoom resolves its title (hence its output dir) from the image header
    // inside runZoom, so it creates its own directory there.
    if ( cfg.style != STYLE_ZOOM && !File.directoryExists( this.framesDir() ) )
       File.createDirectory( this.framesDir(), true );
 
-   if ( cfg.style == STYLE_TIMELAPSE )
-      this.runTimelapse();
-   else if ( cfg.style == STYLE_ZOOM )
+   // Progressive stack: register to a common reference first (dithering + flip).
+   if ( cfg.style == STYLE_STACKING )
+      this.frames = this.registerFrames();
+
+   if ( cfg.style == STYLE_ZOOM )
       this.runZoom();
    else
-      this.runStacking();
+      plan.active ? this.runStackingColor( plan.map ) : this.runStacking();
 
+   // Registration drops survive the per-pass skip resets in the render modes.
+   this.skipped = this.regDropped.concat( this.skipped );
    var result = { ok: false, rendered: this.rendered, skipped: this.skipped.slice(),
                   aborted: this.aborted, videoPath: "", scriptPath: "",
                   framesDir: this.framesDir() };
@@ -2876,38 +3431,6 @@ Engine.prototype.run = function()
       console.writeln( tr( "run.framesKept", this.framesDir() ) );
    console.noteln( tr( "run.done", this.rendered, formatDuration( ( Date.now() - t0 )/1000 ) ) );
    return result;
-};
-
-// Render a single overlay preview (middle frame) without touching the video.
-Engine.prototype.preview = function()
-{
-   var mid = Math.floor( this.frames.length/2 );
-   var frame = this.frames[ mid ];
-   var win = this.openFrame( frame );
-   if ( win == null )
-      return "";
-   var stretch = computeStretchForImage( win.mainView.image, this.cfg.stretchLinked );
-   applyStretchToView( win.mainView, stretch );
-   var cumExposure = 0;
-   for ( var i = 0; i <= mid; ++i )
-      cumExposure += this.frames[ i ].exposure;
-   var ov = buildOverlayInfo( this.cfg, {
-      style: this.cfg.style,
-      index: mid + 1,
-      total: this.frames.length,
-      cumulativeExposure: cumExposure,
-      exposure: frame.exposure,
-      dateObs: frame.dateObs,
-      sigmaFirst: 1,
-      sigmaCurrent: 1/Math.sqrt( mid + 1 ),
-      title: this.title
-   } );
-   var bmp = renderOutputBitmap( win.mainView, this.cfg, ov );
-   win.forceClose();
-   var path = ( this.cfg.outputDir.length ? this.cfg.outputDir
-                                          : File.systemTempDirectory ) + "/SessionCinema-preview.png";
-   bmp.save( path );
-   return path;
 };
 
 // ============================================================================
@@ -3135,6 +3658,22 @@ function drawZoomConstellations( g, pj, polys, unit )
       return;
    g.pen = new Pen( argb( 0.45*alpha, 0x7FD8F0 ), Math.max( 1, 1.3*unit ) );
    drawVecPolylines( g, pj, polys, VEC_OF );
+}
+
+// Reveal placement from the align state: centre, +x-edge midpoint and top-edge
+// midpoint in background/placement pixels, via M = R·diag(scale·flip). Both the
+// align popup preview and the stack/zoom renderers feed these (mapped to screen)
+// to blitOriented, so what you align is pixel-identical to what renders — the
+// geometry lives in ONE place instead of two mirror-image copies.
+function revealPlacement( cx, cy, scale, rotDeg, flipH, flipV, halfW, halfH )
+{
+   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = Math.sin( th );
+   var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
+   return {
+      c:  { x: cx, y: cy },
+      ex: { x: cx + c*( scale*fx*halfW ), y: cy + s*( scale*fx*halfW ) },
+      ey: { x: cx + s*( scale*fy*halfH ), y: cy - c*( scale*fy*halfH ) }
+   };
 }
 
 // Draw a bitmap given the screen positions of its CENTER, its +x edge midpoint
@@ -3400,37 +3939,7 @@ class SessionCinemaDialog extends Dialog
       this.framesGroup.sizer.add( this.frameButtons );
       this.framesGroup.sizer.add( this.summaryLabel );
 
-      // ---- style group ----
-      this.styleTimelapseRadio = new RadioButton( this );
-      this.styleTimelapseRadio.text = tr( "style.timelapse" );
-      this.styleTimelapseRadio.checked = ( cfg.style == STYLE_TIMELAPSE );
-      this.styleTimelapseRadio.onCheck = ( checked ) =>
-      {
-         if ( checked )
-         {
-            self.cfg.style = STYLE_TIMELAPSE;
-            self.updateStyleDependents();
-         }
-      };
-
-      this.styleStackingRadio = new RadioButton( this );
-      this.styleStackingRadio.text = tr( "style.stacking" );
-      this.styleStackingRadio.checked = ( cfg.style == STYLE_STACKING );
-      this.styleStackingRadio.onCheck = ( checked ) =>
-      {
-         if ( checked )
-         {
-            self.cfg.style = STYLE_STACKING;
-            self.updateStyleDependents();
-         }
-      };
-
-      this.subStyleSizer = new HorizontalSizer;
-      this.subStyleSizer.spacing = 12;
-      this.subStyleSizer.add( this.styleTimelapseRadio );
-      this.subStyleSizer.add( this.styleStackingRadio );
-      this.subStyleSizer.addStretch();
-
+      // The subs tab is the progressive stack; Zoom Odyssey is its own tab.
       this.stackNote = new Label( this );
       this.stackNote.text = tr( "style.stackNote" );
       this.stackNote.wordWrapping = true;
@@ -3571,7 +4080,155 @@ class SessionCinemaDialog extends Dialog
       this.debayerCheck.checked = cfg.debayer;
       this.debayerCheck.onCheck = ( c ) => { self.cfg.debayer = c; };
 
-      // Per-sub-style stretch options (used by Timelapse and Progressive stack).
+      // ---- multi-filter colour controls (progressive stack) ----
+      this.alignCheck = new CheckBox( this );
+      this.alignCheck.text = tr( "seq.align" );
+      this.alignCheck.checked = cfg.alignEnabled;
+      this.alignCheck.onCheck = ( c ) => { self.cfg.alignEnabled = c; };
+
+      this.colorCheck = new CheckBox( this );
+      this.colorCheck.text = tr( "seq.color" );
+      this.colorCheck.checked = cfg.colorEnabled;
+      this.colorCheck.onCheck = ( c ) => { self.cfg.colorEnabled = c; self.updateColorEnabled(); };
+
+      this.paletteLabel = new Label( this );
+      this.paletteLabel.text = tr( "seq.palette" );
+      this.paletteLabel.minWidth = labelWidth;
+      this.paletteCombo = new ComboBox( this );
+      for ( var pi = 0; pi < PALETTE_ORDER.length; ++pi )
+      {
+         var pk = PALETTE_ORDER[ pi ];
+         this.paletteCombo.addItem( PALETTES[ pk ].label || pk );
+         if ( pk == cfg.palette ) this.paletteCombo.currentItem = pi;
+      }
+      this.paletteCombo.onItemSelected = ( i ) =>
+      {
+         self.cfg.palette = PALETTE_ORDER[ i ];
+         self.applyPalette();
+      };
+      this.paletteSizer = new HorizontalSizer;
+      this.paletteSizer.spacing = 6;
+      this.paletteSizer.add( this.paletteLabel );
+      this.paletteSizer.add( this.paletteCombo, 100 );
+
+      // Three filter→channel combos (R / G / B), populated from detected filters.
+      function makeChannelCombo( labelKey, chKey )
+      {
+         var lab = new Label( self );
+         lab.text = tr( labelKey );
+         lab.textAlignment = TextAlign.Right | TextAlign.VertCenter;
+         var combo = new ComboBox( self );
+         combo.onItemSelected = ( idx ) =>
+         {
+            var names = self.filterNames || [];
+            self.cfg[ chKey ] = ( idx <= 0 ) ? "" : names[ idx - 1 ];
+         };
+         var sz = new HorizontalSizer;
+         sz.spacing = 4;
+         sz.add( lab );
+         sz.add( combo, 100 );
+         return { label: lab, combo: combo, sizer: sz };
+      }
+      this.chR = makeChannelCombo( "seq.chR", "chR" );
+      this.chG = makeChannelCombo( "seq.chG", "chG" );
+      this.chB = makeChannelCombo( "seq.chB", "chB" );
+      this.channelsSizer = new HorizontalSizer;
+      this.channelsSizer.spacing = 10;
+      this.channelsSizer.add( this.chR.sizer, 100 );
+      this.channelsSizer.add( this.chG.sizer, 100 );
+      this.channelsSizer.add( this.chB.sizer, 100 );
+
+      this.filterInfoLabel = new Label( this );
+      this.filterInfoLabel.text = tr( "seq.noFilters" );
+      this.filterInfoLabel.wordWrapping = true;
+      try { this.filterInfoLabel.styleSheet = "QLabel { color: gray; }"; } catch ( e ) {}
+
+      this.colorGroup = new GroupBox( this );
+      this.colorGroup.title = tr( "seq.colorGroup" );
+      this.colorGroup.sizer = new VerticalSizer;
+      this.colorGroup.sizer.margin = 8;
+      this.colorGroup.sizer.spacing = 6;
+      this.removeGreenCheck = new CheckBox( this );
+      this.removeGreenCheck.text = tr( "seq.removeGreen" );
+      this.removeGreenCheck.checked = cfg.removeGreen;
+      this.removeGreenCheck.onCheck = ( c ) => { self.cfg.removeGreen = c; };
+
+      this.colorGroup.sizer.add( this.colorCheck );
+      this.colorGroup.sizer.add( this.paletteSizer );
+      this.colorGroup.sizer.add( this.channelsSizer );
+      this.colorGroup.sizer.add( this.removeGreenCheck );
+      this.colorGroup.sizer.add( this.filterInfoLabel );
+
+      // ---- final "presentation image" revealed at the end of the stack ----
+      this.stackRevealLabel = new Label( this );
+      this.stackRevealLabel.text = tr( "seq.reveal" );
+      this.stackRevealLabel.minWidth = labelWidth;
+      this.stackRevealEdit = new Edit( this );
+      this.stackRevealEdit.text = cfg.stackRevealPath;
+      this.stackRevealEdit.onTextUpdated = ( t ) => { self.cfg.stackRevealPath = t; self.updateStackRevealEnabled(); };
+      this.stackRevealBrowse = new PushButton( this );
+      this.stackRevealBrowse.text = tr( "frames.addFiles" );
+      this.stackRevealBrowse.onClick = () =>
+      {
+         var d = new OpenFileDialog;
+         d.multipleSelections = false;
+         d.caption = tr( "seq.reveal" );
+         d.filters = [ [ tr( "zoom.revealFilter" ), "*.jpg", "*.jpeg", "*.png", "*.tif", "*.tiff", "*.fit", "*.fits", "*.fts", "*.xisf" ] ];
+         if ( d.execute() && d.fileNames.length )
+         {
+            self.cfg.stackRevealPath = d.fileNames[ 0 ];
+            self.stackRevealEdit.text = d.fileNames[ 0 ];
+            self.cfg.stackRevealScale = 0;   // force a fresh alignment for a new image
+            self.updateStackRevealEnabled();
+         }
+      };
+      this.stackRevealClearBtn = new PushButton( this );
+      this.stackRevealClearBtn.text = tr( "zoom.revealClear" );
+      this.stackRevealClearBtn.onClick = () =>
+      {
+         self.cfg.stackRevealPath = "";
+         self.cfg.stackRevealScale = 0;
+         self.stackRevealEdit.text = "";
+         self.updateStackRevealEnabled();
+      };
+      this.stackAlignButton = new PushButton( this );
+      this.stackAlignButton.text = tr( "zoom.align" );
+      this.stackAlignButton.onClick = () => this.onAlignStack();
+
+      this.stackRevealSizer = new HorizontalSizer;
+      this.stackRevealSizer.spacing = 6;
+      this.stackRevealSizer.add( this.stackRevealLabel );
+      this.stackRevealSizer.add( this.stackRevealEdit, 100 );
+      this.stackRevealSizer.add( this.stackRevealBrowse );
+      this.stackRevealSizer.add( this.stackRevealClearBtn );
+      this.stackRevealSizer.add( this.stackAlignButton );
+
+      this.stackRevealHint = new Label( this );
+      this.stackRevealHint.text = tr( "seq.revealHint" );
+      this.stackRevealHint.wordWrapping = true;
+      this.stackRevealHint.enabled = false;
+
+      this.revealDurControl = new NumericControl( this );
+      this.revealDurControl.label.text = tr( "seq.revealDur" );
+      this.revealDurControl.label.minWidth = labelWidth;
+      this.revealDurControl.setRange( 0.3, 10 );
+      this.revealDurControl.setPrecision( 1 );
+      this.revealDurControl.setValue( cfg.stackRevealSec );
+      this.revealDurControl.onValueUpdated = ( v ) => { self.cfg.stackRevealSec = v; };
+      this.revealDurSizer = new HorizontalSizer;
+      this.revealDurSizer.add( this.revealDurControl );
+      this.revealDurSizer.addStretch();
+
+      this.stackRevealGroup = new GroupBox( this );
+      this.stackRevealGroup.title = tr( "seq.revealGroup" );
+      this.stackRevealGroup.sizer = new VerticalSizer;
+      this.stackRevealGroup.sizer.margin = 8;
+      this.stackRevealGroup.sizer.spacing = 6;
+      this.stackRevealGroup.sizer.add( this.stackRevealSizer );
+      this.stackRevealGroup.sizer.add( this.stackRevealHint );
+      this.stackRevealGroup.sizer.add( this.revealDurSizer );
+
+      // Rendering options for the progressive stack.
       this.seqOptionsGroup = new GroupBox( this );
       this.seqOptionsGroup.title = tr( "stretch.groupTitle" );
       this.seqOptionsGroup.sizer = new VerticalSizer;
@@ -3580,6 +4237,9 @@ class SessionCinemaDialog extends Dialog
       this.seqOptionsGroup.sizer.add( this.stretchSizer );
       this.seqOptionsGroup.sizer.add( this.linkedCheck );
       this.seqOptionsGroup.sizer.add( this.debayerCheck );
+      this.seqOptionsGroup.sizer.add( this.alignCheck );
+      this.seqOptionsGroup.sizer.add( this.colorGroup );
+      this.seqOptionsGroup.sizer.add( this.stackRevealGroup );
 
       // ---- overlay group ----
       this.titleLabel = new Label( this );
@@ -3984,10 +4644,6 @@ class SessionCinemaDialog extends Dialog
          }
       };
 
-      this.previewButton = new PushButton( this );
-      this.previewButton.text = tr( "btn.preview" );
-      this.previewButton.onClick = () => this.onPreview();
-
       this.generateButton = new PushButton( this );
       this.generateButton.text = tr( "btn.generate" );
       this.generateButton.defaultButton = true;
@@ -4059,15 +4715,16 @@ class SessionCinemaDialog extends Dialog
 
       this.progressButtons = new HorizontalSizer;
       this.progressButtons.spacing = 6;
-      this.progressButtons.add( this.progressStatus, 100 );
+      this.progressButtons.addStretch();
       this.progressButtons.add( this.pauseButton );
       this.progressButtons.add( this.cancelButton );
 
       this.progressInfo = new VerticalSizer;
       this.progressInfo.spacing = 6;
       this.progressInfo.addStretch();
-      this.progressInfo.add( this.progressButtons );
       this.progressInfo.add( this.progressBar );
+      this.progressInfo.add( this.progressStatus );    // full-width status line under the bar
+      this.progressInfo.add( this.progressButtons );   // pause/cancel on their own line
       this.progressInfo.addStretch();
 
       this.progressPanel = new GroupBox( this );
@@ -4099,39 +4756,71 @@ class SessionCinemaDialog extends Dialog
       this.bottomSizer.add( this.langLabel );
       this.bottomSizer.add( this.langCombo );
       this.bottomSizer.addStretch();
-      this.bottomSizer.add( this.previewButton );
-      this.bottomSizer.addSpacing( 12 );
       this.bottomSizer.add( this.generateButton );
       this.bottomSizer.add( this.closeButton );
 
-      // ---- mode tabs: subs-based (timelapse/stack) vs Zoom Odyssey ----
-      this.sequencePage = this.makePage( [ this.subStyleSizer, this.stackNote,
+      // Button icons (PixInsight core resources; silently skipped if a resource
+      // is unavailable, so the button still works with its text label).
+      var self2 = this;
+      function setIcon( btn, path ) { try { if ( btn ) btn.icon = self2.scaledResource( path ); } catch ( e ) {} }
+      setIcon( this.addFilesButton,      ":/icons/add.png" );
+      setIcon( this.addFolderButton,     ":/icons/folder.png" );
+      setIcon( this.removeButton,        ":/icons/remove.png" );
+      setIcon( this.clearButton,         ":/icons/clear.png" );
+      setIcon( this.outBrowse,           ":/icons/folder-open.png" );
+      setIcon( this.ffmpegBrowse,        ":/icons/document-open.png" );
+      setIcon( this.ffmpegDetect,        ":/icons/search.png" );
+      setIcon( this.zoomImageBrowse,     ":/icons/document-open.png" );
+      setIcon( this.fromSubButton,       ":/icons/star.png" );
+      setIcon( this.revealImageBrowse,   ":/icons/document-open.png" );
+      setIcon( this.revealClearButton,   ":/icons/delete.png" );
+      setIcon( this.alignButton,         ":/icons/picture.png" );
+      setIcon( this.stackRevealBrowse,   ":/icons/document-open.png" );
+      setIcon( this.stackRevealClearBtn, ":/icons/delete.png" );
+      setIcon( this.stackAlignButton,    ":/icons/picture.png" );
+      setIcon( this.pauseButton,         ":/icons/pause.png" );
+      setIcon( this.cancelButton,        ":/icons/stop.png" );
+      setIcon( this.generateButton,      ":/icons/power.png" );
+      setIcon( this.closeButton,         ":/icons/close.png" );
+
+      // ---- mode tabs: progressive stack vs Zoom Odyssey ----
+      this.sequencePage = this.makePage( [ this.stackNote,
                                            this.framesGroup, this.seqOptionsGroup ] );
       this.zoomPage = this.makePage( [ this.zoomNote, this.zoomGroup, this.checksRow3, this.locationSizer ] );
 
       this.tabBox = new TabBox( this );
       this.tabBox.addPage( this.sequencePage, tr( "tab.sequence" ) );
       this.tabBox.addPage( this.zoomPage, tr( "tab.zoom" ) );
+      try { this.tabBox.setPageIcon( 0, this.scaledResource( ":/icons/camera.png" ) ); } catch ( e ) {}
+      try { this.tabBox.setPageIcon( 1, this.scaledResource( ":/icons/zoom.png" ) ); } catch ( e ) {}
       this.tabBox.currentPageIndex = ( cfg.style == STYLE_ZOOM ) ? 1 : 0;
       this.tabBox.onPageSelected = ( idx ) =>
       {
-         if ( idx == 1 )
-            self.cfg.style = STYLE_ZOOM;
-         else
-            self.cfg.style = self.styleStackingRadio.checked ? STYLE_STACKING : STYLE_TIMELAPSE;
+         self.cfg.style = ( idx == 1 ) ? STYLE_ZOOM : STYLE_STACKING;
          self.updateStyleDependents();
       };
+
+      // Two columns to keep the window short: inputs (tabs) on the left, the
+      // shared overlay/video/output settings stacked on the right.
+      this.rightColumn = new VerticalSizer;
+      this.rightColumn.spacing = 8;
+      this.rightColumn.add( this.overlayGroup );
+      this.rightColumn.add( this.videoGroup );
+      this.rightColumn.add( this.outGroup );
+      this.rightColumn.add( this.progressPanel );
+      this.rightColumn.addStretch();
+
+      this.columnsSizer = new HorizontalSizer;
+      this.columnsSizer.spacing = 8;
+      this.columnsSizer.add( this.tabBox, 58 );
+      this.columnsSizer.add( this.rightColumn, 42 );
 
       this.sizer = new VerticalSizer;
       this.sizer.margin = 8;
       this.sizer.spacing = 8;
       this.sizer.add( this.headerSizer );
       this.sizer.add( this.helpLabel );
-      this.sizer.add( this.tabBox, 100 );
-      this.sizer.add( this.overlayGroup );
-      this.sizer.add( this.videoGroup );
-      this.sizer.add( this.outGroup );
-      this.sizer.add( this.progressPanel );
+      this.sizer.add( this.columnsSizer, 100 );
       this.sizer.add( this.bottomSizer );
 
       this.adjustToContents();
@@ -4203,9 +4892,7 @@ class SessionCinemaDialog extends Dialog
    // Mode-specific tagline shown in the header.
    updateTagline()
    {
-      var s = this.cfg.style;
-      var key = ( s == STYLE_TIMELAPSE ) ? "tagline.timelapse"
-              : ( s == STYLE_ZOOM ) ? "tagline.zoom" : "tagline.stacking";
+      var key = ( this.cfg.style == STYLE_ZOOM ) ? "tagline.zoom" : "tagline.stacking";
       this.taglineLabel.text = "<i>" + tr( key ) + "</i>";
    }
 
@@ -4229,6 +4916,70 @@ class SessionCinemaDialog extends Dialog
          ? tr( "frames.summary", this.frames.length, formatDuration( totalExp ) )
          : tr( "frames.summary.none" );
       this.updateEstimate();
+      this.refreshFilterMapping();
+      this.updateStackRevealEnabled();
+   }
+
+   // Repopulate the filter→channel combos from the filters present in the loaded
+   // subs, reflecting the current cfg.chR/chG/chB selection.
+   refreshFilterMapping()
+   {
+      if ( !this.chR )
+         return;
+      var filters = detectFilters( this.frames );
+      var names = filters.map( ( f ) => f.filter );
+      this.filterNames = names;
+      // Show the EFFECTIVE mapping (palette resolved against present filters,
+      // honouring explicit overrides), and persist it so it is explicit.
+      var eff = resolveChannelMap( this.cfg, filters );
+      this.cfg.chR = eff.R; this.cfg.chG = eff.G; this.cfg.chB = eff.B;
+      var slots = [ [ this.chR, eff.R ], [ this.chG, eff.G ], [ this.chB, eff.B ] ];
+      for ( var s = 0; s < slots.length; ++s )
+      {
+         var combo = slots[ s ][ 0 ].combo, cur = slots[ s ][ 1 ];
+         combo.clear();
+         combo.addItem( tr( "seq.chNone" ) );
+         var sel = 0;
+         for ( var i = 0; i < names.length; ++i )
+         {
+            combo.addItem( names[ i ] );
+            if ( names[ i ] == cur ) sel = i + 1;
+         }
+         combo.currentItem = sel;
+      }
+      this.filterInfoLabel.text = names.length ? tr( "seq.filtersFound", names.join( ", " ) )
+                                               : tr( "seq.noFilters" );
+      this.updateColorEnabled();
+   }
+
+   // Fill cfg.chR/chG/chB from the chosen palette resolved against the detected
+   // filters, then refresh the combos.
+   applyPalette()
+   {
+      var filters = detectFilters( this.frames );
+      var m = resolveChannelMap( { palette: this.cfg.palette, chR: "", chG: "", chB: "" }, filters );
+      this.cfg.chR = m.R; this.cfg.chG = m.G; this.cfg.chB = m.B;
+      this.refreshFilterMapping();
+   }
+
+   // Enable/disable the palette + channel controls (colour on, subs mode only).
+   updateColorEnabled()
+   {
+      if ( !this.colorGroup )
+         return;
+      var on = !!this.cfg.colorEnabled && this.cfg.style != STYLE_ZOOM;
+      var ctrls = [ this.paletteLabel, this.paletteCombo,
+                    this.chR.label, this.chR.combo, this.chG.label, this.chG.combo,
+                    this.chB.label, this.chB.combo, this.removeGreenCheck ];
+      for ( var i = 0; i < ctrls.length; ++i )
+         ctrls[ i ].enabled = on;
+   }
+
+   // The "Align…" button only makes sense once a presentation image is chosen.
+   updateStackRevealEnabled()
+   {
+      if ( this.stackAlignButton )
+         this.stackAlignButton.enabled = this.cfg.stackRevealPath.length > 0 && this.frames.length > 0;
    }
 
    updateEstimate()
@@ -4247,18 +4998,9 @@ class SessionCinemaDialog extends Dialog
          this.estimateLabel.text = "";
          return;
       }
-      var count2, seconds2;
-      if ( this.cfg.style == STYLE_TIMELAPSE )
-      {
-         count2 = N;
-         seconds2 = N/this.cfg.fps;
-      }
-      else
-      {
-         var idx = computeRenderIndices( N, this.cfg.fps, this.cfg.targetDuration );
-         count2 = idx.length;
-         seconds2 = count2/this.cfg.fps;
-      }
+      var idx = computeRenderIndices( N, this.cfg.fps, this.cfg.targetDuration );
+      var count2 = idx.length;
+      var seconds2 = count2/this.cfg.fps;
       seconds2 += this.cfg.holdFirst + this.cfg.holdLast;
       this.estimateLabel.text = tr( "video.estimate", count2, formatDuration( seconds2 ), this.cfg.fps );
    }
@@ -4271,7 +5013,7 @@ class SessionCinemaDialog extends Dialog
       this.updateTagline();
       // Per-style overlay items.
       this.snrCheck.enabled = isStack;
-      this.timeCheck.enabled = !isStack && !isZoom;
+      this.timeCheck.enabled = !isZoom;    // UT clock of the current sub
       this.counterCheck.enabled = !isZoom;
       this.exposureCheck.enabled = !isZoom;
       this.scaleCheck.enabled = isZoom;
@@ -4289,11 +5031,10 @@ class SessionCinemaDialog extends Dialog
       this.alignButton.enabled = this.cfg.zoomRevealCropped &&
          this.cfg.zoomRevealPath.length > 0 && this.cfg.zoomImagePath.length > 0;
       this.debayerCheck.enabled = !isZoom;
+      this.alignCheck.enabled = !isZoom;
+      this.updateColorEnabled();
       this.durationSpin.enabled = isStack || isZoom;
       this.durationLabel.enabled = isStack || isZoom;
-      // Preview renders a middle sub; meaningless for a zoom (one image only).
-      if ( this.previewButton )
-         this.previewButton.enabled = !isZoom;
       this.updateEstimate();
    }
 
@@ -4501,7 +5242,9 @@ class SessionCinemaDialog extends Dialog
          ( new MessageBox( tr( "align.loadFailed" ), tr( "err.title" ), StdIcon.Error, StdButton.Ok ) ).execute();
          return;
       }
-      var dlg = new ZoomAlignDialog( solvedBmp, revealBmp, this.cfg );
+      var c = this.cfg;
+      var dlg = new AlignDialog( solvedBmp, revealBmp, alignInit( !c.zoomRevealCropped,
+         c.zoomRevealOffX, c.zoomRevealOffY, c.zoomRevealScale, c.zoomRevealRot, c.zoomRevealFlipH, c.zoomRevealFlipV ) );
       if ( dlg.execute() && dlg.accepted )
       {
          this.cfg.zoomRevealOffX = dlg.cx;   // stored as the reveal centre in solved px
@@ -4515,26 +5258,48 @@ class SessionCinemaDialog extends Dialog
       }
    }
 
-   onPreview()
+   // Open the alignment popup for the progressive-stack presentation image,
+   // placed onto the registration reference sub (which shares the stack's
+   // orientation). Stores the placement in the stackReveal* config.
+   onAlignStack()
    {
-      if ( !this.validate( false ) )
+      if ( !this.cfg.stackRevealPath.length || this.frames.length < 1 )
          return;
-      saveConfig( this.persistableConfig() );
-      var engine = new Engine( this.cfg, this.frames );
-      var path = engine.preview();
-      if ( path.length )
+      console.show();
+      console.writeln( tr( "align.loading" ) );
+      processEvents();
+      // Reference sub (dominant filter, first in shoot order), auto-stretched.
+      var ref = pickReference( sortFrames( this.frames ) );
+      var bgBmp = null;
+      try
       {
-         console.show();
-         console.noteln( tr( "run.previewDone", path ) );
-         try
+         var w = openFrameWindow( ref.path );
+         if ( w != null )
          {
-            var ws = ImageWindow.open( path );
-            if ( ws && ws.length )
-               ws[ 0 ].show();
+            applyStretchToView( w.mainView, computeStretchForImage( w.mainView.image, this.cfg.stretchLinked ) );
+            bgBmp = w.mainView.image.render();
+            w.forceClose();
          }
-         catch ( e )
-         {
-         }
+      }
+      catch ( e ) {}
+      var revealBmp = loadFinishedBitmap( this.cfg.stackRevealPath );
+      if ( bgBmp == null || revealBmp == null )
+      {
+         ( new MessageBox( tr( "align.loadFailed" ), tr( "err.title" ), StdIcon.Error, StdButton.Ok ) ).execute();
+         return;
+      }
+      var c = this.cfg;
+      var dlg = new AlignDialog( bgBmp, revealBmp, alignInit( !( c.stackRevealScale > 0 ),
+         c.stackRevealOffX, c.stackRevealOffY, c.stackRevealScale, c.stackRevealRot, c.stackRevealFlipH, c.stackRevealFlipV ) );
+      if ( dlg.execute() && dlg.accepted )
+      {
+         this.cfg.stackRevealOffX = dlg.cx;
+         this.cfg.stackRevealOffY = dlg.cy;
+         this.cfg.stackRevealScale = dlg.scale;
+         this.cfg.stackRevealRot = dlg.rotDeg;
+         this.cfg.stackRevealFlipH = dlg.flipH;
+         this.cfg.stackRevealFlipV = dlg.flipV;
+         this.stackRevealEdit.text = this.cfg.stackRevealPath;
       }
    }
 
@@ -4542,7 +5307,6 @@ class SessionCinemaDialog extends Dialog
    setBusy( busy )
    {
       this.generateButton.enabled = !busy;
-      this.previewButton.enabled = !busy && ( this.cfg.style != STYLE_ZOOM );
       this.closeButton.enabled = !busy;
       this.tabBox.enabled = !busy;
       this.overlayGroup.enabled = !busy;
@@ -4704,13 +5468,27 @@ class SessionCinemaResultDialog extends Dialog
 }
 
 // ============================================================================
-// ALIGN DIALOG — visually place a differently-cropped reveal image onto the
-// solved image. Returns { offX, offY, scale } in solved-image pixels.
+// ALIGN DIALOG — visually place a differently-cropped reveal image onto a
+// background (the solved image for zoom, the stack reference sub for stacking).
 // ============================================================================
 
-class ZoomAlignDialog extends Dialog
+// Initial AlignDialog placement from a mode's stored reveal fields; a fresh
+// (never-aligned) reveal starts centred/unit-fit (undefined centre, scale 0).
+function alignInit( fresh, offX, offY, scale, rotDeg, flipH, flipV )
 {
-   constructor( solvedBmp, revealBmp, cfg )
+   return {
+      cx: fresh ? undefined : offX,
+      cy: fresh ? undefined : offY,
+      scale: fresh ? 0 : scale,
+      rotDeg: fresh ? 0 : rotDeg,
+      flipH: !fresh && flipH,
+      flipV: !fresh && flipV
+   };
+}
+
+class AlignDialog extends Dialog
+{
+   constructor( solvedBmp, revealBmp, init )
    {
       super();
       var self = this;
@@ -4723,16 +5501,16 @@ class ZoomAlignDialog extends Dialog
       this.revealW = revealBmp.width;
       this.revealH = revealBmp.height;
 
-      // Alignment state: the reveal CENTRE lands at (cx,cy) in solved px, so
-      // rotation pivots on the centre. Legacy configs stored an offset — if this
-      // is a fresh alignment, centre the reveal on the solved image.
-      var fresh = !cfg.zoomRevealCropped;
-      this.cx = fresh ? this.solvedW/2 : cfg.zoomRevealOffX;
-      this.cy = fresh ? this.solvedH/2 : cfg.zoomRevealOffY;
-      this.scale = ( cfg.zoomRevealScale > 0 && !fresh ) ? cfg.zoomRevealScale : ( this.solvedW/this.revealW );
-      this.rotDeg = fresh ? 0 : ( cfg.zoomRevealRot || 0 );
-      this.flipH = !fresh && !!cfg.zoomRevealFlipH;
-      this.flipV = !fresh && !!cfg.zoomRevealFlipV;
+      // Alignment state: the reveal CENTRE lands at (cx,cy) in background px so
+      // rotation pivots on the centre. The caller supplies the initial placement
+      // (fresh → centred, unit-fit); this dialog is agnostic to which mode uses it.
+      init = init || {};
+      this.cx = ( init.cx !== undefined ) ? init.cx : this.solvedW/2;
+      this.cy = ( init.cy !== undefined ) ? init.cy : this.solvedH/2;
+      this.scale = ( init.scale > 0 ) ? init.scale : ( this.solvedW/this.revealW );
+      this.rotDeg = init.rotDeg || 0;
+      this.flipH = !!init.flipH;
+      this.flipV = !!init.flipV;
       this.overlay = 0.6;
       this.accepted = false;
 
@@ -4770,12 +5548,10 @@ class ZoomAlignDialog extends Dialog
          g.drawScaledBitmap( new Rect( Math.round( o.x ), Math.round( o.y ),
                                        Math.round( o.x + self.solvedW*ps ), Math.round( o.y + self.solvedH*ps ) ), self.solvedBmp );
 
-         // Reveal centre + axis endpoints in solved px, via M = R·diag(scale·flip).
-         var th = deg2rad( self.rotDeg ), c = Math.cos( th ), s = Math.sin( th );
-         var fx = self.flipH ? -1 : 1, fy = self.flipV ? -1 : 1, hx = self.revealW/2, hy = self.revealH/2;
-         var cS = self.S( self.cx, self.cy );
-         var exS = self.S( self.cx + c*( self.scale*fx*hx ), self.cy + s*( self.scale*fx*hx ) );
-         var eyS = self.S( self.cx - ( -s*( self.scale*fy*hy ) ), self.cy - ( c*( self.scale*fy*hy ) ) );
+         // Reveal centre + axis endpoints in solved px (shared with the renderer).
+         var pl = revealPlacement( self.cx, self.cy, self.scale, self.rotDeg, self.flipH, self.flipV,
+                                   self.revealW/2, self.revealH/2 );
+         var cS = self.S( pl.c.x, pl.c.y ), exS = self.S( pl.ex.x, pl.ex.y ), eyS = self.S( pl.ey.x, pl.ey.y );
          blitOriented( g, cS, exS, eyS, self.revealW, self.revealH, self.revealBmp, self.overlay, 0xFF22D3EE );
          g.end();
       };

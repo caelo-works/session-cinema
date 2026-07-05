@@ -61,11 +61,12 @@ assert.strictEqual( M.slugify( "___" ), "session" );
    assert.strictEqual( ov2.title, "Typed" );
 }
 
-// buildOverlayInfo — timelapse style shows the UT clock, not SNR
+// buildOverlayInfo — the current sub's UT clock rides alongside the counter on
+// the right; with unusable sigma no SNR chunk appears.
 {
    const cfg = Object.assign( {}, M.DEFAULT_CONFIG, { ovTitle: "" } );
    const ov = M.buildOverlayInfo( cfg, {
-      style: M.STYLE_TIMELAPSE, index: 42, total: 300,
+      style: M.STYLE_STACKING, index: 42, total: 300,
       cumulativeExposure: 42*30, exposure: 30,
       dateObs: Date.UTC( 2026, 6, 3, 23, 59, 1 )/1000, sigmaFirst: 0, sigmaCurrent: 0
    } );

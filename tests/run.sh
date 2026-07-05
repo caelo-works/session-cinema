@@ -55,7 +55,6 @@ fi
    cat <<'EOF'
 
 module.exports = {
-   STYLE_TIMELAPSE: STYLE_TIMELAPSE,
    STYLE_STACKING: STYLE_STACKING,
    STRETCH_REF_FINAL: STRETCH_REF_FINAL,
    STRETCH_REF_FIRST: STRETCH_REF_FIRST,
@@ -74,6 +73,12 @@ module.exports = {
    parseDateObs: parseDateObs,
    kwValue: kwValue,
    frameMetaFromKeywords: frameMetaFromKeywords,
+   canonicalFilter: canonicalFilter,
+   PALETTES: PALETTES,
+   detectFilters: detectFilters,
+   resolveChannelMap: resolveChannelMap,
+   channelsFedBy: channelsFedBy,
+   mappedFilters: mappedFilters,
    sortFrames: sortFrames,
    dominantObject: dominantObject,
    resolveTitle: resolveTitle,
