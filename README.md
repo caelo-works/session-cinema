@@ -2,7 +2,7 @@
 
 # Session Cinema
 
-### Turn a night of raw subs into a timelapse or a "watch your stack build itself" video
+### Turn a night of raw subs into a colour "watch your stack build itself" video
 
 [![Version](https://img.shields.io/badge/version-0.1.0-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
 [![PixInsight](https://img.shields.io/badge/PixInsight-%E2%89%A5%201.9.4-67e8f9?style=for-the-badge&labelColor=0f172a)](https://pixinsight.com/)
@@ -21,12 +21,13 @@
 Your imaging session already tells great stories: what the sky did all night,
 how the signal emerged from the noise, and where in the sky your target actually
 sits. Session Cinema turns your frames into videos ready for sharing — a
-**timelapse** where clouds, meteors, satellites and field rotation play back as
-they happened, a **progressive stack** where the integration visibly builds
-itself from 1 to N subs while the noise melts away, or a **Zoom Odyssey** that
-falls from the whole sky through the constellation down to your image revealing
-itself at its true position — the "you are here" that makes even a modest frame
-land.
+**progressive stack** where the integration visibly builds itself from your
+first sub to your last, in colour: raw camera subs are registered internally
+(dithering + meridian flip), your filters composited into an SHO/HOO palette,
+the light growing from dark to the optimal stretch before cross-fading to your
+finished image. Or a **Zoom Odyssey** that falls from the whole sky through the
+constellation down to your image revealing itself at its true position — the
+"you are here" that makes even a modest frame land.
 
 The overlays stay on the scientific side of pretty: they only display measured
 facts — frame count, cumulative exposure, UT clock from `DATE-OBS`, and a
@@ -41,12 +42,13 @@ by per-frame auto-stretching.
 
 | | |
 |---|---|
-| 🎬 **Three styles** | Timelapse (one video frame per sub), progressive stack (cumulative mean integration from 1 to N subs), and **Zoom Odyssey** — a "you are here" context zoom from the whole sky down to your image revealing itself, built from its plate solve |
+| 🎬 **Two styles** | Progressive stack — cumulative colour integration from your first sub to your last (raw subs registered internally, multi-filter SHO/HOO composites, then a cross-fade to your finished image) — and **Zoom Odyssey**, a "you are here" context zoom from the whole sky down to your image revealing itself, built from its plate solve |
 | 🔬 **Honest by default** | Fixed screen stretch referenced on the final stack (2-pass); SNR gain measured on the data (scaled MAD, central region) — overlays never show anything that wasn't measured |
-| 🖼️ **Sober overlays** | Title, frame counter, cumulative exposure, UT clock, progress bar, optional signature — on a discreet gradient scrim, all individually switchable |
+| 🖼️ **Sober overlays** | Title, frame counter, cumulative exposure, UT clock, progress bar, optional signature — all individually switchable |
 | 📱 **Social-ready formats** | 16:9 (1080p / 4K), square 1:1 and vertical 9:16, fill-crop or letterbox framing, H.264 `yuv420p` with faststart |
 | ⚙️ **Robust pipeline** | FITS/XISF input, CFA debayering via `BAYERPAT`, chronological ordering across multiple nights via `DATE-OBS`, unreadable or mismatched frames skipped and reported |
-| 🎞️ **ffmpeg, not required** | Uses a detected or user-provided ffmpeg to encode; without one, the PNG sequence plus a ready-to-run `encode.sh` / `encode.bat` are generated |
+| 🎞️ **ffmpeg, not required** | Uses a detected or user-provided ffmpeg to encode; without one, the frame sequence plus a ready-to-run `encode.sh` / `encode.bat` are generated |
+| 🎨 **Multi-filter colour** | Filters detected and mapped to R/G/B via a palette (SHO, HOO, HOS, RGB, LRGB) or manual override; optional SCNR green removal; a finished image revealed at the end, aligned onto the stack |
 | 🌍 **Bilingual UI** | English and French, switchable live, settings remembered across sessions |
 
 ## Installation
@@ -75,14 +77,13 @@ folder containing the file. Alternatively, run it once via
 
 1. Add the raw light frames of the session — FITS or XISF, files or a whole
    directory. Frames are ordered by `DATE-OBS`, so several nights just work.
-2. Pick a style. **Timelapse** takes the subs as they are; **Progressive
-   stack** expects registered frames (point it at WBPP's `registered/`
-   output for a clean build-up); **Zoom Odyssey** takes a single
-   plate-solved image (a WBPP master is already solved) and needs no sub list.
+2. Pick a style. **Progressive stack** takes raw subs and registers them
+   internally (dithering + meridian flip); with several filters, map them to
+   R/G/B for a colour composite. **Zoom Odyssey** takes a single plate-solved
+   image (a WBPP master is already solved) and needs no sub list.
 3. Give the video a title, choose format and duration, check the overlay
-   items you want. **Preview frame** renders a single frame so you can check
-   the framing and overlay before committing.
-4. Click **Generate**: the PNG sequence is rendered, then encoded to MP4 if
+   items you want, and optionally pick a finished image to reveal at the end.
+4. Click **Generate**: the frame sequence is rendered, then encoded to MP4 if
    ffmpeg is available — otherwise run the `encode` script written next to
    the frames.
 
