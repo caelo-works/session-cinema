@@ -51,6 +51,20 @@ by per-frame auto-stretching.
 | 🎨 **Multi-filter colour** | Filters detected and mapped to R/G/B via a palette (SHO, HOO, HOS, RGB, LRGB) or manual override; optional SCNR green removal; a finished image revealed at the end, aligned onto the stack |
 | 🌍 **Bilingual UI** | English and French, switchable live, settings remembered across sessions |
 
+## Screenshots
+
+<div align="center">
+
+![Session Cinema — From subs tab: raw subs in, with registration, the SHO colour composite, the finished image to reveal, and the shared video settings](https://pixinsight-scripts.caelo.works/assets/scripts/session-cinema-1-subs.webp)
+
+*The **From subs** tab — raw subs go in; registration, the SHO colour composite and the finished image to reveal sit on the left, the shared overlay / video / output settings on the right.*
+
+![Session Cinema — Zoom Odyssey tab: a plate-solved image, constellation and star names, an equatorial grid, the real-sky survey bridge and the simulated shoot location](https://pixinsight-scripts.caelo.works/assets/scripts/session-cinema-2-odyssey.webp)
+
+*The **Zoom Odyssey** tab — a plate-solved image drives the zoom; constellation & star names, the equatorial grid, the real-sky survey bridge and the simulated shoot location.*
+
+</div>
+
 ## Installation
 
 ### From the CaeloWorks update repository (recommended)
