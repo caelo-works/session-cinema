@@ -1079,7 +1079,7 @@ function altAzToRaDec( alt, az, lst, latDeg )
 // so the image drops in at its true orientation on reveal.
 function zoomCameraAt( t, target, startFovDeg, W, H )
 {
-   var e = easeOut01( t );
+   var e = smootherstep01( t );   // ease-in-out: gentle start AND stop
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
    // The image is the anchor: the camera stays locked to its frame the whole
@@ -1134,25 +1134,26 @@ function locationStartFraming( targetAltDeg, W, H )
    return { fovDeg: fov, altCDeg: altC( fov ) };
 }
 
-// Camera along the LOCATION path. The ONLY rotation in the whole video is the
-// opening flourish: it opens with the target ~1/4 from the top and the real
-// horizon low (up = local zenith, level horizon), then during a short opening
-// window both re-centers onto the target AND rolls to the image's own frame.
-// After the opening (t ≳ 0.15) the camera is LOCKED to the image frame — pure
-// zoom, nothing spins — so the surveys/photo never rotate. obs = { lst, lat,
+// Camera along the LOCATION path. It opens with the target ~1/4 from the top
+// and the real horizon low (up = local zenith, level horizon). The look
+// direction re-centers onto the target early (t≈0.15). The ROLL — from the
+// level horizon to the image's own frame — is spread gently all the way to
+// where the photo starts to appear (target.tRoll), then held; since the surveys
+// track the roll correctly this reads as a slow, unified turn. obs = { lst, lat,
 // targetAlt, targetAz, startFov, altC }.
 function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
 {
-   var e = easeOut01( t );
+   var e = smootherstep01( t );   // ease-in-out: gentle start AND stop
    var fov = Math.exp( Math.log( startFovDeg )*( 1 - e ) + Math.log( target.fovDeg )*e );
-   var eOpen = smootherstep01( Math.min( 1, t/0.15 ) );   // slew + roll, done by t≈0.15
+   var eSlew = smootherstep01( Math.min( 1, t/0.15 ) );                 // re-centre early
+   var eRoll = smootherstep01( Math.min( 1, t/( target.tRoll || 0.85 ) ) );  // roll, spread
 
    var fEnd = raDecToVec( target.centerRA, target.centerDec );
    var startC = altAzToRaDec( ( obs.altC !== undefined ) ? obs.altC : obs.targetAlt, obs.targetAz, obs.lst, obs.lat );
    var fStart = raDecToVec( startC.ra, startC.dec );
    var zenith = raDecToVec( obs.lst, obs.lat );                        // local vertical
 
-   var f = slerpVec( fStart, fEnd, eOpen );
+   var f = slerpVec( fStart, fEnd, eSlew );
 
    // Roll as an ANGLE offset from a continuous north-up carrier (singularity-free
    // near the zenith), from the level horizon at the START to the IMAGE's own up
@@ -1166,7 +1167,7 @@ function zoomCameraLocation( t, target, startFovDeg, W, H, obs )
    var rollB = rollOff( northUp( fEnd ), endUp, fEnd );                            // end: image up
    while ( rollB - rollA >  Math.PI ) rollB -= 2*Math.PI;                          // shortest path
    while ( rollB - rollA < -Math.PI ) rollB += 2*Math.PI;
-   var roll = rollA*( 1 - eOpen ) + rollB*eOpen;
+   var roll = rollA*( 1 - eRoll ) + rollB*eRoll;
 
    var nu = northUp( f ), cx = vcross( f, nu ), cr = Math.cos( roll ), sr = Math.sin( roll );
    var up = vnorm( [ nu[0]*cr + cx[0]*sr, nu[1]*cr + cx[1]*sr, nu[2]*cr + cx[2]*sr ] );
@@ -2646,7 +2647,24 @@ Engine.prototype.runZoom = function()
    }
    else
       startFov = Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
+
+   // Spread the camera roll all the way from the opening to where the photo
+   // starts to appear (fov = endFov·photoWideMult), so it's a slow, gentle turn
+   // instead of a fast one confined to the opening. tRoll = that fov's time,
+   // found by numerically inverting the fov ease (smootherstep).
+   var eReveal = ( startFov > endFov )
+                 ? clamp01( 1 - Math.log( photoWideMult )/Math.log( startFov/endFov ) ) : 1;
+   var rlo = 0, rhi = 1;
+   for ( var rbi = 0; rbi < 40; ++rbi )
+   {
+      var rmid = ( rlo + rhi )/2;
+      if ( smootherstep01( rmid ) < eReveal ) rlo = rmid; else rhi = rmid;
+   }
+   camTarget.tRoll = Math.max( 0.15, ( rlo + rhi )/2 );
+
    var N = Math.max( 2, Math.round( cfg.fps*cfg.targetDuration ) );
+   var TAIL_FADE_SEC = 0.5;   // sky fades to black over the last 500 ms
+   var tailFrac = Math.max( 1e-6, Math.min( 1, TAIL_FADE_SEC/cfg.targetDuration ) );
    var outIndex = 0;
    var PERF = { alloc: 0, sky: 0, survey: 0, photo: 0, labels: 0, overlay: 0, save: 0 };
    var tLoop0 = Date.now();
@@ -2713,6 +2731,16 @@ Engine.prototype.runZoom = function()
          if ( obs )
             drawLocationHorizon( g, cam, obs, unit, clamp01( ( 0.12 - t )/0.06 ) );
          PERF.labels += Date.now() - _t0;
+      }
+
+      // Over the final TAIL_FADE_SEC, fade every artificial sky layer (stars,
+      // constellations, both surveys, horizon, background) to black — leaving
+      // only the photo and the overlay for the held last frames.
+      var skyFade = smoothstep01( ( 1 - t )/tailFrac );
+      if ( skyFade < 1 )
+      {
+         g.opacity = 1;
+         g.fillRect( new Rect( 0, 0, W, H ), new Brush( argb( 1 - skyFade, 0x000000 ) ) );
       }
 
       _t0 = Date.now();
