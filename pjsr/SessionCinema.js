@@ -1250,8 +1250,13 @@ function scaleWcsToDims( wcs, fromW, fromH, toW, toH )
 // reduces to the plain offset+scale crop.
 function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
 {
+   // The rotation is applied as R(-θ): measured end-to-end (solo renders align
+   // at exactly 0° with the surveys, aligned renders were off by exactly 2·θ),
+   // the sky-projection path effectively rotates opposite to the popup preview,
+   // so the WCS must carry the negated angle for the render to match what the
+   // user aligned visually.
    var th = deg2rad( rotDeg || 0 );
-   var c = Math.cos( th ), s = Math.sin( th );
+   var c = Math.cos( th ), s = -Math.sin( th );
    var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
    var m00 = c*scale*fx, m01 = -s*scale*fy;
    var m10 = s*scale*fx, m11 = c*scale*fy;
@@ -1270,7 +1275,8 @@ function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
 //   solvedPixel = (cx,cy) + M · ( revealPixel - revealCentre )
 function cropWcsCentered( wcs, cx, cy, scale, rotDeg, flipH, flipV, revealW, revealH )
 {
-   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = Math.sin( th );
+   // Same R(-θ) convention as cropWcs (see there).
+   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = -Math.sin( th );
    var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1, hx = revealW/2, hy = revealH/2;
    var mx = c*( scale*fx*hx ) - s*( scale*fy*hy );   // M · revealCentre
    var my = s*( scale*fx*hx ) + c*( scale*fy*hy );

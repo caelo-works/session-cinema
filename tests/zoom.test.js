@@ -249,10 +249,11 @@ assert.ok( M.smootherstep01( 0.3 ) < M.smootherstep01( 0.7 ), "monotone" );
    const c1 = M.wcsPixelToSky( id, 500, 500 ), c2 = M.wcsPixelToSky( solved, 500, 500 );
    near( c1.ra, c2.ra, 1e-12 ); near( c1.dec, c2.dec, 1e-12 );
 
-   // cropWcs with rotation + flip: revealPixel maps to solved(offset + R·S·F·revealPixel)
+   // cropWcs with rotation + flip: revealPixel maps to solved(offset + R(-rot)·S·F·revealPixel)
+   // (negated-angle convention — matches the popup's visual calibration; see cropWcs)
    const rot = 30, fh = true, fv = false, sc = 0.7, ox = 400, oy = 250;
    const rc = M.cropWcs( solved, ox, oy, sc, rot, fh, fv );
-   const th = rot*Math.PI/180, cc = Math.cos( th ), ss = Math.sin( th );
+   const th = -rot*Math.PI/180, cc = Math.cos( th ), ss = Math.sin( th );
    const fxs = -1, fys = 1;
    for ( const [ rx, ry ] of [ [ 0, 0 ], [ 640, 360 ], [ 100, 900 ] ] )
    {
@@ -273,7 +274,7 @@ assert.ok( M.smootherstep01( 0.3 ) < M.smootherstep01( 0.7 ), "monotone" );
    near( mid.ra, want.ra, 1e-9, "reveal centre lands at (cx,cy)" );
    near( mid.dec, want.dec, 1e-9, "reveal centre lands at (cx,cy)" );
    // equivalence to offset form
-   const th2 = rot*Math.PI/180, cc2 = Math.cos( th2 ), ss2 = Math.sin( th2 );
+   const th2 = -rot*Math.PI/180, cc2 = Math.cos( th2 ), ss2 = Math.sin( th2 );
    const mxh = cc2*( sc*(-1)*rW/2 ) - ss2*( sc*1*rH/2 );
    const myh = ss2*( sc*(-1)*rW/2 ) + cc2*( sc*1*rH/2 );
    const off = M.cropWcs( solved, cx - mxh, cy - myh, sc, rot, fh, fv );
