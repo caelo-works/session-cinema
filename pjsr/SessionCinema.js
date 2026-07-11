@@ -18,13 +18,13 @@
 
 #engine v8
 
-#feature-id    Utilities > Session Cinema
+#feature-id    SessionCinema : CaeloWorks > Session Cinema
 #feature-icon  @script_icons_dir/SessionCinema.svg
 #feature-info  Turn a night of raw subs into a progressive live-stacking video \
                (mono or multi-filter colour) with sober scientific overlays \
                (frame count, cumulative exposure, measured SNR gain).
 
-#define SC_VERSION "0.1.0"
+#define SC_VERSION "1.0.0"
 #define SC_TITLE   "Session Cinema"
 
 // Stamped by scripts/build-update-package.sh at packaging time.

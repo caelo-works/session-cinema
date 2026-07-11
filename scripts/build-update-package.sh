@@ -8,6 +8,9 @@
 # final updates.xri — it only emits, per release, two files under dist/:
 #
 #   dist/<NAME>-<version>.zip     the package, tree RELATIVE TO PixInsight's install dir
+#                                   src/scripts/CaeloWorks/<NAME>/<NAME>.js
+#                                   src/scripts/CaeloWorks/<NAME>/<NAME>.svg
+#                                   rsc/icons/script/<NAME>/<NAME>.svg
 #   dist/update-package.json      metadata the site needs to emit the <package> element
 #
 # The zip is REPRODUCIBLE (sorted entries, fixed mtimes/permissions) so identical content
@@ -44,8 +47,12 @@ sed -e "s/__BUILD__/${VERSION}/g" "$REPO/pjsr/$NAME.js" > "$DST/$NAME.js"
 [ -d "$REPO/pjsr/lib" ] && { mkdir -p "$DST/lib"; cp "$REPO"/pjsr/lib/*.js "$DST/lib/"; }
 [ -d "$REPO/bin" ]      && { mkdir -p "$DST/bin"; cp "$REPO"/bin/*        "$DST/bin/"; }
 
-# 3) menu icon (#feature-icon @script_icons_dir/<NAME>.svg)
+# 3) script icon, shipped twice: the rsc/ copy backs the #feature-icon directive
+#    (@script_icons_dir), the copy next to the script backs the dialog header
+#    emblem — which is also the only one a manual install outside the PixInsight
+#    tree can find.
 cp "$REPO/pjsr/assets/$NAME.svg" "$STAGE/rsc/icons/script/$NAME/$NAME.svg"
+cp "$REPO/pjsr/assets/$NAME.svg" "$DST/$NAME.svg"
 
 # 3b) OPTIONAL code signature — DISABLED by default. Enabled only when XSSK_PATH points
 #     to the CaeloWorks signing keys (.xssk) and PI_EXE to a PixInsight executable.

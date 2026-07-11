@@ -4,6 +4,28 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-07-11
+
+First stable release: both styles — progressive colour stack and Zoom Odyssey —
+are validated end to end on real sessions (see 0.1.0 below for the full feature
+set and its validation evidence).
+
+### Changed
+- The script now installs under its own vendor menu: **Script → CaeloWorks →
+  Session Cinema** (it was under *Utilities*), and carries an explicit
+  `SessionCinema` feature identifier — consistent with the other CaeloWorks
+  scripts, and a prerequisite for code signing.
+- New script icon, used for the menu entry and the dialog header emblem. The
+  icon now ships twice in the update package — under `rsc/icons/script/` for
+  the `#feature-icon` directive, and next to the script, which is the only copy
+  an install outside the PixInsight tree can find.
+
+<!-- 1.0.0 validation: logic tests pass (tests/run.sh) and the packaging battery
+     (tests/packaging.sh) asserts the 3-entry install tree — script + both icon
+     copies — and a reproducible sha1. The rendering pipeline is unchanged since
+     the 0.1.0 runtime gates below; this release only moves the menu entry and
+     swaps the icon. -->
+
 ## [0.1.0] - 2026-07-05
 
 ### Added
@@ -71,4 +93,5 @@ All notable changes to this project are documented here. The format is based on
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.0.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.0.0
 [0.1.0]: https://github.com/caelo-works/session-cinema/releases/tag/v0.1.0

@@ -4,9 +4,9 @@
 
 ### Turn a night of raw subs into a colour "watch your stack build itself" video
 
-[![Version](https://img.shields.io/badge/version-0.1.0-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.0.0-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
 [![PixInsight](https://img.shields.io/badge/PixInsight-%E2%89%A5%201.9.4-67e8f9?style=for-the-badge&labelColor=0f172a)](https://pixinsight.com/)
-[![Status](https://img.shields.io/badge/status-beta-fbbf24?style=for-the-badge&labelColor=0f172a)](https://pixinsight-scripts.caelo.works/en/scripts/session-cinema)
+[![Status](https://img.shields.io/badge/status-stable-34d399?style=for-the-badge&labelColor=0f172a)](https://pixinsight-scripts.caelo.works/en/scripts/session-cinema)
 [![License](https://img.shields.io/badge/license-GPL--3.0-94a3b8?style=for-the-badge&labelColor=0f172a)](LICENSE)
 [![Website](https://img.shields.io/badge/%E2%86%92%20see%20all%20scripts-pixinsight--scripts.caelo.works-0f172a?style=for-the-badge&labelColor=22d3ee)](https://pixinsight-scripts.caelo.works/en)
 
@@ -72,7 +72,8 @@ by per-frame auto-stretching.
 In PixInsight, open **Resources → Updates → Manage Repositories** and add
 `https://pixinsight-scripts.caelo.works/update/`, then run
 **Resources → Updates → Check for Updates**, accept the install and restart.
-Updates are then delivered automatically through the same channel.
+The script then lives under **Script → CaeloWorks → Session Cinema**, and
+updates are delivered automatically through the same channel.
 
 > The repository is not CPD-signed yet, so PixInsight shows an
 > "unsigned repository" warning; signing is underway.
@@ -134,7 +135,9 @@ This produces two files under `dist/`:
 
 - **`SessionCinema-<version>.zip`** — the install tree extracted as-is by the
   PixInsight updater (`src/scripts/CaeloWorks/SessionCinema/SessionCinema.js`
-  and the menu icon). The archive is reproducible on a given build
+  plus the script icon, shipped both under `rsc/icons/script/` for the menu
+  entry and next to the script for the dialog emblem). The archive is
+  reproducible on a given build
   environment: rebuilt there, its sha1 only changes when the content changes.
 - **`update-package.json`** — the metadata contract for the site: name, slug,
   version, `fileName`, `sha1`, type, `releaseDate`, `piVersionRange`, title

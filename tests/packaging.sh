@@ -5,7 +5,8 @@
 #
 # Runs locally and in CI (same script):
 #   1. build twice -> determinism on this environment (same sha1)
-#   2. zip -> install layout and exact entry set (entry script + menu icon)
+#   2. zip -> install layout and exact entry set (entry script + icon, twice:
+#      menu icon under rsc/, dialog emblem next to the script)
 #   3. update-package.json -> valid JSON with the exact ingestion contract
 #   4. __BUILD__ token -> stamped with the version, none left behind
 #
@@ -34,7 +35,8 @@ echo "--- zip: install layout and exact entry set"
 entries="$(unzip -Z1 "dist/SessionCinema-$VERSION.zip" | sort)"
 expected="$(printf '%s\n' \
    "rsc/icons/script/SessionCinema/SessionCinema.svg" \
-   "src/scripts/CaeloWorks/SessionCinema/SessionCinema.js" | sort)"
+   "src/scripts/CaeloWorks/SessionCinema/SessionCinema.js" \
+   "src/scripts/CaeloWorks/SessionCinema/SessionCinema.svg" | sort)"
 if [ "$entries" != "$expected" ]; then
    echo "ERROR: unexpected zip entry set:" >&2
    printf '%s\n' "$entries" >&2
