@@ -24,7 +24,7 @@
                (mono or multi-filter colour) with sober scientific overlays \
                (frame count, cumulative exposure, measured SNR gain).
 
-#define SC_VERSION "1.0.0"
+#define SC_VERSION "1.1.0"
 #define SC_TITLE   "Session Cinema"
 
 // Stamped by scripts/build-update-package.sh at packaging time.

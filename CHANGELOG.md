@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-07-13
 
 ### Added
 - Automatic reveal alignment: an "Auto" button in the alignment popup computes
@@ -50,22 +50,29 @@ All notable changes to this project are documented here. The format is based on
   MacPorts (macOS), snap and Linuxbrew (Linux). Absolute candidates that do
   not exist on disk are skipped without paying a process launch.
 
-<!-- Unreleased validation: logic tests pass (tests/run.sh, incl. the new
+<!-- 1.1.0 validation: logic tests pass (tests/run.sh, incl. the new
      tests/ffmpeg.test.js covering candidate paths, install locations and the
-     mirror name contract, and tests/align.test.js covering the SA-matrix ->
-     placement decomposition incl. mirror equivalence and degenerate inputs).
-     PixInsight runtime gates PASSED headless (PI 1.9.x, Windows):
-     - ffmpeg install: empty detection -> mirror download -> -version gate ->
-       persisted path -> re-detection finds the install; GUI flow (button,
-       confirm, collapse) validated interactively by the author. macOS gate
-       still to run once the production mirror serves the binaries.
+     mirror name contract, and tests/align.test.js covering the shared
+     placement matrix, the SA-matrix -> placement decomposition incl. mirror
+     equivalence and degenerate inputs, and the render==preview cross-path
+     invariant). PixInsight runtime gates PASSED (PI 1.9.x, Windows):
+     - ffmpeg install: headless — empty detection -> mirror download ->
+       -version gate -> persisted path -> re-detection finds the install;
+       GUI flow (button, confirm, collapse) validated interactively by the
+       author. macOS gate still to run once the production mirror serves
+       the binaries.
      - auto-align: synthetic 140-star pairs with known transforms; recovered
        plain (scale .8501/.85, rot 15.03/15, c at 0.1 px) and mirrored
        (1.0986/1.10, -31.95/-32, flip) through the real autoAlignReveal path,
        proving the polygons->triangles retry. Real-data gate PASSED headless:
        NGC6888 star-reduced HOO PNG (deep crop, scale 0.50, rot 32.2°) placed
        onto its wide-field Ha master via the tile stage (attempt 3/20, ~44 s),
-       correctness verified visually on a rendered composite. -->
+       correctness verified visually on a rendered composite.
+     - rotation render fix: full zoom render (AUTORUN, 150 frames) before/
+       after on the NGC6888 pair — the 2·θ survey ghost disappears; DSS2 and
+       the photo coincide. GUI validated end-to-end by the author (auto-align
+       -> generate) on the same pair. Both headless gates re-run identically
+       after the post-review simplification pass. -->
 <!-- API notes captured during build: StarAlignment enum CONSTANTS are not
      resolvable as globals (StarAlignment.mode.X) but DO live on process
      instances: SA.OutputMatrix == 8, SA.RegisterMatch == 0, etc. In
@@ -174,5 +181,6 @@ set and its validation evidence).
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.1.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.1.0
 [1.0.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.0.0
 [0.1.0]: https://github.com/caelo-works/session-cinema/releases/tag/v0.1.0
