@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Added
+- Automatic reveal alignment: an "Auto" button in the alignment popup computes
+  the placement (centre, scale, rotation, flip) by star-matching the two
+  bitmaps the popup shows, with StarAlignment in OutputMatrix mode. Full-frame
+  matching first; deep-crop reveals (which starve the matcher — see the API
+  notes) are recovered by re-matching against a 3x3 overlapping grid of
+  background tiles. Mirrored reveals are covered by doubling every stage with
+  triangle similarity (polygonal descriptors cannot match specular
+  transforms), and a quality gate (pairs/inliers/rms) rejects degenerate
+  RANSAC consensus. The manual popup remains both the fallback (starless or
+  heavily processed reveals) and the fine-tuning surface.
+- The zoom "Align…" button now enables whatever the order of ticking the
+  cropped-reveal box and choosing the two images; both align buttons say
+  "Opening…" while the images load, and the popup's Auto button reports its
+  attempt progress.
 - One-click ffmpeg install: when detection comes up empty, the output row
   offers to download a static build from the CaeloWorks mirror
   (`pixinsight-scripts.caelo.works/ffmpeg/`, contract in
@@ -14,6 +28,15 @@ All notable changes to this project are documented here. The format is based on
   validated by running `-version`, which doubles as the architecture selector
   on macOS/Linux (arm64/x64 tried in order); the resulting path is persisted
   like a hand-picked one.
+
+### Fixed
+- Zoom Odyssey rendered a rotated cropped reveal at the WRONG angle: the
+  reveal WCS carried R(−θ) while the popup preview places with R(+θ), so any
+  aligned reveal with a non-trivial rotation rendered 2·θ away from the real
+  sky (measured: a 32° reveal showed the DSS2 nebula as a ghost rotated ~64°
+  next to the photo). Manual alignments were affected too. cropWcs /
+  cropWcsCentered now use the preview's R(+θ) convention, and a cross-path
+  test (tests/align.test.js) locks "what you align is what renders".
 
 ### Changed
 - ffmpeg detection now probes, beyond PATH and the user path: a previous
@@ -23,9 +46,38 @@ All notable changes to this project are documented here. The format is based on
 
 <!-- Unreleased validation: logic tests pass (tests/run.sh, incl. the new
      tests/ffmpeg.test.js covering candidate paths, install locations and the
-     mirror name contract). PixInsight runtime gate still to run: install
-     button end-to-end (download, chmod, -version gate, persisted path) on
-     Windows + macOS once the mirror serves the binaries. -->
+     mirror name contract, and tests/align.test.js covering the SA-matrix ->
+     placement decomposition incl. mirror equivalence and degenerate inputs).
+     PixInsight runtime gates PASSED headless (PI 1.9.x, Windows):
+     - ffmpeg install: empty detection -> mirror download -> -version gate ->
+       persisted path -> re-detection finds the install; GUI flow (button,
+       confirm, collapse) validated interactively by the author. macOS gate
+       still to run once the production mirror serves the binaries.
+     - auto-align: synthetic 140-star pairs with known transforms; recovered
+       plain (scale .8501/.85, rot 15.03/15, c at 0.1 px) and mirrored
+       (1.0986/1.10, -31.95/-32, flip) through the real autoAlignReveal path,
+       proving the polygons->triangles retry. Real-data gate PASSED headless:
+       NGC6888 star-reduced HOO PNG (deep crop, scale 0.50, rot 32.2°) placed
+       onto its wide-field Ha master via the tile stage (attempt 3/20, ~44 s),
+       correctness verified visually on a rendered composite. -->
+<!-- API notes captured during build: StarAlignment enum CONSTANTS are not
+     resolvable as globals (StarAlignment.mode.X) but DO live on process
+     instances: SA.OutputMatrix == 8, SA.RegisterMatch == 0, etc. In
+     OutputMatrix mode SA still writes the registered file (remove it after
+     reading outputData). outputData[0][11..19] is the row-major 3x3 mapping
+     REFERENCE px -> TARGET px. The parameter for mirror-capable matching is
+     the boolean `useTriangles` (default false = polygonal descriptors,
+     `descriptorType` does not exist). UndoFlag_* and other .jsh constants are
+     unavailable even in classic-engine scripts run via -r; use literals.
+     Matcher root-cause note: a deep-crop target against a full-field
+     reference yields thousands of putative pairs but ZERO RANSAC inliers —
+     the reference's brightest-5000 cut goes ~8x shallower over the crop's
+     sky than the target's, so descriptor neighbourhoods never agree. No
+     parameter fixes it (maxStars/sensitivity/matcherTolerance/scale grid all
+     tested); restoring symmetric coverage (match against a crop/tile) fixes
+     it instantly. Scale ratios up to ~3x are fine once coverage is
+     symmetric. Beware permissive ransacTolerance: it can return a confident
+     FALSE consensus (gate on pairs>=12, inliers>=0.5, rms<=2.5). -->
 
 ## [1.0.0] - 2026-07-11
 

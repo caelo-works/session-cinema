@@ -48,7 +48,7 @@ by per-frame auto-stretching.
 | 📱 **Social-ready formats** | 16:9 (1080p / 4K), square 1:1 and vertical 9:16, fill-crop or letterbox framing, H.264 `yuv420p` with faststart |
 | ⚙️ **Robust pipeline** | FITS/XISF input, CFA debayering via `BAYERPAT`, chronological ordering across multiple nights via `DATE-OBS`, unreadable or mismatched frames skipped and reported |
 | 🎞️ **ffmpeg, not required** | Detects ffmpeg from PATH and the usual package managers (winget, Chocolatey, Scoop, Homebrew, MacPorts, snap); if none is found, one click downloads and installs a static build from the CaeloWorks mirror — or encode later with the generated `encode.sh` / `encode.bat` |
-| 🎨 **Multi-filter colour** | Filters detected and mapped to R/G/B via a palette (SHO, HOO, HOS, RGB, LRGB) or manual override; optional SCNR green removal; a finished image revealed at the end, aligned onto the stack |
+| 🎨 **Multi-filter colour** | Filters detected and mapped to R/G/B via a palette (SHO, HOO, HOS, RGB, LRGB) or manual override; optional SCNR green removal; a finished image revealed at the end, aligned onto the stack automatically by star matching (or by hand) |
 | 🌍 **Bilingual UI** | English and French, switchable live, settings remembered across sessions |
 
 ## Screenshots

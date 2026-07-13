@@ -228,9 +228,10 @@ var STRINGS = {
       "zoom.align":        "Align…",
       "align.title":       "Align the reveal image on the solved image",
       "align.help":        "Drag the reveal to position it; scale/rotate/flip it to match the solved image behind. Mouse wheel zooms the view. The overlay slider fades the reveal to check the fit. Resize this window as needed.",
-      "align.resetView":   "Reset view",
-      "align.move":        "Drag: move image",
-      "align.pan":         "Drag: pan view",
+      "align.resetView":   "Reset",
+      "align.resetViewHint": "Reset the view zoom and pan.",
+      "align.move":        "Move",
+      "align.pan":         "Pan",
       "align.panHint":     "Toggle what left-drag does: move the reveal, or pan the zoomed view.",
       "align.scale":       "Scale:",
       "align.rotation":    "Rotation:",
@@ -239,8 +240,13 @@ var STRINGS = {
       "align.flipV":       "Flip V",
       "align.rot90":       "+90°",
       "align.rotM90":      "−90°",
-      "align.fit":         "Fit to solved",
+      "align.fit":         "Fit",
       "align.fitHint":     "Assume the reveal covers the whole solved frame.",
+      "align.auto":        "Auto",
+      "align.autoBusy":    "Aligning…",
+      "align.autoHint":    "Compute the placement automatically by star-matching the reveal against the background image (StarAlignment).",
+      "align.autoFail":    "Automatic alignment found no reliable star match (starless or heavily processed image?). Align manually.",
+      "align.opening":     "Opening…",
       "align.loading":     "Loading images for alignment…",
       "align.loadFailed":  "Could not load the solved or reveal image for alignment.",
       "btn.ok":            "OK",
@@ -433,9 +439,10 @@ var STRINGS = {
       "zoom.align":        "Aligner…",
       "align.title":       "Aligner l'image à révéler sur l'image résolue",
       "align.help":        "Glissez l'image à révéler pour la positionner ; échelle/rotation/miroir pour la faire coïncider avec l'image résolue derrière. La molette zoome la vue. Le curseur de superposition l'estompe pour vérifier le calage. Fenêtre redimensionnable.",
-      "align.resetView":   "Réinitialiser la vue",
-      "align.move":        "Glisser : déplacer l'image",
-      "align.pan":         "Glisser : déplacer la vue",
+      "align.resetView":   "Réinitialiser",
+      "align.resetViewHint": "Réinitialise le zoom et le panoramique de la vue.",
+      "align.move":        "Déplacer",
+      "align.pan":         "Naviguer",
       "align.panHint":     "Bascule ce que fait le glisser gauche : déplacer l'image ou la vue zoomée.",
       "align.scale":       "Échelle :",
       "align.rotation":    "Rotation :",
@@ -444,8 +451,13 @@ var STRINGS = {
       "align.flipV":       "Miroir V",
       "align.rot90":       "+90°",
       "align.rotM90":      "−90°",
-      "align.fit":         "Ajuster à l'image résolue",
+      "align.fit":         "Ajuster",
       "align.fitHint":     "Suppose que l'image à révéler couvre tout le cadre résolu.",
+      "align.auto":        "Auto",
+      "align.autoBusy":    "Alignement…",
+      "align.autoHint":    "Calcule le placement automatiquement en appariant les étoiles de l'image à révéler avec l'image de fond (StarAlignment).",
+      "align.autoFail":    "L'alignement automatique n'a pas trouvé d'appariement d'étoiles fiable (image starless ou très retouchée ?). Alignez manuellement.",
+      "align.opening":     "Ouverture…",
       "align.loading":     "Chargement des images pour l'alignement…",
       "align.loadFailed":  "Impossible de charger l'image résolue ou l'image à révéler pour l'alignement.",
       "btn.ok":            "OK",
@@ -1513,13 +1525,14 @@ function scaleWcsToDims( wcs, fromW, fromH, toW, toH )
 // reduces to the plain offset+scale crop.
 function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
 {
-   // The rotation is applied as R(-θ): measured end-to-end (solo renders align
-   // at exactly 0° with the surveys, aligned renders were off by exactly 2·θ),
-   // the sky-projection path effectively rotates opposite to the popup preview,
-   // so the WCS must carry the negated angle for the render to match what the
-   // user aligned visually.
+   // The rotation is applied as R(+θ), the same convention as the popup
+   // preview (revealPlacement): measured end-to-end on a reveal aligned at
+   // 32° — with R(−θ) the DSS2 survey showed the nebula as a ghost rotated
+   // by exactly 2·θ next to the photo; with R(+θ) they coincide. (An earlier
+   // note here claimed the opposite from a 0.1.0-era measurement; that
+   // measurement predates the centre-pivot placement and does not hold.)
    var th = deg2rad( rotDeg || 0 );
-   var c = Math.cos( th ), s = -Math.sin( th );
+   var c = Math.cos( th ), s = Math.sin( th );
    var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
    var m00 = c*scale*fx, m01 = -s*scale*fy;
    var m10 = s*scale*fx, m11 = c*scale*fy;
@@ -1538,8 +1551,8 @@ function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
 //   solvedPixel = (cx,cy) + M · ( revealPixel - revealCentre )
 function cropWcsCentered( wcs, cx, cy, scale, rotDeg, flipH, flipV, revealW, revealH )
 {
-   // Same R(-θ) convention as cropWcs (see there).
-   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = -Math.sin( th );
+   // Same R(+θ) convention as cropWcs (see there).
+   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = Math.sin( th );
    var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1, hx = revealW/2, hy = revealH/2;
    var mx = c*( scale*fx*hx ) - s*( scale*fy*hy );   // M · revealCentre
    var my = s*( scale*fx*hx ) + c*( scale*fy*hy );
@@ -3823,6 +3836,179 @@ function revealPlacement( cx, cy, scale, rotDeg, flipH, flipV, halfW, halfH )
    };
 }
 
+// Convert a StarAlignment transformation (outputData row, fields 11..19: a
+// row-major 3x3 mapping BACKGROUND px -> REVEAL px) into the align-dialog
+// placement model: reveal centre in background px, reveal->background scale,
+// rotation and horizontal flip (any mirrored similarity decomposes as
+// flipH + rotation, so flipV is always false here). The tiny projective
+// terms of a star-field fit (h31,h32 ~ 1e-6) are ignored. Returns null on a
+// degenerate or wildly out-of-range solution.
+function saMatrixToAlignment( h, revealW, revealH )
+{
+   if ( !h || h.length < 9 || !isFinite( h[ 8 ] ) || Math.abs( h[ 8 ] ) < 1e-12 )
+      return null;
+   var a = h[ 0 ]/h[ 8 ], b = h[ 1 ]/h[ 8 ], c = h[ 2 ]/h[ 8 ],
+       d = h[ 3 ]/h[ 8 ], e = h[ 4 ]/h[ 8 ], f = h[ 5 ]/h[ 8 ];
+   var det = a*e - b*d;
+   if ( !isFinite( det ) || Math.abs( det ) < 1e-12 )
+      return null;
+   // Invert the affine part: reveal px -> background px.
+   var L00 = e/det, L01 = -b/det, L10 = -d/det, L11 = a/det;
+   var t0 = -( L00*c + L01*f ), t1 = -( L10*c + L11*f );
+   var idet = L00*L11 - L01*L10;
+   var flipH = idet < 0;
+   var fx = flipH ? -1 : 1;
+   var scale = Math.sqrt( Math.abs( idet ) );
+   if ( !( scale > 1e-4 && scale < 1e4 ) )
+      return null;
+   var rotDeg = Math.atan2( fx*L10, fx*L00 )*180/Math.PI;
+   return { cx: L00*revealW/2 + L01*revealH/2 + t0,
+            cy: L10*revealW/2 + L11*revealH/2 + t1,
+            scale: scale, rotDeg: rotDeg, flipH: flipH, flipV: false };
+}
+
+// One overlapping grid of half-size background tiles: any reveal region up
+// to a quarter of the background lies fully inside at least one tile. Deep-
+// crop reveals defeat a full-frame match — the reveal's stars go 8x fainter
+// than the background's field-wide brightest-5000 cut over the same sky, so
+// descriptor neighbourhoods never agree (measured: thousands of putative
+// pairs, zero RANSAC inliers). Matching against tiles restores a symmetric
+// star selection, which the matcher tolerates across a ~3x scale ratio.
+function alignTileGrid( bgW, bgH )
+{
+   var w = Math.round( bgW/2 ), h = Math.round( bgH/2 );
+   var tiles = [];
+   for ( var j = 0; j < 3; ++j )
+      for ( var i = 0; i < 3; ++i )
+         tiles.push( { x: Math.min( Math.round( i*bgW/4 ), bgW - w ),
+                       y: Math.min( Math.round( j*bgH/4 ), bgH - h ),
+                       w: w, h: h } );
+   return tiles;
+}
+
+// Translate a placement computed against a tile back to full-background px.
+function offsetAlignment( al, dx, dy )
+{
+   return { cx: al.cx + dx, cy: al.cy + dy, scale: al.scale,
+            rotDeg: al.rotDeg, flipH: al.flipH, flipV: al.flipV };
+}
+
+// Post-fit acceptance on a StarAlignment outputData row: enough matched
+// pairs, a decent inlier ratio and a subpixel-grade rms error — this is what
+// rejects the degenerate consensus a wrong-scale attempt can return.
+function saQualityOk( row )
+{
+   return !!row && row.length > 9 && row[ 2 ] >= 12 && row[ 3 ] >= 0.5 &&
+          row[ 7 ] <= 2.5;
+}
+
+// Rescale a placement recovered between pre-scaled images back to native px.
+function rescaleAlignment( al, revealFactor, bgFactor )
+{
+   return { cx: al.cx/bgFactor, cy: al.cy/bgFactor,
+            scale: al.scale*revealFactor/bgFactor,
+            rotDeg: al.rotDeg, flipH: al.flipH, flipV: al.flipV };
+}
+
+// Compute the reveal placement automatically by star-matching the reveal
+// against the background, both given as the BITMAPS the align dialog shows —
+// what you auto-align is exactly what you see. Stage A matches full frame
+// against full frame (same-framing reveals, up to a ~3x scale ratio); stage
+// B retries against the overlapping background tiles for deep-crop reveals
+// (see alignTileGrid). Each attempt runs StarAlignment in OutputMatrix mode
+// (we only need the transformation; the registered file it still writes is
+// removed). The enum constants are not resolvable as globals but do live on
+// the process INSTANCE (see the API notes in CHANGELOG). Polygon descriptors
+// cannot match a mirrored reveal, so every stage is doubled with triangle
+// similarity, which can. onProgress( i, n ) is called before each attempt.
+// Returns the placement, or null when no star match passes the quality gate
+// (starless or heavily processed reveals stay a manual job).
+function autoAlignReveal( bgBmp, revealBmp, onProgress )
+{
+   var written = [];
+   function savePng( bmp, tag )
+   {
+      var path = File.systemTempDirectory + "/sc-autoalign-" + tag + ".png";
+      bmp.save( path );
+      if ( written.indexOf( path ) < 0 )
+         written.push( path );
+      return path;
+   }
+   // One SA attempt; returns the placement in reference px, or null.
+   function runSA( refPath, tgtPath, useTri, tgtW, tgtH )
+   {
+      var SA = new StarAlignment;
+      try
+      {
+         SA.mode = ( typeof SA.OutputMatrix != "undefined" ) ? SA.OutputMatrix : 8;
+         SA.referenceImage = refPath;
+         SA.referenceIsFile = true;
+         SA.targets = [ [ true, true, tgtPath ] ];
+         SA.outputDirectory = File.systemTempDirectory;
+         SA.overwriteExistingFiles = true;
+         SA.useTriangles = useTri;
+         if ( !SA.executeGlobal() )
+            return null;
+         var row = SA.outputData[ 0 ];
+         try { if ( row[ 0 ] && row[ 0 ].length ) File.remove( row[ 0 ] ); } catch ( e0 ) {}
+         if ( !saQualityOk( row ) )
+            return null;
+         return saMatrixToAlignment( row.slice( 11, 20 ), tgtW, tgtH );
+      }
+      catch ( e )
+      {
+         return null;
+      }
+   }
+   var tiles = alignTileGrid( bgBmp.width, bgBmp.height );
+   var step = 0, totalSteps = 2 + 2*tiles.length;
+   function progress()
+   {
+      ++step;
+      if ( onProgress )
+         try { onProgress( step, totalSteps ); } catch ( ep ) {}
+   }
+   var result = null;
+   try
+   {
+      var bgPath = savePng( bgBmp, "bg" );
+      var rvPath = savePng( revealBmp, "rv" );
+      // Stage A — full frame vs full frame.
+      for ( var m = 0; m < 2 && result == null; ++m )
+      {
+         progress();
+         result = runSA( bgPath, rvPath, m == 1, revealBmp.width, revealBmp.height );
+      }
+      // Stage B — background tiles, reveal scaled to the tile footprint.
+      if ( result == null )
+      {
+         var fr = Math.min( 1, tiles[ 0 ].w/revealBmp.width, tiles[ 0 ].h/revealBmp.height );
+         var rw = Math.max( 16, Math.round( revealBmp.width*fr ) );
+         var rh = Math.max( 16, Math.round( revealBmp.height*fr ) );
+         var rvSmall = ( fr == 1 ) ? rvPath : savePng( revealBmp.scaledTo( rw, rh ), "rv-tile" );
+         for ( var pass = 0; pass < 2 && result == null; ++pass )
+            for ( var t = 0; t < tiles.length && result == null; ++t )
+            {
+               progress();
+               var T = tiles[ t ];
+               var tileBmp = new Bitmap( T.w, T.h );
+               var g = new Graphics( tileBmp );
+               g.drawBitmapRect( new Point( 0, 0 ), bgBmp, new Rect( T.x, T.y, T.x + T.w, T.y + T.h ) );
+               g.end();
+               var al = runSA( savePng( tileBmp, "tile" ), rvSmall, pass == 1, rw, rh );
+               if ( al != null )
+                  result = offsetAlignment( rescaleAlignment( al, fr, 1 ), T.x, T.y );
+            }
+      }
+   }
+   finally
+   {
+      for ( var w2 = 0; w2 < written.length; ++w2 )
+         try { File.remove( written[ w2 ] ); } catch ( e2 ) {}
+   }
+   return result;
+}
+
 // Draw a bitmap given the screen positions of its CENTER, its +x edge midpoint
 // and its top edge midpoint — decomposes to a conformal translate/rotate/scale
 // (with a parity flip) and blits. Shared by the zoom renderer and the alignment
@@ -4103,7 +4289,7 @@ class SessionCinemaDialog extends Dialog
       this.zoomImageLabel.minWidth = labelWidth;
       this.zoomImageEdit = new Edit( this );
       this.zoomImageEdit.text = cfg.zoomImagePath;
-      this.zoomImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomImagePath = t; };
+      this.zoomImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomImagePath = t; self.updateAlignEnabled(); };
       this.zoomImageBrowse = new PushButton( this );
       this.zoomImageBrowse.text = tr( "out.browse" );
       this.zoomImageBrowse.onClick = () =>
@@ -4117,6 +4303,7 @@ class SessionCinemaDialog extends Dialog
             self.cfg.zoomImagePath = d.fileNames[ 0 ];
             self.zoomImageEdit.text = d.fileNames[ 0 ];
             self.autofillLocationFromImage( d.fileNames[ 0 ] );
+            self.updateAlignEnabled();
          }
       };
       this.zoomImageSizer = new HorizontalSizer;
@@ -4136,7 +4323,7 @@ class SessionCinemaDialog extends Dialog
       this.revealImageLabel.minWidth = labelWidth;
       this.revealImageEdit = new Edit( this );
       this.revealImageEdit.text = cfg.zoomRevealPath;
-      this.revealImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomRevealPath = t; };
+      this.revealImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomRevealPath = t; self.updateAlignEnabled(); };
       this.revealImageBrowse = new PushButton( this );
       this.revealImageBrowse.text = tr( "out.browse" );
       this.revealImageBrowse.onClick = () =>
@@ -4149,6 +4336,7 @@ class SessionCinemaDialog extends Dialog
          {
             self.cfg.zoomRevealPath = d.fileNames[ 0 ];
             self.revealImageEdit.text = d.fileNames[ 0 ];
+            self.updateAlignEnabled();
          }
       };
       this.revealClearButton = new PushButton( this );
@@ -4157,6 +4345,7 @@ class SessionCinemaDialog extends Dialog
       {
          self.cfg.zoomRevealPath = "";
          self.revealImageEdit.text = "";
+         self.updateAlignEnabled();
       };
       this.revealImageSizer = new HorizontalSizer;
       this.revealImageSizer.spacing = 6;
@@ -4177,7 +4366,7 @@ class SessionCinemaDialog extends Dialog
       this.croppedCheck.onCheck = ( c ) =>
       {
          self.cfg.zoomRevealCropped = c;
-         self.alignButton.enabled = c && self.cfg.zoomRevealPath.length > 0 && self.cfg.zoomImagePath.length > 0;
+         self.updateAlignEnabled();
       };
       this.alignButton = new PushButton( this );
       this.alignButton.text = tr( "zoom.align" );
@@ -5204,8 +5393,7 @@ class SessionCinemaDialog extends Dialog
       this.subtitleEdit.enabled = isZoom;
       this.distanceLabel.enabled = isZoom;
       this.distanceEdit.enabled = isZoom;
-      this.alignButton.enabled = this.cfg.zoomRevealCropped &&
-         this.cfg.zoomRevealPath.length > 0 && this.cfg.zoomImagePath.length > 0;
+      this.updateAlignEnabled();
       this.debayerCheck.enabled = !isZoom;
       this.alignCheck.enabled = !isZoom;
       this.updateColorEnabled();
@@ -5349,6 +5537,15 @@ class SessionCinemaDialog extends Dialog
       this.refreshTree();
    }
 
+   // Single owner of the zoom align-button state: enabled only when the
+   // cropped-reveal mode is on and BOTH images are chosen, whatever order
+   // the user set them in.
+   updateAlignEnabled()
+   {
+      this.alignButton.enabled = this.cfg.zoomRevealCropped &&
+         this.cfg.zoomRevealPath.length > 0 && this.cfg.zoomImagePath.length > 0;
+   }
+
    // Single owner of the ffmpeg sub-section state: header text (arrow +
    // status emoji) and body visibility. state: "ok" | "missing" | "busy".
    setFfmpegSection( state, expanded )
@@ -5448,6 +5645,30 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.cfg.zoomImagePath.length || !this.cfg.zoomRevealPath.length )
          return;
+      this.withAlignBusy( this.alignButton, () => this.doAlign() );
+   }
+
+   // Loading the images and opening the modal takes seconds on big files:
+   // the clicked button itself says so meanwhile.
+   withAlignBusy( button, action )
+   {
+      var oldText = button.text;
+      button.text = tr( "align.opening" );
+      button.enabled = false;
+      processEvents();
+      try
+      {
+         action();
+      }
+      finally
+      {
+         button.text = oldText;
+         button.enabled = true;
+      }
+   }
+
+   doAlign()
+   {
       console.show();
       console.writeln( tr( "align.loading" ) );
       processEvents();
@@ -5495,6 +5716,11 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.cfg.stackRevealPath.length || this.frames.length < 1 )
          return;
+      this.withAlignBusy( this.stackAlignButton, () => this.doAlignStack() );
+   }
+
+   doAlignStack()
+   {
       console.show();
       console.writeln( tr( "align.loading" ) );
       processEvents();
@@ -5879,6 +6105,46 @@ class AlignDialog extends Dialog
          self.canvas.repaint();
       };
 
+      // Automatic placement by star-matching the two bitmaps shown here.
+      this.autoButton = new PushButton( this );
+      this.autoButton.text = tr( "align.auto" );
+      this.autoButton.toolTip = tr( "align.autoHint" );
+      this.autoButton.onClick = () =>
+      {
+         self.autoButton.text = tr( "align.autoBusy" );
+         self.autoButton.enabled = false;
+         processEvents();
+         var al = null;
+         try
+         {
+            al = autoAlignReveal( self.solvedBmp, self.revealBmp, ( i, n ) =>
+            {
+               self.autoButton.text = tr( "align.autoBusy" ) + " " + i + "/" + n;
+               processEvents();
+            } );
+         }
+         finally
+         {
+            self.autoButton.text = tr( "align.auto" );
+            self.autoButton.enabled = true;
+         }
+         if ( al == null )
+         {
+            ( new MessageBox( tr( "align.autoFail" ), tr( "align.title" ),
+                              StdIcon.Warning, StdButton.Ok ) ).execute();
+            return;
+         }
+         self.cx = al.cx;
+         self.cy = al.cy;
+         self.scale = al.scale;
+         self.rotDeg = ( ( al.rotDeg % 360 ) + 360 ) % 360;
+         self.flipH = al.flipH;
+         self.flipV = al.flipV;
+         self.scaleControl.setValue( self.scale );
+         self.rotControl.setValue( self.rotDeg );
+         self.canvas.repaint();
+      };
+
       this.panMode = false;
       this.panButton = new PushButton( this );
       this.panButton.text = tr( "align.move" );
@@ -5891,6 +6157,7 @@ class AlignDialog extends Dialog
 
       this.resetViewButton = new PushButton( this );
       this.resetViewButton.text = tr( "align.resetView" );
+      this.resetViewButton.toolTip = tr( "align.resetViewHint" );
       this.resetViewButton.onClick = () =>
       {
          self.zoom = 1; self.panX = null; self.panY = null;   // recentred on next paint
@@ -5916,6 +6183,7 @@ class AlignDialog extends Dialog
 
       this.ctrlSizer2 = new HorizontalSizer;
       this.ctrlSizer2.spacing = 6;
+      this.ctrlSizer2.add( this.autoButton );
       this.ctrlSizer2.add( this.flipHButton );
       this.ctrlSizer2.add( this.flipVButton );
       this.ctrlSizer2.add( this.rotM90Button );
