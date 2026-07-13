@@ -316,6 +316,14 @@ var STRINGS = {
       "out.allFiles":      "All files",
       "out.ffmpegFound":   "ffmpeg found: %1",
       "out.ffmpegMissing": "ffmpeg not found — the PNG sequence and an encoding script will be generated instead.",
+      "out.ffmpegHeaderOk":      "⚙️ ffmpeg detected",
+      "out.ffmpegHeaderMissing": "⚠️ ffmpeg not found",
+      "out.ffmpegHeaderBusy":    "⏳ installing ffmpeg…",
+      "out.install":       "Install ffmpeg…",
+      "out.installConfirm":"Download ffmpeg (about 50–90 MB) from %1 and install it to %2?",
+      "out.installing":    "Downloading ffmpeg from %1… this may take a few minutes.",
+      "out.installDone":   "ffmpeg installed: %1",
+      "out.installFail":   "ffmpeg installation failed — check your internet connection, or install it manually and use Browse.",
 
       "btn.generate":      "Generate",
       "btn.close":         "Close",
@@ -513,6 +521,14 @@ var STRINGS = {
       "out.allFiles":      "Tous les fichiers",
       "out.ffmpegFound":   "ffmpeg trouvé : %1",
       "out.ffmpegMissing": "ffmpeg introuvable — la séquence PNG et un script d'encodage seront générés.",
+      "out.ffmpegHeaderOk":      "⚙️ ffmpeg détecté",
+      "out.ffmpegHeaderMissing": "⚠️ ffmpeg introuvable",
+      "out.ffmpegHeaderBusy":    "⏳ installation de ffmpeg…",
+      "out.install":       "Installer ffmpeg…",
+      "out.installConfirm":"Télécharger ffmpeg (environ 50–90 Mo) depuis %1 et l'installer dans %2 ?",
+      "out.installing":    "Téléchargement de ffmpeg depuis %1… cela peut prendre quelques minutes.",
+      "out.installDone":   "ffmpeg installé : %1",
+      "out.installFail":   "Échec de l'installation de ffmpeg — vérifiez la connexion internet, ou installez-le manuellement puis utilisez Parcourir.",
 
       "btn.generate":      "Générer",
       "btn.close":         "Fermer",
@@ -791,6 +807,104 @@ function buildOverlayInfo( cfg, info )
       signature: cfg.ovSignature || "",
       progress: cfg.ovShowBar ? ( info.total > 0 ? info.index/info.total : 0 ) : -1
    };
+}
+
+// ---------------------------------------------------------------------------
+// ffmpeg discovery and auto-install locations (pure; getEnv is injected —
+// getEnvironmentVariable in PixInsight — so all of this runs under the tests)
+// ---------------------------------------------------------------------------
+
+// Base URL of the CaeloWorks ffmpeg mirror: one static, self-contained build
+// per platform/architecture under a fixed name (hosting contract in
+// docs/ffmpeg-mirror.md). Downloads are validated by running `-version`.
+var FFMPEG_MIRROR_BASE = "https://pixinsight-scripts.caelo.works/ffmpeg/";
+
+// Mirror file names to try, in order. PJSR does not expose the CPU
+// architecture, so on macOS and Linux both builds are listed: a binary for
+// the wrong CPU fails the `-version` gate and the next one is tried.
+function ffmpegMirrorCandidates( platform )
+{
+   if ( platform == "windows" )
+      return [ "ffmpeg-windows-x64.exe" ];
+   if ( platform == "macos" )
+      return [ "ffmpeg-macos-arm64", "ffmpeg-macos-x64" ];
+   return [ "ffmpeg-linux-x64", "ffmpeg-linux-arm64" ];
+}
+
+function ffmpegInstalledName( platform )
+{
+   return ( platform == "windows" ) ? "ffmpeg.exe" : "ffmpeg";
+}
+
+// Per-user directory where the auto-installed ffmpeg lives (forward slashes).
+function ffmpegInstallDir( platform, getEnv )
+{
+   function env( name )
+   {
+      var v = getEnv( name );
+      return ( v && v.length ) ? String( v ).split( "\\" ).join( "/" ) : "";
+   }
+   if ( platform == "windows" )
+   {
+      var base = env( "LOCALAPPDATA" );
+      if ( !base.length )
+      {
+         var up = env( "USERPROFILE" );
+         base = up.length ? ( up + "/AppData/Local" ) : "C:/CaeloWorks";
+      }
+      return base + "/CaeloWorks/ffmpeg";
+   }
+   var home = env( "HOME" );
+   if ( platform == "macos" )
+      return home + "/Library/Application Support/CaeloWorks/ffmpeg";
+   var xdg = env( "XDG_DATA_HOME" );
+   return ( xdg.length ? xdg : ( home + "/.local/share" ) ) + "/caeloworks/ffmpeg";
+}
+
+// Ordered list of ffmpeg locations to probe beyond a user-provided path:
+// PATH first, then a previous auto-install, then the usual package managers.
+function ffmpegCandidatePaths( platform, getEnv )
+{
+   function env( name )
+   {
+      var v = getEnv( name );
+      return ( v && v.length ) ? String( v ).split( "\\" ).join( "/" ) : "";
+   }
+   var list = [];
+   var installed = ffmpegInstallDir( platform, getEnv ) + "/" + ffmpegInstalledName( platform );
+   if ( platform == "windows" )
+   {
+      list.push( "ffmpeg.exe" );
+      list.push( "ffmpeg" );
+      list.push( installed );
+      var la = env( "LOCALAPPDATA" );
+      if ( la.length )
+         list.push( la + "/Microsoft/WinGet/Links/ffmpeg.exe" );          // winget
+      var pd = env( "ProgramData" );
+      list.push( ( pd.length ? pd : "C:/ProgramData" ) + "/chocolatey/bin/ffmpeg.exe" );
+      var up = env( "USERPROFILE" );
+      if ( up.length )
+         list.push( up + "/scoop/shims/ffmpeg.exe" );                     // scoop
+      list.push( "C:/ffmpeg/bin/ffmpeg.exe" );
+   }
+   else
+   {
+      list.push( "ffmpeg" );
+      list.push( installed );
+      list.push( "/usr/bin/ffmpeg" );
+      list.push( "/usr/local/bin/ffmpeg" );
+      if ( platform == "macos" )
+      {
+         list.push( "/opt/homebrew/bin/ffmpeg" );                         // Homebrew (Apple Silicon)
+         list.push( "/opt/local/bin/ffmpeg" );                            // MacPorts
+      }
+      else
+      {
+         list.push( "/snap/bin/ffmpeg" );
+         list.push( "/home/linuxbrew/.linuxbrew/bin/ffmpeg" );
+      }
+   }
+   return list;
 }
 
 // ffmpeg argument list (pure; paths are passed through untouched).
@@ -2295,25 +2409,58 @@ function detectFfmpeg( userPath )
    var candidates = [];
    if ( userPath && userPath.length )
       candidates.push( userPath );
-   if ( platformKind() == "windows" )
-   {
-      candidates.push( "ffmpeg.exe" );
-      candidates.push( "ffmpeg" );
-      candidates.push( "C:/ffmpeg/bin/ffmpeg.exe" );
-   }
-   else
-   {
-      candidates.push( "ffmpeg" );
-      candidates.push( "/usr/bin/ffmpeg" );
-      candidates.push( "/usr/local/bin/ffmpeg" );
-      candidates.push( "/opt/homebrew/bin/ffmpeg" );
-   }
+   candidates = candidates.concat( ffmpegCandidatePaths( platformKind(), getEnvironmentVariable ) );
    for ( var i = 0; i < candidates.length; ++i )
    {
+      // An absolute candidate that does not exist is skipped without paying
+      // the process-launch probe; bare names must go through PATH resolution.
+      if ( candidates[ i ].indexOf( "/" ) >= 0 && !File.exists( candidates[ i ] ) )
+         continue;
       var r = runExternal( candidates[ i ], [ "-version" ], 10000, false );
       if ( r.started && r.exitCode == 0 )
          return candidates[ i ];
    }
+   return "";
+}
+
+// Download-and-install ffmpeg from the CaeloWorks mirror into the per-user
+// install directory. Each platform build is tried in order; a candidate that
+// does not pass `ffmpeg -version` (wrong CPU architecture, truncated or
+// corrupt download) is removed and the next one is tried. Returns the
+// installed path, or "" on failure.
+function installFfmpegFromMirror()
+{
+   var kind = platformKind();
+   var dir = ffmpegInstallDir( kind, getEnvironmentVariable );
+   var parts = dir.split( "/" );
+   var p = "";
+   for ( var i = 0; i < parts.length; ++i )
+   {
+      p += ( i ? "/" : "" ) + parts[ i ];
+      if ( p.length && p.charAt( p.length - 1 ) != ":" && !File.directoryExists( p ) )
+         try { File.createDirectory( p ); } catch ( e ) {}
+   }
+   var dest = dir + "/" + ffmpegInstalledName( kind );
+   var curl = ( kind == "windows" ) ? "curl.exe" : "curl";
+   var names = ffmpegMirrorCandidates( kind );
+   for ( var c = 0; c < names.length; ++c )
+   {
+      var url = FFMPEG_MIRROR_BASE + names[ c ];
+      try { File.remove( dest ); } catch ( e1 ) {}
+      var r = runExternal( curl, [ "-f", "-s", "-S", "-L", "-o", dest,
+                                   "--connect-timeout", "20", "--max-time", "900", url ],
+                           950000, true );
+      // A static ffmpeg is tens of MB: anything small is an error body or a
+      // truncated transfer, not worth the execution probe.
+      if ( !r.started || r.exitCode != 0 || fileSize( dest ) < 1000000 )
+         continue;
+      if ( kind != "windows" )
+         runExternal( "/bin/chmod", [ "+x", dest ], 5000, false );
+      var v = runExternal( dest, [ "-version" ], 15000, true );
+      if ( v.started && v.exitCode == 0 )
+         return dest;
+   }
+   try { File.remove( dest ); } catch ( e2 ) {}
    return "";
 }
 
@@ -4604,16 +4751,44 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegDetect = new PushButton( this );
       this.ffmpegDetect.text = tr( "out.detect" );
       this.ffmpegDetect.onClick = () => this.onDetectFfmpeg();
+      // Only shown when detection comes up empty (onDetectFfmpeg toggles it).
+      this.ffmpegInstall = new PushButton( this );
+      this.ffmpegInstall.text = tr( "out.install" );
+      this.ffmpegInstall.visible = false;
+      this.ffmpegInstall.onClick = () => this.onInstallFfmpeg();
       this.ffmpegSizer = new HorizontalSizer;
       this.ffmpegSizer.spacing = 6;
       this.ffmpegSizer.add( this.ffmpegLabel );
       this.ffmpegSizer.add( this.ffmpegEdit, 100 );
-      this.ffmpegSizer.add( this.ffmpegBrowse );
-      this.ffmpegSizer.add( this.ffmpegDetect );
 
       this.ffmpegStatus = new Label( this );
       this.ffmpegStatus.text = "";
       this.ffmpegStatus.wordWrapping = true;
+
+      // The path row would be cramped with three buttons on it: they live on
+      // their own row, under the path and its status line.
+      this.ffmpegButtonsSizer = new HorizontalSizer;
+      this.ffmpegButtonsSizer.spacing = 6;
+      this.ffmpegButtonsSizer.addStretch();
+      this.ffmpegButtonsSizer.add( this.ffmpegBrowse );
+      this.ffmpegButtonsSizer.add( this.ffmpegDetect );
+      this.ffmpegButtonsSizer.add( this.ffmpegInstall );
+
+      // Everything ffmpeg lives in a collapsible sub-section: a one-line
+      // clickable header carrying the essential state, and a body that only
+      // needs to be open while something is wrong or in progress.
+      // (pjsr/SectionBar.jsh is not loadable under #engine v8 — see the
+      // TextAlign note at the top — so this is a minimal hand-rolled one.)
+      this.ffmpegHeader = new Label( this );
+      this.ffmpegHeader.onMousePress = () =>
+         self.setFfmpegSection( self.ffmpegState, !self.ffmpegSectionExpanded );
+
+      this.ffmpegBody = new Control( this );
+      this.ffmpegBody.sizer = new VerticalSizer;
+      this.ffmpegBody.sizer.spacing = 6;
+      this.ffmpegBody.sizer.add( this.ffmpegSizer );
+      this.ffmpegBody.sizer.add( this.ffmpegStatus );
+      this.ffmpegBody.sizer.add( this.ffmpegButtonsSizer );
 
       this.outGroup = new GroupBox( this );
       this.outGroup.title = tr( "out.title" );
@@ -4622,8 +4797,8 @@ class SessionCinemaDialog extends Dialog
       this.outGroup.sizer.spacing = 6;
       this.outGroup.sizer.add( this.outSizer );
       this.outGroup.sizer.add( this.keepFramesCheck );
-      this.outGroup.sizer.add( this.ffmpegSizer );
-      this.outGroup.sizer.add( this.ffmpegStatus );
+      this.outGroup.sizer.add( this.ffmpegHeader );
+      this.outGroup.sizer.add( this.ffmpegBody );
 
       // ---- bottom row ----
       this.langLabel = new Label( this );
@@ -4770,6 +4945,7 @@ class SessionCinemaDialog extends Dialog
       setIcon( this.outBrowse,           ":/icons/folder-open.png" );
       setIcon( this.ffmpegBrowse,        ":/icons/document-open.png" );
       setIcon( this.ffmpegDetect,        ":/icons/search.png" );
+      setIcon( this.ffmpegInstall,       ":/icons/install.png" );
       setIcon( this.zoomImageBrowse,     ":/icons/document-open.png" );
       setIcon( this.fromSubButton,       ":/icons/star.png" );
       setIcon( this.revealImageBrowse,   ":/icons/document-open.png" );
@@ -5173,6 +5349,19 @@ class SessionCinemaDialog extends Dialog
       this.refreshTree();
    }
 
+   // Single owner of the ffmpeg sub-section state: header text (arrow +
+   // status emoji) and body visibility. state: "ok" | "missing" | "busy".
+   setFfmpegSection( state, expanded )
+   {
+      this.ffmpegState = state;
+      this.ffmpegSectionExpanded = expanded;
+      var key = ( state == "ok" ) ? "out.ffmpegHeaderOk" :
+                ( state == "busy" ) ? "out.ffmpegHeaderBusy" : "out.ffmpegHeaderMissing";
+      this.ffmpegHeader.text = ( expanded ? "▾  " : "▸  " ) + tr( key );
+      this.ffmpegBody.visible = expanded;
+      this.adjustToContents();
+   }
+
    onDetectFfmpeg()
    {
       var found = detectFfmpeg( this.cfg.ffmpegPath );
@@ -5184,6 +5373,47 @@ class SessionCinemaDialog extends Dialog
       }
       else
          this.ffmpegStatus.text = tr( "out.ffmpegMissing" );
+      this.ffmpegInstall.visible = ( found.length == 0 );
+      this.setFfmpegSection( found.length ? "ok" : "missing", found.length == 0 );
+   }
+
+   onInstallFfmpeg()
+   {
+      var dir = ffmpegInstallDir( platformKind(), getEnvironmentVariable );
+      if ( ( new MessageBox( tr( "out.installConfirm", FFMPEG_MIRROR_BASE, dir ),
+                             SC_TITLE, StdIcon.Question,
+                             StdButton.Yes, StdButton.No ) ).execute() != StdButton.Yes )
+         return;
+      this.ffmpegInstall.enabled = false;
+      this.ffmpegDetect.enabled = false;
+      this.ffmpegBrowse.enabled = false;
+      this.ffmpegStatus.text = tr( "out.installing", FFMPEG_MIRROR_BASE );
+      this.setFfmpegSection( "busy", true );
+      processEvents();
+      var path = "";
+      try
+      {
+         path = installFfmpegFromMirror();
+      }
+      finally
+      {
+         this.ffmpegInstall.enabled = true;
+         this.ffmpegDetect.enabled = true;
+         this.ffmpegBrowse.enabled = true;
+      }
+      if ( path.length )
+      {
+         this.cfg.ffmpegPath = path;
+         this.ffmpegEdit.text = path;
+         this.ffmpegStatus.text = tr( "out.installDone", path );
+         this.ffmpegInstall.visible = false;
+         this.setFfmpegSection( "ok", false );
+      }
+      else
+      {
+         this.ffmpegStatus.text = tr( "out.installFail" );
+         this.setFfmpegSection( "missing", true );
+      }
    }
 
    validate( needOutput )

@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- One-click ffmpeg install: when detection comes up empty, the output row
+  offers to download a static build from the CaeloWorks mirror
+  (`pixinsight-scripts.caelo.works/ffmpeg/`, contract in
+  `docs/ffmpeg-mirror.md`) into a per-user directory. Every candidate is
+  validated by running `-version`, which doubles as the architecture selector
+  on macOS/Linux (arm64/x64 tried in order); the resulting path is persisted
+  like a hand-picked one.
+
+### Changed
+- ffmpeg detection now probes, beyond PATH and the user path: a previous
+  auto-install, winget/Chocolatey/Scoop (Windows), Homebrew Apple Silicon and
+  MacPorts (macOS), snap and Linuxbrew (Linux). Absolute candidates that do
+  not exist on disk are skipped without paying a process launch.
+
+<!-- Unreleased validation: logic tests pass (tests/run.sh, incl. the new
+     tests/ffmpeg.test.js covering candidate paths, install locations and the
+     mirror name contract). PixInsight runtime gate still to run: install
+     button end-to-end (download, chmod, -version gate, persisted path) on
+     Windows + macOS once the mirror serves the binaries. -->
+
 ## [1.0.0] - 2026-07-11
 
 First stable release: both styles — progressive colour stack and Zoom Odyssey —
