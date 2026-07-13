@@ -5,13 +5,19 @@ const M = require( "./build/module.js" );
 
 const RW = 512, RH = 340;
 
-// Linear part of the reveal->background map used by revealPlacement:
-// scale * [ [fx*cos, -fy*sin], [fx*sin, fy*cos] ]
-function placementMatrix( scale, rotDeg, flipH, flipV )
+// The production reveal->background linear map — the single source of truth
+// consumed by the preview, the WCS render and the SA decomposition alike.
+const placementMatrix = M.placementMatrix;
+
+// Independent spot-check of the matrix itself (R(+θ)·diag(fx,fy)·scale),
+// so the shared helper cannot silently change convention under everyone.
 {
-   const th = rotDeg*Math.PI/180, c = Math.cos( th ), s = Math.sin( th );
-   const fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
-   return [ [ scale*fx*c, -scale*fy*s ], [ scale*fx*s, scale*fy*c ] ];
+   const m = placementMatrix( 2, 30, false, false );
+   const c = Math.sqrt( 3 )/2;
+   assert.ok( Math.abs( m[ 0 ][ 0 ] - 2*c ) < 1e-12 && Math.abs( m[ 1 ][ 0 ] - 1 ) < 1e-12,
+              "R(+30deg): x-axis image rotates by +30deg (y down)" );
+   const f = placementMatrix( 1, 0, true, false );
+   assert.deepStrictEqual( f, [ [ -1, -0 ], [ -0, 1 ] ], "flipH negates x only" );
 }
 
 // Build the 3x3 StarAlignment-style matrix (background px -> reveal px) for
@@ -119,17 +125,29 @@ for ( const p of CASES )
    assert.ok( !M.saQualityOk( null ) );
 }
 
-// Rescaling a placement recovered between pre-scaled images
+// Rescaling a placement recovered from a pre-shrunk reveal
 {
    const al = { cx: 300, cy: 200, scale: 0.97, rotDeg: 12, flipH: true, flipV: false };
-   const r = M.rescaleAlignment( al, 1/3, 0.5 );
-   closeTo( r.cx, 600, 1e-9, "cx rescaled by 1/bgFactor" );
-   closeTo( r.cy, 400, 1e-9, "cy rescaled by 1/bgFactor" );
-   closeTo( r.scale, 0.97*( 1/3 )/0.5, 1e-9, "scale rescaled by fr/fb" );
+   const r = M.rescaleAlignment( al, 1/3 );
+   closeTo( r.cx, 300, 1e-9, "centre stays in native background px" );
+   closeTo( r.cy, 200, 1e-9, "centre stays in native background px" );
+   closeTo( r.scale, 0.97/3, 1e-9, "scale rescaled by the reveal factor" );
    assert.strictEqual( r.rotDeg, 12 );
    assert.strictEqual( r.flipH, true );
-   const id = M.rescaleAlignment( al, 1, 1 );
-   assert.deepStrictEqual( id, al, "native factors are the identity" );
+   assert.deepStrictEqual( M.rescaleAlignment( al, 1 ), al, "factor 1 is the identity" );
+}
+
+// Mirror candidates reordered by machine architecture
+{
+   const linux = [ "ffmpeg-linux-x64", "ffmpeg-linux-arm64" ];
+   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( linux, "aarch64\n" ),
+                           [ "ffmpeg-linux-arm64", "ffmpeg-linux-x64" ], "arm machine gets arm first" );
+   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( linux, "x86_64\n" ), linux, "x64 keeps order" );
+   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( linux, "" ), linux, "unknown keeps order" );
+   const mac = [ "ffmpeg-macos-arm64", "ffmpeg-macos-x64" ];
+   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( mac, "arm64" ), mac, "already-native order untouched" );
+   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( mac, "x86_64" ),
+                           [ "ffmpeg-macos-x64", "ffmpeg-macos-arm64" ], "Intel Mac gets x64 first" );
 }
 
 // Cross-path consistency: the WCS render path (cropWcsCentered) must place

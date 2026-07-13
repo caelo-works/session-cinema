@@ -828,6 +828,14 @@ function buildOverlayInfo( cfg, info )
 // getEnvironmentVariable in PixInsight — so all of this runs under the tests)
 // ---------------------------------------------------------------------------
 
+// Environment lookup normalized to forward slashes ("" when unset). getEnv is
+// injected (getEnvironmentVariable in PixInsight) so callers stay testable.
+function envPath( getEnv, name )
+{
+   var v = getEnv( name );
+   return ( v && v.length ) ? String( v ).split( "\\" ).join( "/" ) : "";
+}
+
 // Base URL of the CaeloWorks ffmpeg mirror: one static, self-contained build
 // per platform/architecture under a fixed name (hosting contract in
 // docs/ffmpeg-mirror.md). Downloads are validated by running `-version`.
@@ -850,14 +858,29 @@ function ffmpegInstalledName( platform )
    return ( platform == "windows" ) ? "ffmpeg.exe" : "ffmpeg";
 }
 
+// Reorder the mirror candidates so the build matching the machine (from
+// `uname -m`) downloads first — a wrong-architecture build is 50–90 MB of
+// wasted transfer before the -version gate rejects it. Unknown/empty uname
+// output leaves the order untouched (try-in-order remains the fallback).
+function orderMirrorCandidatesByArch( names, unameM )
+{
+   var m = String( unameM || "" ).toLowerCase();
+   if ( !/arm|aarch|x86|amd64/.test( m ) )
+      return names.slice();
+   var wantArm = /arm|aarch/.test( m );
+   return names.slice().sort( function ( a, b )
+   {
+      var aArm = a.indexOf( "arm64" ) >= 0, bArm = b.indexOf( "arm64" ) >= 0;
+      if ( aArm == bArm )
+         return 0;
+      return ( aArm == wantArm ) ? -1 : 1;
+   } );
+}
+
 // Per-user directory where the auto-installed ffmpeg lives (forward slashes).
 function ffmpegInstallDir( platform, getEnv )
 {
-   function env( name )
-   {
-      var v = getEnv( name );
-      return ( v && v.length ) ? String( v ).split( "\\" ).join( "/" ) : "";
-   }
+   function env( name ) { return envPath( getEnv, name ); }
    if ( platform == "windows" )
    {
       var base = env( "LOCALAPPDATA" );
@@ -879,17 +902,12 @@ function ffmpegInstallDir( platform, getEnv )
 // PATH first, then a previous auto-install, then the usual package managers.
 function ffmpegCandidatePaths( platform, getEnv )
 {
-   function env( name )
-   {
-      var v = getEnv( name );
-      return ( v && v.length ) ? String( v ).split( "\\" ).join( "/" ) : "";
-   }
+   function env( name ) { return envPath( getEnv, name ); }
    var list = [];
    var installed = ffmpegInstallDir( platform, getEnv ) + "/" + ffmpegInstalledName( platform );
    if ( platform == "windows" )
    {
       list.push( "ffmpeg.exe" );
-      list.push( "ffmpeg" );
       list.push( installed );
       var la = env( "LOCALAPPDATA" );
       if ( la.length )
@@ -1525,19 +1543,25 @@ function scaleWcsToDims( wcs, fromW, fromH, toW, toH )
 // (fx/fy = -1 for a horizontal/vertical flip) — the full output of the visual
 // alignment tool (drag + scale + rotate + flip). With rotDeg=0 and no flip this
 // reduces to the plain offset+scale crop.
+// The ONE reveal→background linear map, M = R(+θ)·diag(±scale, ±scale),
+// shared by every consumer: the popup preview (revealPlacement), the zoom
+// render WCS (cropWcs/cropWcsCentered) and the auto-align decomposition.
+// The R(+θ) convention was measured end-to-end on a reveal aligned at 32° —
+// with R(−θ) the DSS2 survey showed the nebula as a ghost rotated by exactly
+// 2·θ next to the photo; with R(+θ) they coincide. Keeping a single source
+// makes that class of desync structurally impossible.
+function placementMatrix( scale, rotDeg, flipH, flipV )
+{
+   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = Math.sin( th );
+   var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
+   return [ [ scale*fx*c, -scale*fy*s ], [ scale*fx*s, scale*fy*c ] ];
+}
+
 function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
 {
-   // The rotation is applied as R(+θ), the same convention as the popup
-   // preview (revealPlacement): measured end-to-end on a reveal aligned at
-   // 32° — with R(−θ) the DSS2 survey showed the nebula as a ghost rotated
-   // by exactly 2·θ next to the photo; with R(+θ) they coincide. (An earlier
-   // note here claimed the opposite from a 0.1.0-era measurement; that
-   // measurement predates the centre-pivot placement and does not hold.)
-   var th = deg2rad( rotDeg || 0 );
-   var c = Math.cos( th ), s = Math.sin( th );
-   var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
-   var m00 = c*scale*fx, m01 = -s*scale*fy;
-   var m10 = s*scale*fx, m11 = c*scale*fy;
+   var M = placementMatrix( scale, rotDeg, flipH, flipV );
+   var m00 = M[ 0 ][ 0 ], m01 = M[ 0 ][ 1 ];
+   var m10 = M[ 1 ][ 0 ], m11 = M[ 1 ][ 1 ];
    var cd = wcs.cd;
    var CD = [ [ cd[0][0]*m00 + cd[0][1]*m10, cd[0][0]*m01 + cd[0][1]*m11 ],
               [ cd[1][0]*m00 + cd[1][1]*m10, cd[1][0]*m01 + cd[1][1]*m11 ] ];
@@ -1553,11 +1577,10 @@ function cropWcs( wcs, offX, offY, scale, rotDeg, flipH, flipV )
 //   solvedPixel = (cx,cy) + M · ( revealPixel - revealCentre )
 function cropWcsCentered( wcs, cx, cy, scale, rotDeg, flipH, flipV, revealW, revealH )
 {
-   // Same R(+θ) convention as cropWcs (see there).
-   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = Math.sin( th );
-   var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1, hx = revealW/2, hy = revealH/2;
-   var mx = c*( scale*fx*hx ) - s*( scale*fy*hy );   // M · revealCentre
-   var my = s*( scale*fx*hx ) + c*( scale*fy*hy );
+   var M = placementMatrix( scale, rotDeg, flipH, flipV );
+   var hx = revealW/2, hy = revealH/2;
+   var mx = M[ 0 ][ 0 ]*hx + M[ 0 ][ 1 ]*hy;   // M · revealCentre
+   var my = M[ 1 ][ 0 ]*hx + M[ 1 ][ 1 ]*hy;
    return cropWcs( wcs, cx - mx, cy - my, scale, rotDeg, flipH, flipV );
 }
 
@@ -2224,21 +2247,16 @@ function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx, onTick )
    if ( cached ) { gHipsCache[ key ] = cached; return cached; }
 
    var url = hips2fitsUrl( hips, ra, dec, fovDeg, nPx );
-   var curl = ( platformKind() == "windows" ) ? "curl.exe" : "curl";
    var attempts = 3;
    for ( var a = 1; a <= attempts; ++a )
    {
-      try { File.remove( out ); } catch ( e ) {}
-      var r = runExternal( curl, [ "-s", "-S", "-L", "-o", out, "--connect-timeout", "20",
-                                   "--max-time", "90", url ], 100000, true, onTick );
-      var size = File.exists( out ) ? fileSize( out ) : -1;
-      if ( r.started && r.exitCode == 0 && size > 2048 )
+      if ( curlDownload( url, out, 90, 2048, onTick ) )
       {
          var bmp = loadValid();
          if ( bmp ) { gHipsCache[ key ] = bmp; return bmp; }
       }
       console.warningln( tr( "zoom.hipsRetry", a, attempts,
-                             ( r.started ? ( "exit " + r.exitCode + ", " + size + " B" ) : "curl not started" ) ) );
+                             fileSize( out ) + " B" ) );
    }
    return null;
 }
@@ -2419,6 +2437,22 @@ function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
    return result;
 }
 
+// One curl invocation shared by every download in the script (survey cutouts,
+// ffmpeg install): fetch url into outPath (removed first), following
+// redirects, failing on HTTP errors. The process timeout is derived from
+// curl's own --max-time so the two can never drift apart. Returns true when
+// curl ran to success and wrote more than minBytes.
+function curlDownload( url, outPath, maxTimeSec, minBytes, onTick )
+{
+   try { File.remove( outPath ); } catch ( e ) {}
+   var curl = ( platformKind() == "windows" ) ? "curl.exe" : "curl";
+   var r = runExternal( curl, [ "-f", "-s", "-S", "-L", "-o", outPath,
+                                "--connect-timeout", "20",
+                                "--max-time", String( maxTimeSec ), url ],
+                        ( maxTimeSec + 60 )*1000, true, onTick );
+   return r.started && r.exitCode == 0 && fileSize( outPath ) > minBytes;
+}
+
 function detectFfmpeg( userPath )
 {
    var candidates = [];
@@ -2447,27 +2481,23 @@ function installFfmpegFromMirror()
 {
    var kind = platformKind();
    var dir = ffmpegInstallDir( kind, getEnvironmentVariable );
-   var parts = dir.split( "/" );
-   var p = "";
-   for ( var i = 0; i < parts.length; ++i )
-   {
-      p += ( i ? "/" : "" ) + parts[ i ];
-      if ( p.length && p.charAt( p.length - 1 ) != ":" && !File.directoryExists( p ) )
-         try { File.createDirectory( p ); } catch ( e ) {}
-   }
+   if ( !File.directoryExists( dir ) )
+      try { File.createDirectory( dir, true ); } catch ( e ) {}
    var dest = dir + "/" + ffmpegInstalledName( kind );
-   var curl = ( kind == "windows" ) ? "curl.exe" : "curl";
    var names = ffmpegMirrorCandidates( kind );
+   if ( kind != "windows" )
+   {
+      // Ask the machine its architecture so the native build downloads first.
+      var uf = File.systemTempDirectory + "/sc-uname.txt";
+      runExternal( "/bin/sh", [ "-c", "uname -m > \"" + uf + "\"" ], 5000, false );
+      try { names = orderMirrorCandidatesByArch( names, File.readTextFile( uf ) ); } catch ( eu ) {}
+      try { File.remove( uf ); } catch ( eu2 ) {}
+   }
    for ( var c = 0; c < names.length; ++c )
    {
-      var url = FFMPEG_MIRROR_BASE + names[ c ];
-      try { File.remove( dest ); } catch ( e1 ) {}
-      var r = runExternal( curl, [ "-f", "-s", "-S", "-L", "-o", dest,
-                                   "--connect-timeout", "20", "--max-time", "900", url ],
-                           950000, true );
       // A static ffmpeg is tens of MB: anything small is an error body or a
       // truncated transfer, not worth the execution probe.
-      if ( !r.started || r.exitCode != 0 || fileSize( dest ) < 1000000 )
+      if ( !curlDownload( FFMPEG_MIRROR_BASE + names[ c ], dest, 900, 1000000 ) )
          continue;
       if ( kind != "windows" )
          runExternal( "/bin/chmod", [ "+x", dest ], 5000, false );
@@ -3829,12 +3859,11 @@ function drawZoomConstellations( g, pj, polys, unit )
 // geometry lives in ONE place instead of two mirror-image copies.
 function revealPlacement( cx, cy, scale, rotDeg, flipH, flipV, halfW, halfH )
 {
-   var th = deg2rad( rotDeg || 0 ), c = Math.cos( th ), s = Math.sin( th );
-   var fx = flipH ? -1 : 1, fy = flipV ? -1 : 1;
+   var M = placementMatrix( scale, rotDeg, flipH, flipV );
    return {
       c:  { x: cx, y: cy },
-      ex: { x: cx + c*( scale*fx*halfW ), y: cy + s*( scale*fx*halfW ) },
-      ey: { x: cx + s*( scale*fy*halfH ), y: cy - c*( scale*fy*halfH ) }
+      ex: { x: cx + M[ 0 ][ 0 ]*halfW, y: cy + M[ 1 ][ 0 ]*halfW },
+      ey: { x: cx - M[ 0 ][ 1 ]*halfH, y: cy - M[ 1 ][ 1 ]*halfH }
    };
 }
 
@@ -3854,16 +3883,16 @@ function saMatrixToAlignment( h, revealW, revealH )
    var det = a*e - b*d;
    if ( !isFinite( det ) || Math.abs( det ) < 1e-12 )
       return null;
-   // Invert the affine part: reveal px -> background px.
+   // Invert the affine part: reveal px -> background px. Its determinant is
+   // algebraically 1/det, so flip and scale come straight from det.
    var L00 = e/det, L01 = -b/det, L10 = -d/det, L11 = a/det;
    var t0 = -( L00*c + L01*f ), t1 = -( L10*c + L11*f );
-   var idet = L00*L11 - L01*L10;
-   var flipH = idet < 0;
+   var flipH = det < 0;
    var fx = flipH ? -1 : 1;
-   var scale = Math.sqrt( Math.abs( idet ) );
+   var scale = 1/Math.sqrt( Math.abs( det ) );
    if ( !( scale > 1e-4 && scale < 1e4 ) )
       return null;
-   var rotDeg = Math.atan2( fx*L10, fx*L00 )*180/Math.PI;
+   var rotDeg = rad2deg( Math.atan2( fx*L10, fx*L00 ) );
    return { cx: L00*revealW/2 + L01*revealH/2 + t0,
             cy: L10*revealW/2 + L11*revealH/2 + t1,
             scale: scale, rotDeg: rotDeg, flipH: flipH, flipV: false };
@@ -3904,11 +3933,11 @@ function saQualityOk( row )
           row[ 7 ] <= 2.5;
 }
 
-// Rescale a placement recovered between pre-scaled images back to native px.
-function rescaleAlignment( al, revealFactor, bgFactor )
+// Rescale a placement recovered from a pre-shrunk reveal back to native px
+// (the background side is never pre-scaled: tiles stay at native resolution).
+function rescaleAlignment( al, revealFactor )
 {
-   return { cx: al.cx/bgFactor, cy: al.cy/bgFactor,
-            scale: al.scale*revealFactor/bgFactor,
+   return { cx: al.cx, cy: al.cy, scale: al.scale*revealFactor,
             rotDeg: al.rotDeg, flipH: al.flipH, flipV: al.flipV };
 }
 
@@ -3988,18 +4017,23 @@ function autoAlignReveal( bgBmp, revealBmp, onProgress )
          var rw = Math.max( 16, Math.round( revealBmp.width*fr ) );
          var rh = Math.max( 16, Math.round( revealBmp.height*fr ) );
          var rvSmall = ( fr == 1 ) ? rvPath : savePng( revealBmp.scaledTo( rw, rh ), "rv-tile" );
+         var tilePaths = [];   // rendered once, reused by the triangles pass
          for ( var pass = 0; pass < 2 && result == null; ++pass )
             for ( var t = 0; t < tiles.length && result == null; ++t )
             {
                progress();
                var T = tiles[ t ];
-               var tileBmp = new Bitmap( T.w, T.h );
-               var g = new Graphics( tileBmp );
-               g.drawBitmapRect( new Point( 0, 0 ), bgBmp, new Rect( T.x, T.y, T.x + T.w, T.y + T.h ) );
-               g.end();
-               var al = runSA( savePng( tileBmp, "tile" ), rvSmall, pass == 1, rw, rh );
+               if ( tilePaths[ t ] == null )
+               {
+                  var tileBmp = new Bitmap( T.w, T.h );
+                  var g = new Graphics( tileBmp );
+                  g.drawBitmapRect( new Point( 0, 0 ), bgBmp, new Rect( T.x, T.y, T.x + T.w, T.y + T.h ) );
+                  g.end();
+                  tilePaths[ t ] = savePng( tileBmp, "tile" + t );
+               }
+               var al = runSA( tilePaths[ t ], rvSmall, pass == 1, rw, rh );
                if ( al != null )
-                  result = offsetAlignment( rescaleAlignment( al, fr, 1 ), T.x, T.y );
+                  result = offsetAlignment( rescaleAlignment( al, fr ), T.x, T.y );
             }
       }
    }
@@ -4952,7 +4986,7 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegDetect = new PushButton( this );
       this.ffmpegDetect.text = tr( "out.detect" );
       this.ffmpegDetect.onClick = () => this.onDetectFfmpeg();
-      // Only shown when detection comes up empty (onDetectFfmpeg toggles it).
+      // Only shown while ffmpeg is missing (setFfmpegSection toggles it).
       this.ffmpegInstall = new PushButton( this );
       this.ffmpegInstall.text = tr( "out.install" );
       this.ffmpegInstall.visible = false;
@@ -5559,7 +5593,8 @@ class SessionCinemaDialog extends Dialog
    }
 
    // Single owner of the ffmpeg sub-section state: header text (arrow +
-   // status emoji) and body visibility. state: "ok" | "missing" | "busy".
+   // status emoji), body visibility, and the install button (only offered
+   // while ffmpeg is missing). state: "ok" | "missing" | "busy".
    setFfmpegSection( state, expanded )
    {
       this.ffmpegState = state;
@@ -5568,6 +5603,7 @@ class SessionCinemaDialog extends Dialog
                 ( state == "busy" ) ? "out.ffmpegHeaderBusy" : "out.ffmpegHeaderMissing";
       this.ffmpegHeader.text = ( expanded ? "▾  " : "▸  " ) + tr( key );
       this.ffmpegBody.visible = expanded;
+      this.ffmpegInstall.visible = ( state != "ok" );
       this.adjustToContents();
    }
 
@@ -5582,7 +5618,6 @@ class SessionCinemaDialog extends Dialog
       }
       else
          this.ffmpegStatus.text = tr( "out.ffmpegMissing" );
-      this.ffmpegInstall.visible = ( found.length == 0 );
       this.setFfmpegSection( found.length ? "ok" : "missing", found.length == 0 );
    }
 
@@ -5593,11 +5628,9 @@ class SessionCinemaDialog extends Dialog
                              SC_TITLE, StdIcon.Question,
                              StdButton.Yes, StdButton.No ) ).execute() != StdButton.Yes )
          return;
-      this.ffmpegInstall.enabled = false;
-      this.ffmpegDetect.enabled = false;
-      this.ffmpegBrowse.enabled = false;
       this.ffmpegStatus.text = tr( "out.installing", FFMPEG_MIRROR_BASE );
       this.setFfmpegSection( "busy", true );
+      this.ffmpegBody.enabled = false;   // one switch for every ffmpeg control
       processEvents();
       var path = "";
       try
@@ -5606,16 +5639,13 @@ class SessionCinemaDialog extends Dialog
       }
       finally
       {
-         this.ffmpegInstall.enabled = true;
-         this.ffmpegDetect.enabled = true;
-         this.ffmpegBrowse.enabled = true;
+         this.ffmpegBody.enabled = true;
       }
       if ( path.length )
       {
          this.cfg.ffmpegPath = path;
          this.ffmpegEdit.text = path;
          this.ffmpegStatus.text = tr( "out.installDone", path );
-         this.ffmpegInstall.visible = false;
          this.setFfmpegSection( "ok", false );
       }
       else
@@ -5657,26 +5687,7 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.cfg.zoomImagePath.length || !this.cfg.zoomRevealPath.length )
          return;
-      this.withAlignBusy( this.alignButton, () => this.doAlign() );
-   }
-
-   // Loading the images and opening the modal takes seconds on big files:
-   // the clicked button itself says so meanwhile.
-   withAlignBusy( button, action )
-   {
-      var oldText = button.text;
-      button.text = tr( "align.opening" );
-      button.enabled = false;
-      processEvents();
-      try
-      {
-         action();
-      }
-      finally
-      {
-         button.text = oldText;
-         button.enabled = true;
-      }
+      withBusyButton( this.alignButton, tr( "align.opening" ), () => this.doAlign() );
    }
 
    doAlign()
@@ -5728,7 +5739,7 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.cfg.stackRevealPath.length || this.frames.length < 1 )
          return;
-      this.withAlignBusy( this.stackAlignButton, () => this.doAlignStack() );
+      withBusyButton( this.stackAlignButton, tr( "align.opening" ), () => this.doAlignStack() );
    }
 
    doAlignStack()
@@ -5954,6 +5965,26 @@ function alignInit( fresh, offX, offY, scale, rotDeg, flipH, flipV )
    };
 }
 
+// Run a slow UI action behind a button: swap its text for a busy label,
+// disable it, and restore both whatever happens. The action may keep
+// mutating button.text (progress); the finally rolls it back.
+function withBusyButton( button, busyText, action )
+{
+   var oldText = button.text;
+   button.text = busyText;
+   button.enabled = false;
+   processEvents();
+   try
+   {
+      action();
+   }
+   finally
+   {
+      button.text = oldText;
+      button.enabled = true;
+   }
+}
+
 class AlignDialog extends Dialog
 {
    constructor( solvedBmp, revealBmp, init )
@@ -6090,9 +6121,7 @@ class AlignDialog extends Dialog
       this.flipVButton.onClick = () => { self.flipV = !self.flipV; self.canvas.repaint(); };
       function nudgeRot( d )
       {
-         self.rotDeg = ( ( self.rotDeg + d ) % 360 + 360 ) % 360;
-         self.rotControl.setValue( self.rotDeg );
-         self.canvas.repaint();
+         self.applyPlacement( self.cx, self.cy, self.scale, self.rotDeg + d, self.flipH, self.flipV );
       }
       this.rotM90Button = new PushButton( this );
       this.rotM90Button.text = tr( "align.rotM90" );
@@ -6105,17 +6134,8 @@ class AlignDialog extends Dialog
       this.fitButton.text = tr( "align.fit" );
       this.fitButton.toolTip = tr( "align.fitHint" );
       this.fitButton.onClick = () =>
-      {
-         self.scale = self.solvedW/self.revealW;
-         self.cx = self.solvedW/2;
-         self.cy = self.solvedH/2;
-         self.rotDeg = 0;
-         self.flipH = false;
-         self.flipV = false;
-         self.scaleControl.setValue( self.scale );
-         self.rotControl.setValue( 0 );
-         self.canvas.repaint();
-      };
+         self.applyPlacement( self.solvedW/2, self.solvedH/2,
+                              self.solvedW/self.revealW, 0, false, false );
 
       // Automatic placement by star-matching the two bitmaps shown here.
       this.autoButton = new PushButton( this );
@@ -6123,38 +6143,22 @@ class AlignDialog extends Dialog
       this.autoButton.toolTip = tr( "align.autoHint" );
       this.autoButton.onClick = () =>
       {
-         self.autoButton.text = tr( "align.autoBusy" );
-         self.autoButton.enabled = false;
-         processEvents();
          var al = null;
-         try
+         withBusyButton( self.autoButton, tr( "align.autoBusy" ), () =>
          {
             al = autoAlignReveal( self.solvedBmp, self.revealBmp, ( i, n ) =>
             {
                self.autoButton.text = tr( "align.autoBusy" ) + " " + i + "/" + n;
                processEvents();
             } );
-         }
-         finally
-         {
-            self.autoButton.text = tr( "align.auto" );
-            self.autoButton.enabled = true;
-         }
+         } );
          if ( al == null )
          {
             ( new MessageBox( tr( "align.autoFail" ), tr( "align.title" ),
                               StdIcon.Warning, StdButton.Ok ) ).execute();
             return;
          }
-         self.cx = al.cx;
-         self.cy = al.cy;
-         self.scale = al.scale;
-         self.rotDeg = ( ( al.rotDeg % 360 ) + 360 ) % 360;
-         self.flipH = al.flipH;
-         self.flipV = al.flipV;
-         self.scaleControl.setValue( self.scale );
-         self.rotControl.setValue( self.rotDeg );
-         self.canvas.repaint();
+         self.applyPlacement( al.cx, al.cy, al.scale, al.rotDeg, al.flipH, al.flipV );
       };
 
       this.panMode = false;
@@ -6221,6 +6225,21 @@ class AlignDialog extends Dialog
       this.sizer.add( this.buttons );
       this.setScaledMinSize( 720, 620 );
       this.resize( 900, 760 );
+   }
+
+   // Apply a placement, sync the sliders (rotation normalized to 0..360) and
+   // repaint — the one path Fit, Auto and the rotation nudges go through.
+   applyPlacement( cx, cy, scale, rotDeg, flipH, flipV )
+   {
+      this.cx = cx;
+      this.cy = cy;
+      this.scale = scale;
+      this.rotDeg = ( ( rotDeg % 360 ) + 360 ) % 360;
+      this.flipH = flipH;
+      this.flipV = flipV;
+      this.scaleControl.setValue( this.scale );
+      this.rotControl.setValue( this.rotDeg );
+      this.canvas.repaint();
    }
 }
 
