@@ -93,7 +93,7 @@ var CRF_CHOICES = [ 16, 18, 20, 23 ];
 
 var DEFAULT_CONFIG = {
    language:        "en",
-   style:           STYLE_STACKING,
+   style:           STYLE_ZOOM,   // headless configs should set style explicitly
    stretchRef:      STRETCH_REF_FINAL,
    stretchLinked:   false,
    debayer:         true,        // auto: only applied to mono frames tagged CFA
@@ -191,7 +191,7 @@ var STRINGS = {
       "frames.scanning":   "Reading headers… %1 / %2",
 
       "style.title":       "Style",
-      "tab.sequence":      "From subs",
+      "tab.sequence":      "Progressive stack",
       "tab.zoom":          "Zoom Odyssey",
       "tagline.stacking":  "Watch your stack build itself, from 1 to N subs.",
       "tagline.zoom":      "You are here — from the whole sky down to your image.",
@@ -219,6 +219,7 @@ var STRINGS = {
                            "Its embedded WCS drives the zoom; the sky is drawn from PixInsight's bundled catalogs.",
       "zoom.image":        "Solved image (WCS):",
       "zoom.inputTitle":   "Zoom Odyssey — source images",
+      "zoom.renderTitle":  "Render options",
       "zoom.imageHint":    "A plate-solved image providing the coordinates — a WBPP master is already solved. Otherwise solve it first with Script > Image Analysis > ImageSolver.",
       "zoom.revealImage":  "Image to reveal:",
       "zoom.revealHint":   "Optional — the finished image inserted in the video (JPEG/PNG/TIFF/FITS/XISF), used as-is. Leave empty to reveal the solved image itself. Assumes the same framing as the solved image.",
@@ -402,7 +403,7 @@ var STRINGS = {
       "frames.scanning":   "Lecture des en-têtes… %1 / %2",
 
       "style.title":       "Style",
-      "tab.sequence":      "Depuis des brutes",
+      "tab.sequence":      "Empilement progressif",
       "tab.zoom":          "Zoom Odyssey",
       "tagline.stacking":  "Regarde ton empilement se construire, de 1 à N brutes.",
       "tagline.zoom":      "Tu es ici — du ciel entier jusqu'à ton image.",
@@ -430,6 +431,7 @@ var STRINGS = {
                            "Son WCS embarqué pilote le zoom ; le ciel est tracé depuis les catalogues fournis avec PixInsight.",
       "zoom.image":        "Image résolue (WCS) :",
       "zoom.inputTitle":   "Zoom Odyssey — images sources",
+      "zoom.renderTitle":  "Options de rendu",
       "zoom.imageHint":    "Une image résolue astrométriquement qui fournit les coordonnées — un master WBPP l'est déjà. Sinon, résolvez-la avec Script > Image Analysis > ImageSolver.",
       "zoom.revealImage":  "Image à révéler :",
       "zoom.revealHint":   "Optionnel — l'image finie insérée dans la vidéo (JPEG/PNG/TIFF/FITS/XISF), utilisée telle quelle. Laissez vide pour révéler l'image résolue elle-même. Suppose le même cadrage que l'image résolue.",
@@ -4729,6 +4731,16 @@ class SessionCinemaDialog extends Dialog
       this.locationSizer.addSpacing( 8 );
       this.locationSizer.add( this.fromSubButton );
 
+      // Everything zoom-specific that is not a source image lives in its own
+      // group, mirroring the source-images group above it.
+      this.zoomRenderGroup = new GroupBox( this );
+      this.zoomRenderGroup.title = tr( "zoom.renderTitle" );
+      this.zoomRenderGroup.sizer = new VerticalSizer;
+      this.zoomRenderGroup.sizer.margin = 8;
+      this.zoomRenderGroup.sizer.spacing = 6;
+      this.zoomRenderGroup.sizer.add( this.checksRow3 );
+      this.zoomRenderGroup.sizer.add( this.locationSizer );
+
       this.subtitleLabel = new Label( this );
       this.subtitleLabel.text = tr( "overlay.subtitle" );
       this.subtitleLabel.minWidth = labelWidth;
@@ -5151,17 +5163,17 @@ class SessionCinemaDialog extends Dialog
       // ---- mode tabs: progressive stack vs Zoom Odyssey ----
       this.sequencePage = this.makePage( [ this.stackNote,
                                            this.framesGroup, this.seqOptionsGroup ] );
-      this.zoomPage = this.makePage( [ this.zoomNote, this.zoomGroup, this.checksRow3, this.locationSizer ] );
+      this.zoomPage = this.makePage( [ this.zoomNote, this.zoomGroup, this.zoomRenderGroup ] );
 
       this.tabBox = new TabBox( this );
-      this.tabBox.addPage( this.sequencePage, tr( "tab.sequence" ) );
       this.tabBox.addPage( this.zoomPage, tr( "tab.zoom" ) );
-      try { this.tabBox.setPageIcon( 0, this.scaledResource( ":/icons/camera.png" ) ); } catch ( e ) {}
-      try { this.tabBox.setPageIcon( 1, this.scaledResource( ":/icons/zoom.png" ) ); } catch ( e ) {}
-      this.tabBox.currentPageIndex = ( cfg.style == STYLE_ZOOM ) ? 1 : 0;
+      this.tabBox.addPage( this.sequencePage, tr( "tab.sequence" ) );
+      try { this.tabBox.setPageIcon( 0, this.scaledResource( ":/icons/zoom.png" ) ); } catch ( e ) {}
+      try { this.tabBox.setPageIcon( 1, this.scaledResource( ":/icons/camera.png" ) ); } catch ( e ) {}
+      this.tabBox.currentPageIndex = ( cfg.style == STYLE_ZOOM ) ? 0 : 1;
       this.tabBox.onPageSelected = ( idx ) =>
       {
-         self.cfg.style = ( idx == 1 ) ? STYLE_ZOOM : STYLE_STACKING;
+         self.cfg.style = ( idx == 0 ) ? STYLE_ZOOM : STYLE_STACKING;
          self.updateStyleDependents();
       };
 

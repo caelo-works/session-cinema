@@ -39,6 +39,12 @@ All notable changes to this project are documented here. The format is based on
   test (tests/align.test.js) locks "what you align is what renders".
 
 ### Changed
+- Zoom Odyssey is now the first tab and the default style (fresh installs and
+  headless configs that omit `style` now run a zoom; set `style` explicitly in
+  SESSIONCINEMA_AUTORUN configs). Its zoom-specific checkboxes and the
+  location row moved into a "Render options" group under the source images.
+  The align popup's view buttons are down to one word (Move/Pan, Reset, Fit),
+  details in tooltips.
 - ffmpeg detection now probes, beyond PATH and the user path: a previous
   auto-install, winget/Chocolatey/Scoop (Windows), Homebrew Apple Silicon and
   MacPorts (macOS), snap and Linuxbrew (Linux). Absolute candidates that do
