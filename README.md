@@ -136,7 +136,29 @@ automation hook (`SESSIONCINEMA_AUTORUN=<config.json>`).
 
 </details>
 
-## Releasing — update-repository package
+## Releasing
+
+### Every release updates the support KB. Every one.
+
+**[`docs/support-kb.md`](docs/support-kb.md) is what a support agent quotes to a
+user.** A stale KB is worse than no KB: it makes support confidently wrong, and
+the user believes them. So a version bump is not done until the KB has been
+walked through:
+
+- new or renamed **controls** and **messages** → the reference and the EN/FR
+  lookup table;
+- bugs **fixed** → strike them from §7 *Known bugs* and from the §8
+  troubleshooting table, or support will keep apologising for something that
+  works;
+- bugs **found** → add them, with the answer support should give today;
+- the **`Applies to`** line and the facts card → the new version.
+
+This is enforced, not merely requested: `tests/docs.test.js` fails the build if
+`SC_VERSION` moves and the KB does not follow, and it also checks that every
+label the KB quotes still exists in the script's string table, in **both**
+languages. Renaming a group box without updating the KB breaks CI.
+
+### The update-repository package
 
 Distribution through the CaeloWorks update repository relies on a
 standardized artifact built here and ingested by the site repository

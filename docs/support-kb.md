@@ -73,12 +73,17 @@ Almost always one of:
 
 ### 3.1 Label map — English / French
 
-The user will name things in their language. This is the lookup.
+The user will name things in their language. This is the lookup. Tab 1 is
+**Zoom Odyssey**, tab 2 is **Progressive stack**.
+
+> These rows are machine-checked against the script's own string table by
+> `tests/docs.test.js` — if a label is renamed and this table is not, the build
+> fails. Keep both columns as the **exact** strings the dialog shows.
 
 | English | Français |
 |---|---|
-| Zoom Odyssey (tab 1) | Zoom Odyssey |
-| Progressive stack (tab 2) | Empilement progressif |
+| Zoom Odyssey | Zoom Odyssey |
+| Progressive stack | Empilement progressif |
 | Zoom Odyssey — source images | Zoom Odyssey — images sources |
 | Render options | Options de rendu |
 | Light frames | Brutes |
