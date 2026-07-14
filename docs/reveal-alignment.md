@@ -50,12 +50,6 @@ surface either way, since Auto's result is a normal placement you can nudge.
 
 ## What you align is what renders
 
-Up to 1.0.0 this was **not** true for a rotated, cropped reveal. The reveal's
-WCS carried R(−θ) while the popup places with R(+θ), so an aligned reveal with a
-non-trivial rotation rendered 2·θ away from the real sky — a 32° reveal put the
-survey nebula on screen as a ghost rotated some 64° next to the photo. Manual
-alignments were affected too.
-
-1.1.0 fixes the convention and `tests/align.test.js` locks the invariant across
-both code paths (preview and render). **If you rendered a Zoom Odyssey from a
-rotated cropped reveal with 1.0.0, the result is wrong — re-render it.**
+The placement the popup shows is the placement the render uses — one matrix,
+both paths, locked by `tests/align.test.js`. Align it until it looks right, and
+that is what comes out of the video.
