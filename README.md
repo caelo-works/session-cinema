@@ -55,13 +55,13 @@ by per-frame auto-stretching.
 
 <div align="center">
 
-![Session Cinema — From subs tab: raw subs in, with registration, the SHO colour composite, the finished image to reveal, and the shared video settings](https://pixinsight-scripts.caelo.works/assets/scripts/session-cinema-1-subs.webp)
+![Session Cinema — Zoom Odyssey tab: a plate-solved image and an image to reveal, a Render options group with constellation and star names, horizon, coordinate grid, the real-sky survey bridge and the simulated shoot location](https://pixinsight-scripts.caelo.works/assets/scripts/session-cinema-1-odyssey.webp)
 
-*The **From subs** tab — raw subs go in; registration, the SHO colour composite and the finished image to reveal sit on the left, the shared overlay / video / output settings on the right.*
+*The **Zoom Odyssey** tab — the one the script opens on. A plate-solved image drives the zoom; **Render options** holds the constellation & star names, the horizon, the coordinate grid, the real-sky survey bridge and the simulated shoot location. Overlays, video and output are shared with the other style, on the right.*
 
-![Session Cinema — Zoom Odyssey tab: a plate-solved image, constellation and star names, an equatorial grid, the real-sky survey bridge and the simulated shoot location](https://pixinsight-scripts.caelo.works/assets/scripts/session-cinema-2-odyssey.webp)
+![Session Cinema — Progressive stack tab: the list of subframes, rendering with a fixed stretch computed on the final stack, the SHO colour composite, and the finished image revealed at the end](https://pixinsight-scripts.caelo.works/assets/scripts/session-cinema-2-stack.webp)
 
-*The **Zoom Odyssey** tab — a plate-solved image drives the zoom; constellation & star names, the equatorial grid, the real-sky survey bridge and the simulated shoot location.*
+*The **Progressive stack** tab — raw subs go in; the fixed screen stretch, the internal registration, the SHO colour composite and the finished image to reveal sit on the left. **Align…** places that image on the stack — automatically, if it can.*
 
 </div>
 
@@ -90,17 +90,28 @@ folder containing the file. Alternatively, run it once via
 
 ## Getting started
 
-1. Add the raw light frames of the session — FITS or XISF, files or a whole
-   directory. Frames are ordered by `DATE-OBS`, so several nights just work.
-2. Pick a style. **Progressive stack** takes raw subs and registers them
-   internally (dithering + meridian flip); with several filters, map them to
-   R/G/B for a colour composite. **Zoom Odyssey** takes a single plate-solved
-   image (a WBPP master is already solved) and needs no sub list.
-3. Give the video a title, choose format and duration, check the overlay
-   items you want, and optionally pick a finished image to reveal at the end.
+1. Pick a style. The script opens on **Zoom Odyssey**, which needs a single
+   plate-solved image and no sub list at all (a WBPP master is already solved).
+   **Progressive stack** takes the session's raw light frames instead — FITS or
+   XISF, files or a whole directory — registers them internally (dithering +
+   meridian flip) and orders them by `DATE-OBS`, so several nights just work;
+   with several filters, map them to R/G/B for a colour composite.
+2. Give the video a title, choose format and duration, and check the overlay
+   items you want.
+3. Optionally pick a finished image to reveal at the end. **Align…** places it
+   on the frame behind it: **Auto** computes the placement by star matching,
+   and the manual controls are there when it can't (or to fine-tune it) — see
+   [reveal alignment](docs/reveal-alignment.md).
 4. Click **Generate**: the frame sequence is rendered, then encoded to MP4 if
-   ffmpeg is available — otherwise run the `encode` script written next to
-   the frames.
+   ffmpeg is available. If it isn't, the script offers to install one in a
+   click — or run the `encode` script written next to the frames.
+
+## Documentation
+
+- **[Reveal alignment](docs/reveal-alignment.md)** — how **Auto** places your
+  finished image on the frame behind it, when it gives up, and what to do then.
+- **[ffmpeg mirror](docs/ffmpeg-mirror.md)** — the hosting contract behind the
+  one-click ffmpeg install (site side).
 
 ## Development
 
