@@ -40,28 +40,63 @@ assert.ok( KB.indexOf( "| Version | " + version[ 1 ] ) >= 0,
    `the KB facts card must show the shipping version (| Version | ${version[ 1 ]} …).` );
 
 // --- 2. every label in the EN/FR lookup is a real string, in both languages --
+//
+// The lookup is a LIST, not a table, on purpose: the knowledge-base back-office
+// renders tables badly, and this file is imported into a support agent.
+// Format of each row:   - **English label** = **Libellé français**
 
-const table = /\| English \| Français \|\n\|---\|---\|\n((?:\|.*\|\n)+)/.exec( KB );
-assert.ok( table, "docs/support-kb.md must keep the '| English | Français |' lookup table" );
+const rows = KB.split( "\n" )
+               .map( l => /^- \*\*(.+?)\*\* = \*\*(.+?)\*\*\s*$/.exec( l ) )
+               .filter( Boolean );
+
+assert.ok( rows.length >= 10,
+   "docs/support-kb.md must keep the EN/FR label lookup, one label per line:\n" +
+   "     - **English label** = **Libellé français**" );
 
 const enValues = new Set( Object.keys( M.STRINGS.en ).map( k => M.STRINGS.en[ k ] ) );
 const frValues = new Set( Object.keys( M.STRINGS.fr ).map( k => M.STRINGS.fr[ k ] ) );
 
-const rows = table[ 1 ].trim().split( "\n" );
-assert.ok( rows.length >= 10, "the lookup table looks truncated" );
-
-rows.forEach( function( row )
+rows.forEach( function( m )
 {
-   const cells = row.split( "|" ).map( s => s.trim() ).filter( s => s.length );
-   assert.strictEqual( cells.length, 2, `malformed lookup row: ${row}` );
-   const en = cells[ 0 ], fr = cells[ 1 ];
-
+   const en = m[ 1 ], fr = m[ 2 ];
    assert.ok( enValues.has( en ),
       `the KB lists the English label "${en}", which is no longer in STRINGS.en.\n` +
-      "     A label was renamed and the support KB was not updated." );
+      "     A label was renamed and the support KB was not updated — support would\n" +
+      "     be quoting a button that no longer exists." );
    assert.ok( frValues.has( fr ),
       `the KB lists the French label "${fr}", which is no longer in STRINGS.fr.\n` +
       "     A label was renamed and the support KB was not updated." );
 } );
 
-console.log( `docs: support KB matches ${version[ 1 ]}, ${rows.length} labels verified in EN and FR` );
+// --- 3. the knowledge-base importer's hard limit -----------------------------
+//
+// The importer cuts one article per `##`, re-cuts on `###` when a section is too
+// big, and TRUNCATES what it serves at 4000 characters. A long `##` with no `###`
+// is therefore silently beheaded: the agent goes blind to the end of it and
+// nothing reports an error. This is the one formatting rule that must not slip.
+
+const LIMIT = 3500;
+const sections = [];
+let cur = null;
+KB.split( "\n" ).forEach( function( line )
+{
+   if ( /^## /.test( line ) )
+   {
+      cur = { title: line.slice( 3 ).trim(), chars: 0, subs: 0 };
+      sections.push( cur );
+      return;
+   }
+   if ( !cur )
+      return;                       // the preamble is its own article
+   if ( /^### /.test( line ) )
+      cur.subs++;
+   cur.chars += line.length + 1;
+} );
+
+const beheaded = sections.filter( s => s.chars > LIMIT && s.subs === 0 );
+assert.deepStrictEqual( beheaded.map( s => `${s.title} (${s.chars} chars, no ###)` ), [],
+   "these sections exceed the knowledge-base article limit and have no ### to be\n" +
+   "     re-cut on, so the support agent would never see their end. Split them." );
+
+console.log( `docs: support KB matches ${version[ 1 ]}, ${rows.length} labels verified in EN and FR, ` +
+             `${sections.length} sections within the KB import limit` );

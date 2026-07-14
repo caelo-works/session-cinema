@@ -1,365 +1,520 @@
 # Session Cinema — support knowledge base
 
-Written for a **support agent**, not for a user. It is exhaustive on purpose: it
-states what every control does, what every error message means, and what is
-actually broken today. Quote it, don't paraphrase it.
+**This is written for a support agent, not for a user.** Quote it, do not
+paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Two rules when you use it:
+Applies to **1.1.0**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.1.0`).
 
-- **The UI is bilingual.** A user will describe *their* window, so they will say
-  "Habillage", not "Overlay". Every label below is given in both languages.
-- **Never invent a figure.** The product's whole pitch is that it only shows
-  measured facts; support has to hold the same line. If you don't know, say so
-  and escalate.
+**The interface is bilingual — English and French — and the user will describe
+*their* window.** A French user says *« Habillage »*, not "Overlay"; *« Brutes »*,
+not "Light frames". Every label in this document is given in both languages for
+that reason. If a user quotes a label you cannot find here, say so and escalate
+rather than guess which control they mean.
 
-Applies to **1.1.0**. Check `#define SC_VERSION` at the top of
-`pjsr/SessionCinema.js` if in doubt — the version is also printed under the
-script's name in the dialog header.
+**Never invent a figure, a path, a menu name or a compatibility claim.** This
+product's entire pitch is that it only ever shows measured facts; support has to
+hold the same line. If the answer is not in this document, the correct answer is
+*"I don't know, I'm passing this to the team."*
+
+- Repository and issue tracker: https://github.com/caelo-works/session-cinema
+- Product page: https://pixinsight-scripts.caelo.works/en/scripts/session-cinema
 
 ---
 
-## 1. The facts card
+## The product card — what Session Cinema is
+
+Session Cinema is a **PixInsight script** that turns an imaging session into a
+video: either the stack building itself sub by sub, or a zoom from the whole sky
+down to the user's image.
 
 | | |
 |---|---|
-| What it is | A PixInsight script that turns an imaging session into a video |
-| Version | 1.1.0 · GPL-3.0 · free and open source |
+| Version | 1.1.0 |
+| Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 or newer** — Windows, macOS, Linux |
-| Where it lives | **Script → CaeloWorks → Session Cinema** |
-| Video encoding | ffmpeg — detected, or installed in one click, or done later by a generated script |
-| Repository | https://github.com/caelo-works/session-cinema |
-| Product page | https://pixinsight-scripts.caelo.works/en/scripts/session-cinema |
+| Where it appears | **Script → CaeloWorks → Session Cinema** |
+| Video encoding | ffmpeg — detected, installed in one click, or done afterwards by a generated script |
 
-**Two styles, one dialog.** *Zoom Odyssey* (the tab it opens on) and *Progressive
-stack*. They share the Overlay, Video and Output panels on the right; only the
-left half changes with the tab.
+**Two styles, one window.** The window opens on the **Zoom Odyssey** tab; the
+second tab is **Progressive stack** (*« Empilement progressif »*). The right-hand
+half of the window — Overlay, Video, Output — is shared by both.
 
----
-
-## 2. Installing it
-
-### Route A — the CaeloWorks update repository (recommended)
-
-1. **Resources → Updates → Manage Repositories**
-2. Add `https://pixinsight-scripts.caelo.works/update/`
-3. **Resources → Updates → Check for Updates**, accept, **restart PixInsight**.
-
-Updates then arrive through the same channel automatically.
-
-> **"Unsigned repository" warning.** Expected. The repository is not CPD-signed
-> yet; signing is underway. Tell the user it is safe to accept, and that this is
-> a signature on the *repository*, not a virus warning.
-
-### Route B — manual
-
-Download `SessionCinema.js` from the
-[Releases](https://github.com/caelo-works/session-cinema/releases), then
-**Script → Feature Scripts… → Add** and select the folder containing the file.
-Or run it once with **Script → Execute Script File…**.
-
-### "I installed it and the menu entry is not there"
-
-Almost always one of:
-
-- **PixInsight was not restarted** after the update.
-- The user is looking under the wrong menu. It is **Script → CaeloWorks →
-  Session Cinema** since 1.0.0. Before that it sat elsewhere; a user upgrading
-  from a very old build may have a stale entry pointing at a deleted file — have
-  them re-run **Feature Scripts…** and remove the old entry.
+- **Zoom Odyssey** — "you are here". The video starts at the whole sky, falls
+  through the constellation, and lands on the user's image at its true position,
+  orientation and scale. It needs **one plate-solved image** and no subs at all.
+- **Progressive stack** — the integration builds itself from the first sub to the
+  last, in colour. It needs the session's **raw light frames**.
 
 ---
 
-## 3. The window, control by control
+## Installation — how to install Session Cinema
 
-### 3.1 Label map — English / French
+Two routes. The first is the one to recommend.
 
-The user will name things in their language. This is the lookup. Tab 1 is
-**Zoom Odyssey**, tab 2 is **Progressive stack**.
+### From the CaeloWorks update repository (recommended)
 
-> These rows are machine-checked against the script's own string table by
-> `tests/docs.test.js` — if a label is renamed and this table is not, the build
-> fails. Keep both columns as the **exact** strings the dialog shows.
+1. In PixInsight: **Resources → Updates → Manage Repositories**.
+2. Add this URL: `https://pixinsight-scripts.caelo.works/update/`
+3. **Resources → Updates → Check for Updates**, accept the install.
+4. **Restart PixInsight.** The script will not appear until you do.
 
-| English | Français |
-|---|---|
-| Zoom Odyssey | Zoom Odyssey |
-| Progressive stack | Empilement progressif |
-| Zoom Odyssey — source images | Zoom Odyssey — images sources |
-| Render options | Options de rendu |
-| Light frames | Brutes |
-| Rendering | Rendu |
-| Colour (multi-filter) | Couleur (multi-filtre) |
-| Final image (revealed at the end) | Image finale (révélée à la fin) |
-| Overlay | Habillage |
-| Video | Vidéo |
-| Output | Sortie |
-| Progress | Progression |
-| Align… | Aligner… |
-| Auto | Auto |
-| Detect | Détecter |
-| Install ffmpeg… | Installer ffmpeg… |
-| Generate | Générer |
+Updates then arrive automatically through the same channel.
 
-### 3.2 Tab 1 — Zoom Odyssey
+### "PixInsight warns me about an unsigned repository"
 
-*"You are here": the video starts at the whole sky, falls through the
-constellation, and lands on the user's image at its true position, orientation
-and scale.*
+**Expected, and harmless.** The CaeloWorks repository is not CPD-signed yet;
+signing is underway. It is a signature on the *repository*, not a virus warning.
+Tell the user it is safe to accept.
 
-**Zoom Odyssey — source images**
+### Manual install
 
-| Control | What it needs | Notes |
-|---|---|---|
-| **Solved image (WCS)** | One **plate-solved** image | This is the only mandatory input of the whole tab. A **WBPP master is already solved**. If not: **Script → Image Analysis → ImageSolver**, then come back. |
-| **Image to reveal** | Optional — the finished, processed image (JPEG/PNG/TIFF/FITS/XISF) | Used **as-is**. Leave it empty and the script reveals the solved image itself. |
-| **Different crop from the solved image** | Tick it when the finished image is *not* framed like the solved one (a crop, a rotation, a mirror) | Enables **Align…** |
-| **Align…** | Opens the alignment popup | See §4 |
+1. Download `SessionCinema.js` from the releases page:
+   https://github.com/caelo-works/session-cinema/releases
+2. In PixInsight: **Script → Feature Scripts… → Add**, and select the **folder**
+   containing the file (not the file itself).
+3. Alternatively, run it once with **Script → Execute Script File…**
 
-**Render options** — all optional, all cosmetic-but-real:
+### "I installed it and I can't find it in the menus"
 
-- **Constellation names** · **Star names** · **Horizon** · **Coordinate grid**
-- **Real-sky survey bridge** — downloads genuine **DSS2** imagery (CDS/Aladin
-  `hips2fits`) so the star field dissolves into a real photograph of that patch
-  of sky before the user's own image lands on it. **Needs internet.**
-- **Simulate shoot location** (+ Lat / Lon / UTC) — opens on the sky *as it was
-  from the shoot site at the shoot time*, with a true horizon. Reads
-  `SITELAT` / `SITELONG` / `DATE-OBS` from the headers.
-  - **"From a sub…"** exists because **integrated masters usually drop
-    SITELAT/SITELONG**. Point it at a raw or calibrated sub and it fills the
-    three fields. This is the single most common cause of "the location fields
-    are empty".
+It lives at **Script → CaeloWorks → Session Cinema**. Almost always one of:
 
-### 3.3 Tab 2 — Progressive stack
+- **PixInsight was not restarted** after the update. This is the number one
+  cause. Have them restart.
+- They are looking in the wrong place. It is under a **CaeloWorks** submenu, not
+  at the top level of Script.
+- They upgraded from a very old build and have a **stale Feature Scripts entry**
+  pointing at a file that no longer exists. Have them open **Script → Feature
+  Scripts…**, remove the old entry, and re-add it.
 
-*The integration builds itself, sub by sub, from black to the finished image.*
+---
 
-**Light frames** — Add files… / Add folder… / Remove / Clear.
+## The window, control by control
 
-- FITS or XISF. **At least 2** frames (`Add at least 2 light frames.`).
-- Ordered by **`DATE-OBS`**, so several nights just work.
-- Unreadable frames, or frames whose geometry does not match, are **skipped and
-  reported** in the console — they do not abort the run.
+### English / French label lookup
 
-**Rendering**
+The user will name things in their own language. This is the lookup, and the
+words on the left are the **exact** strings the dialog shows.
 
-| Control | Meaning |
-|---|---|
-| **Screen stretch: Fixed, computed on the final stack** (default) | Two passes. The reference stretch is computed once on the *finished* stack, so the noise really does visibly drop through the video. **This is the honest one.** |
-| Screen stretch: Fixed, computed on the first frame | One pass, faster. |
-| Screen stretch: Auto-stretch each rendered frame | **Brightness pumps.** Only for a user who explicitly wants it. It also destroys the point of the video: auto-stretching every frame hides the very noise improvement the video is meant to show. |
-| **Linked RGB channels** | Stretch the channels together rather than separately. |
-| **Debayer CFA frames** | Auto-detected via `BAYERPAT`. Only applied to mono frames tagged CFA. |
-| **Register subs** | StarAlignment. Corrects dithering and meridian flips. Leave it on unless the subs are already registered. |
+- **Zoom Odyssey** = **Zoom Odyssey**
+- **Progressive stack** = **Empilement progressif**
+- **Zoom Odyssey — source images** = **Zoom Odyssey — images sources**
+- **Render options** = **Options de rendu**
+- **Light frames** = **Brutes**
+- **Rendering** = **Rendu**
+- **Colour (multi-filter)** = **Couleur (multi-filtre)**
+- **Final image (revealed at the end)** = **Image finale (révélée à la fin)**
+- **Overlay** = **Habillage**
+- **Video** = **Vidéo**
+- **Output** = **Sortie**
+- **Progress** = **Progression**
+- **Align…** = **Aligner…**
+- **Auto** = **Auto**
+- **Detect** = **Détecter**
+- **Install ffmpeg…** = **Installer ffmpeg…**
+- **Generate** = **Générer**
 
-**Colour (multi-filter)** — map filters to R / G / B.
+### Tab 1 — Zoom Odyssey
 
-| Palette | R | G | B |
-|---|---|---|---|
-| **SHO (Hubble)** | SII | Ha | OIII |
-| **HOO (bicolour)** | Ha | OIII | OIII |
-| **HOS** | Ha | OIII | SII |
-| **RGB** | R | G | B |
-| **LRGB** | R | G | B |
+**Zoom Odyssey — source images** (*« Zoom Odyssey — images sources »*):
 
-- The mapping is driven by the **`FILTER`** header value. "Filters detected: …"
-  appears once subs are loaded; before that it says **"Load subs to detect
-  filters."**
+- **Solved image (WCS)** — the only mandatory input of this tab. It must be
+  **plate-solved**. A **WBPP master is already solved**. If it is not solved, the
+  script refuses to run and says so; the user must solve it first with
+  **Script → Image Analysis → ImageSolver**.
+- **Image to reveal** — optional. The finished, processed image
+  (JPEG/PNG/TIFF/FITS/XISF), used **as-is**. Leave it empty and the script reveals
+  the solved image itself.
+- **Different crop from the solved image** — tick this when the finished image is
+  *not* framed like the solved one (a crop, a rotation, a mirror). It enables the
+  **Align…** button.
+- **Align…** — opens the alignment window, where the finished image is placed on
+  the solved one, automatically or by hand.
+
+**Render options** (*« Options de rendu »*) — all optional:
+
+- **Constellation names**, **Star names**, **Horizon**, **Coordinate grid**.
+- **Real-sky survey bridge** — downloads genuine **DSS2** imagery so the star
+  field dissolves into a real photograph of that patch of sky. **Needs an internet
+  connection.** If the download fails, the script says so and carries on with the
+  catalog star field only; the video is still produced.
+- **Simulate shoot location** with **Lat / Lon / UTC** — opens on the sky as it
+  was from the shoot site at the shoot time, with a true horizon. It reads
+  `SITELAT`, `SITELONG` and `DATE-OBS` from the headers.
+- **"From a sub…"** — this button exists because **integrated masters usually
+  drop `SITELAT` and `SITELONG`**. Point it at a **raw** sub and it fills the three
+  fields. *"My location fields are empty"* is the most common Zoom Odyssey
+  question, and this is the answer.
+
+### Tab 2 — Progressive stack
+
+**Light frames** (*« Brutes »*) — Add files… / Add folder… / Remove / Clear.
+
+- FITS or XISF. **At least 2 frames** are required.
+- Frames are ordered by **`DATE-OBS`**, so several nights just work.
+- Unreadable frames, and frames whose geometry does not match the others, are
+  **skipped and listed in the console**. They do not abort the run. Mixing frames
+  of different dimensions is the usual cause.
+
+**Rendering** (*« Rendu »*):
+
+- **Screen stretch: Fixed, computed on the final stack** — the default, and the
+  honest one. Two passes: the reference stretch is computed once on the *finished*
+  stack, so the noise really does visibly drop through the video.
+- **Screen stretch: Fixed, computed on the first frame** — one pass, faster.
+- **Screen stretch: Auto-stretch each rendered frame** — **the brightness will
+  pump.** It also defeats the purpose of the video: auto-stretching every frame
+  hides the very noise improvement the video exists to show. If a user complains
+  the brightness pulses, this is the setting.
+- **Linked RGB channels** — stretch the channels together rather than separately.
+- **Debayer CFA frames** — auto-detected via the `BAYERPAT` header.
+- **Register subs** — StarAlignment; corrects dithering and meridian flips. Leave
+  it on unless the subs are already registered.
+
+**Colour (multi-filter)** (*« Couleur (multi-filtre) »*) — maps filters to R/G/B
+using the **`FILTER`** header value:
+
+- **SHO (Hubble)**: SII → R, Ha → G, OIII → B
+- **HOO (bicolour)**: Ha → R, OIII → G, OIII → B
+- **HOS**: Ha → R, OIII → G, SII → B
+- **RGB** and **LRGB**: R → R, G → G, B → B
 - Each channel can be overridden by hand.
 - **Remove dominant green (SCNR)** caps green at the R/B neutral — the usual
   narrowband green cast.
+- If the panel says **"Load subs to detect filters."** (*« Chargez des brutes pour
+  détecter les filtres. »*), no subs are loaded yet. If it stays empty **after**
+  loading subs, the subs carry no `FILTER` header value and the channels must be
+  mapped by hand.
 
-**Final image (revealed at the end)**
+**Final image (revealed at the end)** (*« Image finale (révélée à la fin) »*):
 
-- **Presentation image** — the user's finished, processed image. Cross-faded in
-  and held at the end.
-- **Align…** places it on the stack (§4).
-- **Reveal duration (s)** — 0.3 to 10, default 2.0.
+- **Presentation image** — the user's finished image, cross-faded in and held at
+  the end.
+- **Align…** places it on the stack.
+- **Reveal duration (s)** — from 0.3 to 10, default **2.0**.
 
-### 3.4 Shared panels
+### Overlay, Video and Output — shared by both tabs
 
-**Overlay** — *this is the honest part of the product, and it matters.*
+**Overlay** (*« Habillage »*) — this is the honest part of the product:
 
-| Item | Shows |
-|---|---|
-| Title | blank = the `OBJECT` header from the frames |
-| Frame counter | `164 × 300 s`, and `164/164` on the right |
-| Cumulative exposure | `13h40` |
-| UT clock | from `DATE-OBS` |
-| **Measured SNR gain (stacking)** | dB, measured on the running stack — **not** a theoretical √N. **See §7.1: this does not currently draw in colour composites.** |
-| Progress bar | thin bar at the very bottom |
-| Angular scale bar (zoom) | |
-| Subtitle · Distance · Signature | free text |
+- **Title** — leave blank and it uses the `OBJECT` header from the frames.
+- **Frame counter**, **Cumulative exposure**, **UT clock** (from `DATE-OBS`),
+  **Progress bar**, **Angular scale bar (zoom)**.
+- **Measured SNR gain (stacking)** — a noise-based gain in dB, measured on the
+  running stack, never a theoretical √N. **Warning: in version 1.1.0 this does not
+  draw at all when the colour composite is on, which is the default.** See the
+  known-bugs section.
+- **Subtitle**, **Distance**, **Signature** — free text.
 
-**Video**
+**Video** (*« Vidéo »*):
 
-| Control | Values |
-|---|---|
-| Format | 1920×1080 (16:9) · 3840×2160 (4K) · 1080×1080 (1:1) · **1080×1920 (9:16)** |
-| Framing | Fill (center crop) · Fit (letterbox) |
-| FPS | 12 – 60 (default 30) |
-| Animation length (s) | 3 – 120 (default 12) |
-| Hold first frame (s) | 0 – 10 (default 1) |
-| Hold last frame (s) | 0 – 15 (default 3) |
-| Quality | CRF 16 (best) · **18 (high, default)** · 20 (balanced) · 23 (smaller file) |
+- **Format**: 1920×1080 (16:9) · 3840×2160 (16:9, 4K) · 1080×1080 (1:1) ·
+  1080×1920 (9:16)
+- **Framing**: Fill (center crop) · Fit (letterbox)
+- **FPS**: 12 to 60, default **30**
+- **Animation length (s)**: 3 to 120, default **12**
+- **Hold first frame (s)**: 0 to 10, default **1**
+- **Hold last frame (s)**: 0 to 15, default **3**
+- **Quality**: CRF 16 (best) · **18 (high, the default)** · 20 (balanced) ·
+  23 (smaller file)
 
-**Output**
+**Output** (*« Sortie »*):
 
-- **Folder** — mandatory (`Choose an output folder.`).
+- **Folder** — mandatory. The script refuses to run without one.
 - **Keep the PNG frame sequence** — off by default.
-- **ffmpeg** — see §5.
+- **ffmpeg** — see the ffmpeg section.
 
-**Progress** — a live preview, a bar, **Pause** and **Cancel**. Cancelling keeps
-the frames already rendered and says how many.
+**Progress** (*« Progression »*) — a live preview, a bar, **Pause** and **Cancel**.
+Cancelling keeps the frames already rendered and reports how many.
 
-**New Instance** (the triangle, bottom-left) — drag it to the workspace to save
-the current settings as a **process icon**, like any PixInsight script.
-
----
-
-## 4. Alignment — placing the finished image
-
-Both styles can end on the user's finished image, and it has to be placed on the
-frame behind it. **Align…** opens a popup showing both images, with the reveal
-draggable on top.
-
-- **Auto** star-matches the reveal against the background using `StarAlignment`.
-  It works on deep crops (a 3×3 grid of background tiles) and on **mirrored**
-  images (triangle similarity), and it refuses a fit that does not pass a quality
-  gate rather than returning a plausible-looking wrong one.
-- **When Auto fails**, the message is:
-  > *Automatic alignment found no reliable star match (starless or heavily
-  > processed image?). Align manually.*
-
-  Take it at face value: **a starless image has nothing to match**. Tell the user
-  to place it by hand — Auto's job is convenience, not magic.
-- The manual controls stay available either way: drag to move, scale, rotation,
-  Flip H / Flip V, ±90°, **Fit** (assume the reveal covers the whole frame), and
-  an **Overlay** slider that fades the reveal so the user can check the fit.
-
-Full detail: [`reveal-alignment.md`](reveal-alignment.md).
+**New Instance** — the small triangle at the bottom-left. Dragging it to the
+workspace saves the current settings as a **process icon**, like any PixInsight
+script.
 
 ---
 
-## 5. ffmpeg
+## Aligning the finished image on the stack or on the sky
 
-The script encodes with ffmpeg. It does **not** ship one.
+Both styles can end on the user's finished image, and it must be placed on the
+frame behind it — the plate-solved image (Zoom Odyssey) or the growing stack
+(Progressive stack). The **Align…** button (*« Aligner… »*) opens a window showing
+both images, with the finished one draggable on top and an opacity slider to check
+the fit.
 
-**Detection order:** `PATH` → a previous auto-install → the usual package
-managers (winget / Chocolatey / Scoop on Windows; Homebrew on Apple Silicon and
-MacPorts on macOS; snap and Linuxbrew on Linux). Absolute candidates that do not
-exist on disk are skipped without launching a process.
+**Auto** star-matches the finished image against the background automatically. It
+handles deep crops, and it handles **mirrored** images. It will refuse a fit it is
+not sure of rather than return a plausible-looking wrong one — so when it says it
+failed, it really did fail.
 
-**If nothing is found**, the Output row shows **⚠️ ffmpeg not found** and offers
-**Install ffmpeg…**: it downloads a static build (~50–90 MB) from the CaeloWorks
-mirror and validates it by running `ffmpeg -version`. It installs to:
+**When Auto gives up**, the message is:
 
-| OS | Location |
-|---|---|
-| Windows | `%LOCALAPPDATA%\CaeloWorks\ffmpeg` |
-| macOS | `~/Library/Application Support/CaeloWorks/ffmpeg` |
-| Linux | `$XDG_DATA_HOME/caeloworks/ffmpeg` (or `~/.local/share/caeloworks/ffmpeg`) |
+> *Automatic alignment found no reliable star match (starless or heavily processed
+> image?). Align manually.*
+> *« L'alignement automatique n'a pas trouvé d'appariement d'étoiles fiable (image
+> starless ou très retouchée ?). Alignez manuellement. »*
 
-**If the install fails**, the message is explicit — check the internet
-connection, or install ffmpeg by hand and point at it with **Browse**.
+Take it at face value: **a starless image has no stars to match**. Tell the user
+to place it by hand. Auto is a convenience, not magic, and there is nothing to fix.
 
-**If there is no ffmpeg at all**, nothing is lost: the script writes the **PNG
-sequence** plus a ready-to-run **`encode.sh` / `encode.bat`** next to it. The
-user runs that later and gets the same video.
-
----
-
-## 6. Headless / automation
-
-`SESSIONCINEMA_AUTORUN=/path/to/config.json` runs the engine without the dialog.
-The JSON is the same key set the dialog saves.
-
-> **Trap, and it bites:** a headless config that omits `style` now runs a **zoom**
-> (1.1.0 made Zoom Odyssey the default). Set `style` explicitly in every
-> automation config.
+**The manual controls** are always available, and stay available after Auto: drag
+to move, **Scale**, **Rotation**, **Flip H**, **Flip V**, **+90° / −90°**, **Fit**
+(assume the finished image covers the whole frame), and an **Overlay** slider that
+fades it in and out so the fit can be checked.
 
 ---
 
-## 7. Known bugs and limitations — read before answering
+## ffmpeg and video encoding
 
-### 7.1 The measured SNR gain does not draw in colour composites
+The script encodes the video with **ffmpeg**. It does not ship one.
 
-**The checkbox is ticked, and nothing appears.** In the multi-filter colour path
-the SNR inputs are hard-coded to zero, so the gain string comes out empty and is
-silently dropped from the overlay. It works on the mono path only — and colour is
-**on by default**.
+**It looks for ffmpeg** in the system `PATH`, then in a previous auto-install, then
+in the usual package managers — winget, Chocolatey and Scoop on Windows; Homebrew
+and MacPorts on macOS; snap and Linuxbrew on Linux.
 
-This is the flagship "we only show measured facts" feature, so treat a report of
-it as legitimate and important, not as user error. **Do not tell the user to
-re-tick the box.** Confirm it, and escalate.
+**If none is found**, the Output panel shows **⚠️ ffmpeg not found** and offers a
+button, **Install ffmpeg…** (*« Installer ffmpeg… »*). It downloads a static build
+(about 50–90 MB) from the CaeloWorks mirror, checks that it actually runs, and
+keeps it. It installs to:
 
-### 7.2 Zoom Odyssey in 9:16 ends letterboxed
+- **Windows**: `%LOCALAPPDATA%\CaeloWorks\ffmpeg`
+- **macOS**: `~/Library/Application Support/CaeloWorks/ffmpeg`
+- **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg`, or `~/.local/share/caeloworks/ffmpeg`
 
-Rendering a Zoom Odyssey to **1080×1920** frames the revealed image *whole*
-inside the vertical frame, which leaves roughly **59 % of the frame black** with
-a landscape photo — even though Framing says "Fill (center crop)". The setting is
-not consulted for the zoom's final framing.
+**If the install fails**, the message says so and the fix is in it: check the
+internet connection, or install ffmpeg by hand and point at it with **Browse**.
 
-Workaround to offer: none inside the script. Either render 16:9, or accept the
-bands, or re-frame the reveal outside. Escalate — the fix is known.
-
-### 7.3 Alignments saved before 1.1.0 are reinterpreted
-
-1.1.0 changed the **sign convention** of the stored reveal rotation. A saved
-alignment from 1.0.0 or earlier — in the script's settings, in a headless JSON,
-or in a **process icon** — now renders **2×θ away from the truth**, silently, with
-no error.
-
-**Symptom:** "I upgraded and my reveal is now rotated / lands in the wrong
-place." **Answer:** open **Align…** and redo the alignment once (Auto is enough).
-It will be correct from then on. Rotations of 0° are unaffected, which is why
-most users never see it.
-
-### 7.4 The survey bridge needs the internet
-
-If the DSS2 download fails, the console says so and the script **falls back to
-the catalog star field only** — it does not abort. The video is still produced,
-it just has no real-sky photograph in the transition.
-
-### 7.5 Sparse sky
-
-> *Star/constellation catalogs not found in the PixInsight install — the sky will
-> be sparse.*
-
-The script draws the sky from PixInsight's own bundled catalogs. If they are
-missing from the install, it says so and carries on with what it has.
+**If there is no ffmpeg at all, nothing is lost.** The script writes the **PNG
+frame sequence** plus a ready-to-run **`encode.sh`** (or **`encode.bat`**) next to
+it. The user runs that script whenever they like and gets exactly the same video.
+Never tell a user that a missing ffmpeg has cost them their render.
 
 ---
 
-## 8. Troubleshooting — symptom → cause → answer
+## Headless automation and process icons
 
-| The user says | It means | Tell them |
-|---|---|---|
-| *"This image has no astrometric solution."* | The Zoom Odyssey input is not plate-solved | Solve it: **Script → Image Analysis → ImageSolver**, then run Session Cinema again. A **WBPP master is already solved.** |
-| *"Add at least 2 light frames."* | Fewer than two subs loaded | Progressive stack needs the session, not a master. |
-| *"Choose an output folder."* | Output → Folder is empty | |
-| The location fields are empty / "Simulate shoot location" does nothing | **Integrated masters drop `SITELAT` / `SITELONG`** | Use **"From a sub…"** and point at a *raw* sub. This is the most common Zoom Odyssey question. |
-| "Some of my frames are missing from the video" | Unreadable, or geometry mismatch | The console lists exactly which, under *"Skipped (unreadable or geometry mismatch)"*. Mixing frames of different dimensions is the usual cause. |
-| "No colour, my SHO came out grey" | `FILTER` header missing or unmapped | Check "Filters detected:". If it is empty, the subs carry no `FILTER` value — map the channels by hand. |
-| "The brightness pulses through the video" | Screen stretch is set to **Auto-stretch each rendered frame** | Switch to **Fixed, computed on the final stack**. That is also the only setting where the noise improvement shown is real. |
-| "The SNR gain never appears" | **Known bug, §7.1** — colour composites | Confirm it. Do not blame the user. Escalate. |
-| "My reveal is rotated wrong since the update" | **Known bug, §7.3** — the rotation convention changed | Redo the alignment once via **Align… → Auto**. |
-| "ffmpeg failed (exit code …)" | Encoding failed after rendering | The frames and the encode script are kept. Have them run `encode.sh` / `encode.bat`, and send the exit code. |
-| "The video is vertical and half black" | **Known limitation, §7.2** | |
-| "PixInsight warns about an unsigned repository" | Expected — the repo is not CPD-signed yet | Safe to accept. |
+The settings can be saved and replayed two ways:
+
+- **Process icon** — drag the **New Instance** triangle (bottom-left of the
+  window) to the workspace. It saves the current settings like any PixInsight
+  script.
+- **Headless run** — set the environment variable
+  `SESSIONCINEMA_AUTORUN=/path/to/config.json` and the engine runs without the
+  window. The JSON uses the same keys the dialog saves.
+
+**Trap in 1.1.0:** a headless config that does **not** specify `style` now runs a
+**Zoom Odyssey**, because Zoom Odyssey became the default style. Anyone automating
+a progressive stack must set `style` explicitly in the config.
+
+Also note: an alignment saved **before** 1.1.0 — in a process icon or in a JSON —
+is reinterpreted with the opposite rotation. See the known-bugs section.
 
 ---
 
-## 9. Escalating
+## Error messages, word for word
 
-Collect these four things. Without them, the report is not actionable:
+The user will paste the message. Here is what each one means. English first, then
+the French the same message shows in a French interface.
 
-1. **PixInsight version** and **OS** (Help → About).
-2. **Session Cinema version** — printed under the name in the dialog header.
-3. **The console output of the run.** The script logs every step, every skipped
-   frame, the plate solve it read, and the exact ffmpeg failure. It is almost
-   always enough on its own.
-4. **The style and the settings** — easiest: have the user drag the **New
-   Instance** triangle to the workspace, then send the process icon, or just a
-   screenshot of the window.
+### Messages that stop the run
 
-File issues at https://github.com/caelo-works/session-cinema/issues.
+**"Add at least 2 light frames."** / *« Ajoutez au moins 2 brutes. »*
+Progressive stack needs the session's subs, not a master. Fewer than two are
+loaded.
+
+**"Choose a plate-solved final image for Zoom Odyssey."** / *« Choisissez une image
+finale résolue astrométriquement pour Zoom Odyssey. »*
+No image selected in the **Solved image (WCS)** field.
+
+**"Choose an output folder."** / *« Choisissez un dossier de sortie. »*
+The Output → Folder field is empty.
+
+**"This image has no astrometric solution. Solve it first (Script > Image Analysis
+> ImageSolver), then run Session Cinema again."** / *« Cette image n'a pas de
+solution astrométrique. Résolvez-la d'abord… »*
+Zoom Odyssey needs a **plate-solved** image. A WBPP master is already solved; an
+exported JPEG or a hand-processed TIFF is not. The fix is in the message.
+
+**"Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF)."** /
+*« Impossible de charger l'image à révéler… »*
+The finished image is unreadable or in an unsupported format.
+
+### Messages that do NOT stop the run
+
+These worry users, and most of them are not errors at all. The video is still
+produced in every case below.
+
+**"Automatic alignment found no reliable star match (starless or heavily processed
+image?). Align manually."** / *« L'alignement automatique n'a pas trouvé
+d'appariement d'étoiles fiable… »*
+Not a bug. A starless image has nothing to match. Align by hand.
+
+**"ffmpeg not found — the PNG sequence and an encoding script will be generated
+instead."** / *« ffmpeg introuvable — la séquence PNG et un script d'encodage
+seront générés. »*
+Not an error. Offer the **Install ffmpeg…** button, or tell them to run the
+generated `encode.sh` / `encode.bat` later.
+
+**"ffmpeg installation failed — check your internet connection, or install it
+manually and use Browse."** / *« Échec de l'installation de ffmpeg… »*
+Exactly what it says.
+
+**"ffmpeg failed (exit code N). The PNG sequence and … are left for manual
+encoding."** / *« Échec ffmpeg (code N)… »*
+The render succeeded and the frames are safe. Ask for the exit code and escalate.
+
+**"Skipped (unreadable or geometry mismatch): …"** / *« Ignorées (illisibles ou
+géométrie différente) : … »*
+Those frames are missing from the video. The console names them. Frames of
+different dimensions in the same set are the usual cause.
+
+**"Survey download unavailable — using the catalog star field only."** /
+*« Téléchargement du survey indisponible — champ d'étoiles catalogue uniquement. »*
+The DSS2 download failed (no internet, or the service is down). The video is still
+produced; it simply has no real-sky photograph in the transition.
+
+**"Star/constellation catalogs not found in the PixInsight install — the sky will
+be sparse."** / *« Catalogues d'étoiles/constellations introuvables… »*
+The script draws the sky from PixInsight's own bundled catalogs and cannot find
+them. It carries on with what it has.
+
+**"That file has no SITELAT/SITELONG/DATE-OBS to read."** / *« Ce fichier n'a pas
+de SITELAT/SITELONG/DATE-OBS à lire. »*
+Shown by **"From a sub…"**. Have them pick a **raw** sub — integrated masters
+usually drop those headers.
+
+---
+
+## Known bugs and limits — read before answering
+
+Three real bugs are open in 1.1.0. If a user reports one of them, **confirm it**.
+Do not send them back to their settings to look for a mistake they did not make.
+
+### The measured SNR gain never appears when the image is in colour
+
+**Symptom:** the user ticked **Measured SNR gain (stacking)** and the dB figure is
+simply not in the video. The overlay shows the frame count and the cumulative
+exposure, and nothing else.
+
+**Cause:** in 1.1.0 the SNR gain is never drawn when the **colour composite** is
+on — and colour is **on by default**. It only works on mono renders. Nothing warns
+the user.
+
+**This is a real bug and it is ours.** It is also the product's flagship claim
+("we only show measured facts"), so treat the report as legitimate and important.
+**Do not tell the user to re-tick the box.** Confirm it, apologise, and escalate.
+There is no workaround other than rendering in mono.
+
+### A vertical (9:16) Zoom Odyssey ends with big black bands
+
+**Symptom:** "I rendered a Zoom Odyssey in 1080×1920 for Instagram/TikTok/Shorts
+and the end of the video is half black."
+
+**Cause:** in 1.1.0, the final framing of a Zoom Odyssey fits the *whole* revealed
+image inside the frame, even when **Framing** is set to **Fill (center crop)**.
+With a landscape image in a vertical frame, that leaves roughly **59 % of the
+frame black**.
+
+**Workaround:** none inside the script today. Either render in 16:9, or accept the
+bands, or crop the video afterwards in an external editor. Escalate — the fix is
+known.
+
+### After updating to 1.1.0, a saved alignment comes out rotated wrong
+
+**Symptom:** "I updated and now my revealed image is rotated / lands in the wrong
+place. I changed nothing."
+
+**Cause:** 1.1.0 changed the sign convention of the **stored** rotation of an
+alignment. An alignment saved by 1.0.0 or earlier — in the settings, in a process
+icon, or in a headless JSON — is now read with the opposite sign, and the image
+lands at twice the angle away from the truth. Silently: no error, no warning.
+
+**Answer, and it works immediately:** open **Align…** and redo the alignment once.
+**Auto** is enough. From then on it is correct. Alignments with no rotation at all
+are unaffected, which is why most users never see this.
+
+### The real-sky survey bridge needs an internet connection
+
+Not a bug, but it surprises people. If the DSS2 download fails, the script prints
+*"Survey download unavailable — using the catalog star field only."* and **carries
+on**. The video is produced; it just has no real photograph of the sky in the
+transition. Nothing is lost, and it is worth re-running with a connection.
+
+---
+
+## Troubleshooting — symptom → cause → answer
+
+**"The brightness pulses / flickers through my video."**
+Screen stretch is set to **Auto-stretch each rendered frame**. Switch it to
+**Fixed, computed on the final stack** — which is also the only setting where the
+noise improvement shown in the video is real.
+
+**"My location fields are empty" / "Simulate shoot location does nothing."**
+Integrated masters usually drop the `SITELAT` and `SITELONG` headers. Use the
+**"From a sub…"** button and point it at a **raw** sub; it fills Lat, Lon and UTC.
+
+**"Some of my frames are missing from the video."**
+They were unreadable, or their geometry did not match the others. The PixInsight
+console lists exactly which ones. Frames of different dimensions in the same set
+are the usual cause.
+
+**"My SHO came out grey / no colour."**
+The channel mapping is driven by the **`FILTER`** header. If the panel still says
+*"Load subs to detect filters."* after loading them, the subs carry no `FILTER`
+value — the channels must be mapped by hand in **Colour (multi-filter)**.
+
+**"The SNR gain never appears."**
+Known bug in 1.1.0: it is never drawn when the colour composite is on, which is the
+default. Confirm it, do not blame the user, and escalate.
+
+**"My revealed image is rotated wrong since the update."**
+Known bug in 1.1.0: alignments saved by an earlier version are read with the
+opposite rotation. Have them open **Align…** and redo the alignment once (**Auto**
+is enough). It is correct from then on.
+
+**"The video is vertical and half black."**
+Known limit in 1.1.0: a Zoom Odyssey rendered in 9:16 fits the whole image inside
+the vertical frame instead of filling it. Render in 16:9, or crop afterwards.
+
+**"ffmpeg failed."**
+The frames are safe: the script keeps the PNG sequence and an `encode.sh` /
+`encode.bat` next to them. Have the user run that script. Ask for the exit code
+and escalate.
+
+**"PixInsight says the repository is unsigned."**
+Expected. The CaeloWorks repository is not CPD-signed yet. It is safe to accept.
+
+**"I installed it but I can't find it."**
+It is at **Script → CaeloWorks → Session Cinema**, and **PixInsight must be
+restarted** after the install.
+
+---
+
+## Escalation — when to stop and hand over to a human
+
+**Escalate, and do not improvise, when:**
+
+- the user reports one of the three known bugs above — confirm the bug, then hand
+  over; do not promise a date;
+- the user reports something this document does not cover. Say *"I don't know, I'm
+  passing this to the team"*. A plausible-sounding guess about someone's data is
+  worse than silence;
+- the user's **data or files** may be at risk, or they are asking you to tell them
+  to delete or overwrite something;
+- anything about payment, licensing beyond "it is free and GPL-3.0", or a
+  commercial commitment.
+
+**Collect these four things before escalating.** Without them the report is not
+actionable:
+
+1. **PixInsight version** and **operating system** (Help → About).
+2. **Session Cinema version** — printed under the name in the top-left of the
+   window.
+3. **The PixInsight console output of the run.** The script logs every step, every
+   skipped frame, the plate solve it read, and the exact ffmpeg failure. It is
+   almost always enough on its own.
+4. **The settings used** — easiest: have the user drag the **New Instance**
+   triangle to the workspace and send the process icon, or simply a screenshot of
+   the window.
+
+Bugs can also be filed directly at
+https://github.com/caelo-works/session-cinema/issues

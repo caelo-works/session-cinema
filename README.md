@@ -158,6 +158,15 @@ This is enforced, not merely requested: `tests/docs.test.js` fails the build if
 label the KB quotes still exists in the script's string table, in **both**
 languages. Renaming a group box without updating the KB breaks CI.
 
+**The KB's shape is dictated by its consumer.** It is imported into the support
+agent's knowledge base, which cuts **one article per `##`**, re-cuts on `###` when
+a section is long, and **truncates what it serves at 4000 characters**. So a long
+`##` with no `###` inside it is silently beheaded — the agent goes blind to its
+end and nothing reports an error. `tests/docs.test.js` fails the build on that
+too. Two consequences when writing it: **headings must contain the words a user
+would type**, and **every section must stand on its own** — the agent retrieves
+three articles, so "see the section above" points at something it cannot see.
+
 ### The update-repository package
 
 Distribution through the CaeloWorks update repository relies on a
