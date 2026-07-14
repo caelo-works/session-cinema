@@ -108,6 +108,10 @@ folder containing the file. Alternatively, run it once via
 
 ## Documentation
 
+- **[Support knowledge base](docs/support-kb.md)** — the complete reference: every
+  control of the dialog (in both languages), every error message, the
+  troubleshooting table, and what is genuinely broken today. Written for a support
+  agent, useful to anyone who wants the whole picture.
 - **[Reveal alignment](docs/reveal-alignment.md)** — how **Auto** places your
   finished image on the frame behind it, when it gives up, and what to do then.
 - **[ffmpeg mirror](docs/ffmpeg-mirror.md)** — the hosting contract behind the
