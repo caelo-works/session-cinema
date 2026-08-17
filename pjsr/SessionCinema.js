@@ -1525,6 +1525,30 @@ function revealAlpha( fovDeg, imageFovDeg, wideMult )
    return smoothstep01( ( wide - fovDeg )/( wide - imageFovDeg ) );
 }
 
+// Field of view (deg, horizontal — what the camera spans over W) the zoom ends
+// on, so the revealed image lands in the output frame the way Framing says.
+//   imageFov  angular WIDTH of the reveal (its plate solve)
+//   revealW/H its pixel dimensions, W/H the output frame's
+// Two candidates: the fov whose width matches the image's width, and the one
+// whose height does. Taking the LARGER contains the whole image (letterbox, with
+// black where the sky has faded out); taking the SMALLER covers the frame and
+// crops the image (fill). They are EQUAL when the output aspect matches the
+// reveal's — which is why a 16:9 render cannot tell the two apart, and why this
+// went unnoticed until a 9:16 export came out two thirds black.
+function zoomEndFov( imageFov, revealW, revealH, W, H, fitMode )
+{
+   // Same aspect: both candidates are the same framing. Settled on the integer
+   // pixel dimensions rather than on the two fovs, so an existing 16:9 render
+   // keeps its EXACT camera path — the float expression below agrees to within a
+   // rounding step, which is not the same thing as agreeing.
+   if ( revealW*H == revealH*W )
+      return imageFov;
+   var byWidth = imageFov;                                   // image width  = frame width
+   var byHeight = ( imageFov*revealH/revealW )*W/H;          // image height = frame height
+   return ( fitMode == FIT_CROP ) ? Math.min( byWidth, byHeight )
+                                  : Math.max( byWidth, byHeight );
+}
+
 // Opacity of the constellation figures: present from the very first frame
 // (whole sky, a touch calmer to avoid clutter), full across medium fields,
 // gone once we dive into the target field.
@@ -3425,17 +3449,23 @@ Engine.prototype.runZoom = function()
    // The REVEAL is the anchor: the camera ends locked to the image's OWN frame,
    // so the image finishes exactly upright/native and the sky (DSS2, stars) is
    // what's oriented around it. upVec = the image's up on the sky; endFov frames
-   // the WHOLE image (its native aspect vs the output), the real sky filling the
-   // margins. No rotation term — the image is axis-aligned with the camera.
+   // it as Framing asks — filling the output and cropping the excess, or whole
+   // with margins. No rotation term — the image is axis-aligned with the camera.
    var fC = raDecToVec( framing.centerRA, framing.centerDec );
    var topSky = wcsPixelToSky( revealWcs, revealW/2, 0 );      // image top-edge centre
    var topV = raDecToVec( topSky.ra, topSky.dec );
    var du = vdot( topV, fC );
    var upVec = vnorm( [ topV[0]-fC[0]*du, topV[1]-fC[1]*du, topV[2]-fC[2]*du ] );
-   // No extra margin: exactly one image dimension equals the frame (the
-   // constraining axis touches edge-to-edge), the real sky fills only the other.
-   var endFov = Math.max( P, ( P*revealH/revealW )*W/H );
+   var endFov = zoomEndFov( P, revealW, revealH, W, H, cfg.fitMode );
    var camTarget = { centerRA: framing.centerRA, centerDec: framing.centerDec, fovDeg: endFov, upVec: upVec };
+
+   // Field at which the near survey hands the frame over to the photo. The photo
+   // ramps in on endFov, so that is what the handoff follows — P only happens to
+   // be the same number when the output aspect matches the reveal's. Keyed to P,
+   // a cropped 9:16 (endFov well under P) would drop the real sky a good second
+   // before the photo shows up. Capped at the cutout's own size so the fade-out
+   // can never start above the fade-in, whatever the aspect ratios.
+   var nearOut = Math.min( endFov, nearFov );
 
    var startFov;
    if ( obs )
@@ -3508,13 +3538,16 @@ Engine.prototype.runZoom = function()
          // Real-sky survey layers (DSS2), covering the star dots with real stars.
          if ( wideBmp )
          {
+            // Hands over to the NEAR cutout, not to the photo: the fade-out
+            // bounds are that cutout's own size (nearFov = P*2.5, so 3P and 1.4P
+            // are 1.2x and 0.56x of it), and stay keyed to P for that reason.
             var wa = fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 );
             if ( wa > 0 )
                drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
          }
          if ( nearBmp )
          {
-            var na = fadeBand( fov, nearFov*3, nearFov*1.2, P*1.2, P*0.85 );
+            var na = fadeBand( fov, nearFov*3, nearFov*1.2, nearOut*1.2, nearOut*0.85 );
             if ( na > 0 )
                drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
          }

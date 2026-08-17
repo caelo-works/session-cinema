@@ -121,6 +121,7 @@ module.exports = {
    projectToScreen: projectToScreen,
    zoomCameraAt: zoomCameraAt,
    revealAlpha: revealAlpha,
+   zoomEndFov: zoomEndFov,
    revealPlacement: revealPlacement,
    placementMatrix: placementMatrix,
    saMatrixToAlignment: saMatrixToAlignment,

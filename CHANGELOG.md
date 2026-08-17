@@ -7,6 +7,19 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- Zoom Odyssey ignored **Framing**: its final framing always fitted the whole
+  revealed image inside the output frame, so a vertical (9:16) or square export
+  of a landscape image ended letterboxed — around 59 % of a 1080×1920 frame was
+  black — even with Framing on **Fill (center crop)**. The end field of view now
+  follows `fitMode`: fill takes the framing that covers the output and crops the
+  excess, fit keeps today's contain. A render whose output aspect already matched
+  the reveal's is unaffected, and provably so: matching aspects are settled on
+  the integer pixel dimensions, not on the two floating-point candidates.
+- Following it, the near survey cutout handed the frame over to the photo at a
+  field keyed to the image's own width — again the same number as the end field
+  of view only when the aspects match. On a cropped 9:16 the real sky would have
+  disappeared a good second before the photo appeared, leaving a hole filled with
+  catalog star dots. The handoff now follows the end field of view.
 - The measured SNR gain was never drawn on a COLOUR composite — that is, in the
   default configuration: the colour path passed hard-coded zero noise estimates
   to the overlay, the dB term formatted to an empty string, and the empty string

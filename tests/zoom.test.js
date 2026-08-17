@@ -348,4 +348,59 @@ near( M.angularSepDeg( 88.793, 7.407, 78.634, -8.202 ), 18.65, 0.2, "Betelgeuse-
    near( polys[0][0].dec, 7.4, 1e-6 );
 }
 
+// --- zoomEndFov: the final framing must obey Framing, not always contain ------
+//
+// The camera fov is HORIZONTAL (it spans W). An image of angular width P and
+// pixel aspect revealW:revealH lands in a W:H frame with
+//   width  filled when fov = P
+//   height filled when fov = P*(revealH/revealW)*(W/H)
+// so "fill" takes the smaller of the two and "fit" the larger.
+{
+   const P = 1.2;                                   // 1.2 deg wide plate solve
+   const [ rw, rh ] = [ 6000, 4000 ];               // a 3:2 reveal
+
+   // matching aspect -> the two candidates collapse: both modes agree, and the
+   // value is the one the pre-fix build produced. This is the regression guard:
+   // an existing 3:2 render must not move by a single frame.
+   // Exactly, not to within a rounding step: the camera path of an existing
+   // render must not move at all, and Math.min/max over two float expressions
+   // would not promise that.
+   for ( const mode of [ M.FIT_CROP, M.FIT_LETTERBOX ] )
+   {
+      assert.strictEqual( M.zoomEndFov( P, rw, rh, 3000, 2000, mode ), P,
+                          "aspect match: fill and fit are the same framing" );
+      // 16:9 output, 16:9 reveal — the case that hid the bug for a whole release
+      assert.strictEqual( M.zoomEndFov( P, 1920, 1080, 1920, 1080, mode ), P );
+      assert.strictEqual( M.zoomEndFov( P, 6000, 3375, 3840, 2160, mode ), P, "4K" );
+   }
+
+   // 9:16 output, 16:9 reveal: fit contains the whole image (the letterboxed
+   // render), fill crops it. Fill must be the SMALLER field, by a lot.
+   const fit = M.zoomEndFov( P, 1920, 1080, 1080, 1920, M.FIT_LETTERBOX );
+   const fill = M.zoomEndFov( P, 1920, 1080, 1080, 1920, M.FIT_CROP );
+   near( fit, P, 1e-12, "fit on a landscape reveal is constrained by the width" );
+   near( fill, P*( 1080/1920 )*( 1080/1920 ), 1e-12 );
+   assert.ok( fill < fit/3, `fill must crop hard here: ${fill} vs ${fit}` );
+
+   // What the two modes MEAN, checked as coverage of the output frame rather
+   // than as formulas: with the camera at fov, the image spans P/fov of the
+   // width and (P*rh/rw)/(fov*H/W) of the height.
+   const spans = ( fov, W, H ) => ( { x: P/fov, y: ( P*1080/1920 )/( fov*H/W ) } );
+   {
+      const s = spans( fill, 1080, 1920 );
+      assert.ok( s.x > 1 - 1e-9 && s.y > 1 - 1e-9, `fill leaves no gap: ${JSON.stringify( s )}` );
+      near( Math.min( s.x, s.y ), 1, 1e-9, "fill touches exactly one axis" );
+   }
+   {
+      const s = spans( fit, 1080, 1920 );
+      assert.ok( s.x < 1 + 1e-9 && s.y < 1 + 1e-9, `fit crops nothing: ${JSON.stringify( s )}` );
+      near( Math.max( s.x, s.y ), 1, 1e-9, "fit touches exactly one axis" );
+      assert.ok( s.y < 0.35, `fit on 9:16 is mostly black — that is the bug: ${s.y}` );
+   }
+
+   // 1:1 output is the other advertised format that differs from any usual reveal
+   near( M.zoomEndFov( P, rw, rh, 1080, 1080, M.FIT_CROP ), P*( 2/3 ), 1e-12 );
+   near( M.zoomEndFov( P, rw, rh, 1080, 1080, M.FIT_LETTERBOX ), P, 1e-12 );
+}
+
 console.log( "zoom.test.js OK" );
