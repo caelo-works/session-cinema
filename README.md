@@ -43,7 +43,7 @@ by per-frame auto-stretching.
 | | |
 |---|---|
 | 🎬 **Two styles** | Progressive stack — cumulative colour integration from your first sub to your last (raw subs registered internally, multi-filter SHO/HOO composites, then a cross-fade to your finished image) — and **Zoom Odyssey**, a "you are here" context zoom from the whole sky down to your image revealing itself, built from its plate solve |
-| 🔬 **Honest by default** | Fixed screen stretch referenced on the final stack (2-pass); SNR gain measured on the data (scaled MAD, central region) — overlays never show anything that wasn't measured |
+| 🔬 **Honest by default** | Fixed screen stretch referenced on the final stack (2-pass); SNR gain measured on the linear data (multiscale noise estimation), in mono and in colour alike — overlays never show anything that wasn't measured, and say so when a figure could not be |
 | 🖼️ **Sober overlays** | Title, frame counter, cumulative exposure, UT clock, progress bar, optional signature — all individually switchable |
 | 📱 **Social-ready formats** | 16:9 (1080p / 4K), square 1:1 and vertical 9:16, fill-crop or letterbox framing, H.264 `yuv420p` with faststart |
 | ⚙️ **Robust pipeline** | FITS/XISF input, CFA debayering via `BAYERPAT`, chronological ordering across multiple nights via `DATE-OBS`, unreadable or mismatched frames skipped and reported |

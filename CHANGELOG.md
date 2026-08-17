@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- The measured SNR gain was never drawn on a COLOUR composite — that is, in the
+  default configuration: the colour path passed hard-coded zero noise estimates
+  to the overlay, the dB term formatted to an empty string, and the empty string
+  was dropped without a word. Only mono renders ever showed the figure. The
+  colour path now measures the noise of every mapped filter on its running
+  channel mean, linear and before the stretch (measuring after it would measure
+  the stretch), and takes its single-sub reference from each filter's first sub
+  the way the mono path does. The per-filter measurements are combined into the
+  composite's luminance noise, weighting a filter by the number of channels it
+  feeds so a doubled channel (OIII → G and B in HOO) counts as correlated with
+  itself. A balanced session therefore reads the same gain in colour as it does
+  in mono, which is the property that makes the two comparable.
+- An SNR gain that was asked for but could not be measured is now stated as
+  `SNR —` instead of vanishing from the overlay: an omitted figure looked
+  exactly like a figure nobody requested, which is how the above went unseen
+  for a whole release.
+
+### Changed
+- Noise is no longer estimated when the SNR overlay is off, in either path.
+
 ## [1.1.0] - 2026-07-13
 
 ### Added

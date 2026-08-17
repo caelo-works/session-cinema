@@ -749,6 +749,10 @@ function formatDuration( seconds )
    return h + "h" + ( mm < 10 ? "0" : "" ) + mm;
 }
 
+// Stands in for the SNR gain when the noise could not be measured (see
+// buildOverlayInfo): the overlay states the figure is missing instead of hiding it.
+var SNR_UNAVAILABLE = "—";
+
 // Noise-based SNR gain in dB between the first sub and the current mean.
 // Returns "" when the measurement is not usable.
 function formatSnrGainDb( sigmaFirst, sigmaCurrent )
@@ -760,6 +764,46 @@ function formatSnrGainDb( sigmaFirst, sigmaCurrent )
       return "";
    var r = Math.round( db*10 )/10;
    return ( r >= 0 ? "+" : "" ) + r.toFixed( 1 ) + " dB";
+}
+
+// Noise of a multi-filter composite, and the single-sub reference it is compared
+// to — both built from noise MEASURED per filter, never from a theoretical sqrt(N).
+// `entries` holds one item per distinct filter feeding the composite:
+//    { weight, sigmaFirst, sigmaCurrent }
+// weight is the number of channels that filter feeds (OIII feeds G and B in HOO),
+// sigmaFirst its noise on a single sub, sigmaCurrent its noise on the running
+// channel mean. Both sigmas must be measured on the LINEAR data, before the
+// stretch, or the figure measures the stretch instead of the stack.
+//
+// The composite is read through its luminance, the equal-weight mean of the three
+// channels; a filter feeding w channels lands in that mean w times, correlated
+// with itself, hence the w^2:
+//    current = sqrt( sum( w^2 * sigmaCurrent^2 ) ) / K,   K = sum( w )
+// The reference stays ONE SUB, so the overlay reads the same in mono and in colour
+// ("this stack is X dB quieter than a single sub"): the weighted quadratic mean of
+// the per-filter single-sub noises,
+//    first   = sqrt( sum( w * sigmaFirst^2 ) / K )
+// On a balanced session this gives back the mono law exactly (n subs over F
+// filters -> sqrt(n)), so the mono and colour curves are directly comparable.
+//
+// A filter whose noise could not be measured is dropped from both sums, which
+// keeps the ratio coherent; with nothing left the result is { 0, 0 } and the
+// overlay says the figure is unavailable rather than quietly dropping it.
+function compositeSnrSigmas( entries )
+{
+   var K = 0, sumCurrent = 0, sumFirst = 0;
+   for ( var i = 0; i < entries.length; ++i )
+   {
+      var e = entries[ i ], w = e.weight;
+      if ( !( w > 0 ) || !( e.sigmaFirst > 0 ) || !( e.sigmaCurrent > 0 ) )
+         continue;
+      K += w;
+      sumCurrent += w*w*e.sigmaCurrent*e.sigmaCurrent;
+      sumFirst += w*e.sigmaFirst*e.sigmaFirst;
+   }
+   if ( K <= 0 )
+      return { first: 0, current: 0 };
+   return { first: Math.sqrt( sumFirst/K ), current: Math.sqrt( sumCurrent )/K };
 }
 
 // UT clock "23:47:13" from epoch seconds.
@@ -801,9 +845,10 @@ function buildOverlayInfo( cfg, info )
       parts.push( formatDuration( info.cumulativeExposure ) );
    if ( cfg.ovShowSnr )
    {
+      // Asked for but not measurable → SAY so. Dropping the term silently makes a
+      // measurement that failed look exactly like one that was never requested.
       var db = formatSnrGainDb( info.sigmaFirst, info.sigmaCurrent );
-      if ( db.length )
-         parts.push( "SNR " + db );
+      parts.push( "SNR " + ( db.length ? db : SNR_UNAVAILABLE ) );
    }
    if ( parts.length )
       subLeft.push( parts.join( "  ·  " ) );
@@ -2836,7 +2881,9 @@ Engine.prototype.runStacking = function()
 
       var mean = meanOf( accImg, n, "__sc_mean" );
 
-      var sigma = estimateSigma( mean.mainView.image );
+      // Linear mean, before the stretch below. Noise estimation is not free, so
+      // it only runs when the overlay asks for the figure.
+      var sigma = cfg.ovShowSnr ? estimateSigma( mean.mainView.image ) : 0;
       if ( n == 1 || sigmaFirst <= 0 )
          sigmaFirst = sigma;
 
@@ -3010,6 +3057,7 @@ Engine.prototype.runStackingColor = function( map )
    var acc = { R: null, G: null, B: null }, cnt = { R: 0, G: 0, B: 0 };
    var outIndex = 0, cumExposure = 0, integrated = 0;
    var revealBase = null, lastOv = null, geomW = 0, geomH = 0;
+   var sigFirst = {};   // filter -> noise of its first sub (the SNR reference)
 
    for ( var i = 0; i < N; ++i )
    {
@@ -3022,6 +3070,12 @@ Engine.prototype.runStackingColor = function( map )
       ++integrated;
       var im = win.mainView.image;
       if ( !geomW ) { geomW = im.width; geomH = im.height; }
+      // Single-sub noise of this filter, measured on its first sub — the same
+      // reference the mono path takes at n = 1. Retried on the next sub while it
+      // does not come out positive, exactly as the mono path does. Noise
+      // estimation is not free, so it only runs when the overlay asks for it.
+      if ( cfg.ovShowSnr && !( sigFirst[ fr.filter ] > 0 ) )
+         sigFirst[ fr.filter ] = estimateSigma( im );
       for ( var c = 0; c < chans.length; ++c )
       {
          var ch = chans[ c ];
@@ -3041,12 +3095,21 @@ Engine.prototype.runStackingColor = function( map )
          // One global brightness factor (keeps SHO colour balanced as it grows).
          var ramp = Math.pow( integrated/mappedFrames, STACK_RAMP_GAMMA );
          var chImgs = { R: null, G: null, B: null }, mwByKey = {};
+         var sigCur = {}, wByFilter = {};   // filter -> noise now, and channels fed
          for ( var k = 0; k < 3; ++k )
          {
             var key = keys[ k ];
             if ( acc[ key ] != null && cnt[ key ] > 0 && stretches[ key ] )
             {
                var mw = meanOf( acc[ key ].mainView.image, cnt[ key ], "__sc_m" + key );
+               // Noise of the running mean, measured on the LINEAR data — before
+               // the stretch and the ramp below, which would otherwise be what the
+               // dB figure measures. Once per distinct filter (HOO feeds G and B
+               // from one OIII mean), and only over the channels actually drawn.
+               var fName = map[ key ];
+               wByFilter[ fName ] = ( wByFilter[ fName ] || 0 ) + 1;
+               if ( cfg.ovShowSnr && sigCur[ fName ] === undefined )
+                  sigCur[ fName ] = estimateSigma( mw.mainView.image );
                applyStretchToView( mw.mainView, stretches[ key ] );
                // Dim the *stretched* (balanced) channel by the global ramp: scaling
                // the linear signal instead would push the faint channels below their
@@ -3079,10 +3142,15 @@ Engine.prototype.runStackingColor = function( map )
             mwByKey.G.mainView.endProcess();
             neutral.forceClose();
          }
+         var ent = [];
+         for ( var fN in wByFilter )
+            ent.push( { weight: wByFilter[ fN ],
+                        sigmaFirst: sigFirst[ fN ], sigmaCurrent: sigCur[ fN ] } );
+         var snr = compositeSnrSigmas( ent );
          var ov = buildOverlayInfo( cfg, {
             index: n, total: N,
             cumulativeExposure: cumExposure, exposure: fr.exposure, dateObs: fr.dateObs,
-            sigmaFirst: 0, sigmaCurrent: 0, title: this.title } );
+            sigmaFirst: snr.first, sigmaCurrent: snr.current, title: this.title } );
          var bmp = composeColorBitmap( chImgs, cfg, ov );
          if ( n == N )                                   // final frame → overlay-free reveal base
          {

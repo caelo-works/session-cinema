@@ -86,6 +86,8 @@ module.exports = {
    computeCoverRect: computeCoverRect,
    formatDuration: formatDuration,
    formatSnrGainDb: formatSnrGainDb,
+   SNR_UNAVAILABLE: SNR_UNAVAILABLE,
+   compositeSnrSigmas: compositeSnrSigmas,
    formatClockUT: formatClockUT,
    slugify: slugify,
    buildOverlayInfo: buildOverlayInfo,
