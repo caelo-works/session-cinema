@@ -7,6 +7,20 @@ All notable changes to this project are documented here. The format is based on
 ## [Unreleased]
 
 ### Fixed
+- A reveal alignment saved by 1.0.0 or earlier and re-run under 1.1.0 rendered
+  at twice its angle away from the sky, silently: 1.1.0 unified the stored
+  rotation on the `R(+θ)` convention, ≤ 1.0.0 wrote `R(−θ)`, same key, nothing
+  to date it. The value cannot be recovered — checked against the history rather
+  than assumed, since 1.1.0 added no configuration key that would date a saved
+  blob — so negating unstamped rotations would have broken every 1.1.0 config in
+  the same silent way. The rotation is therefore left untouched and the doubt is
+  reported instead: next to the alignment in the window, in the console at
+  startup and again at render time, and in `sessioncinema-result.json` for
+  headless runs. Redoing the alignment once (Align… → Auto) settles it.
+- Configs now carry `cfgVersion`, the build that wrote them — written only once
+  no unchecked rotation is riding along, so closing the window does not silence
+  the notice. A process icon dragged out before 1.1.1 has its own rotation
+  checked rather than covered by the stamp of the saved settings.
 - Zoom Odyssey ignored **Framing**: its final framing always fitted the whole
   revealed image inside the output frame, so a vertical (9:16) or square export
   of a landscape image ended letterboxed — around 59 % of a 1080×1920 frame was

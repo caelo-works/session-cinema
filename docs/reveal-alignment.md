@@ -53,3 +53,32 @@ surface either way, since Auto's result is a normal placement you can nudge.
 The placement the popup shows is the placement the render uses — one matrix,
 both paths, locked by `tests/align.test.js`. Align it until it looks right, and
 that is what comes out of the video.
+
+## Alignments saved before 1.1.1
+
+1.1.0 unified the reveal→background map on `R(+θ)`. Versions up to 1.0.0 stored
+the **opposite sign**, under the same key, with nothing to tell the two apart —
+so an alignment saved by 1.0.0 and re-run under 1.1.0 renders at twice the angle
+away from the sky. Rotations of exactly 0° are unaffected, whichever convention
+wrote them.
+
+That number cannot be repaired after the fact, and the script does not pretend
+otherwise: negating unstamped rotations on sight would fix the 1.0.0 ones and
+break every 1.1.0 one in exactly the same silent way. So **the value is left
+untouched and the doubt is shown**, next to the alignment it applies to:
+
+> ⚠ This alignment (rotation 328°) was saved by an earlier version, which stored
+> rotations the other way round. Check it, or redo it with Align… — one click on
+> Auto is enough.
+
+Redoing the alignment once settles it for good. The notice comes back on every
+launch until you do — a config is stamped with the build that wrote it
+(`cfgVersion`) only once no unchecked rotation is riding along, so closing the
+window does not quietly make the question go away.
+
+The same check covers a process icon dragged out before 1.1.1 and a headless
+`SESSIONCINEMA_AUTORUN` config: the icon's own rotation is checked rather than
+trusted, and a headless run reports the warning in the console and in
+`sessioncinema-result.json` (`warnings`). A headless config you write yourself
+can carry `"cfgVersion": "1.1.1"` to say the rotation is in the current
+convention.

@@ -92,6 +92,11 @@ var OUTPUT_FORMATS = [
 var CRF_CHOICES = [ 16, 18, 20, 23 ];
 
 var DEFAULT_CONFIG = {
+   // Build that wrote this config. Empty means "written before 1.1.1, or written
+   // by 1.1.1+ while a saved reveal rotation was still waiting to be checked" —
+   // see rotationNeedsCheck(): 1.1.0 flipped the sign convention of the stored
+   // rotation and nothing recorded which convention a given number belongs to.
+   cfgVersion:      "",
    language:        "en",
    style:           STYLE_ZOOM,   // headless configs should set style explicitly
    stretchRef:      STRETCH_REF_FINAL,
@@ -169,6 +174,11 @@ var SETTINGS_KEY = "SessionCinema/config";
 // replaces %1, %2, ... with the extra arguments.
 
 var gLanguage = "en";
+
+// Reveal alignments loaded with a rotation whose convention cannot be known
+// (see rotationNeedsCheck). Runtime only — never persisted; what IS persisted is
+// the absence of a version stamp, so the doubt survives a restart.
+var gRotPending = { zoom: false, stack: false, any: false };
 
 var STRINGS = {
 
@@ -250,6 +260,8 @@ var STRINGS = {
       "align.opening":     "Opening…",
       "align.loading":     "Loading images for alignment…",
       "align.loadFailed":  "Could not load the solved or reveal image for alignment.",
+      "align.rotStale":    "⚠ This alignment (rotation %1°) was saved by an earlier version, which stored rotations the other way round. Check it, or redo it with Align… — one click on Auto is enough.",
+      "align.rotStaleLog": "WARNING: a saved reveal alignment carries a non-zero rotation with no version stamp. Versions up to 1.0.0 stored the opposite sign, so it may render at twice the angle away from the sky. Redo the alignment once (Align… → Auto) to settle it.",
       "btn.ok":            "OK",
       "btn.cancel":        "Cancel",
       "prog.title":        "Progress",
@@ -462,6 +474,8 @@ var STRINGS = {
       "align.opening":     "Ouverture…",
       "align.loading":     "Chargement des images pour l'alignement…",
       "align.loadFailed":  "Impossible de charger l'image résolue ou l'image à révéler pour l'alignement.",
+      "align.rotStale":    "⚠ Cet alignement (rotation %1°) a été enregistré par une version antérieure, qui stockait les rotations dans l'autre sens. Vérifiez-le, ou refaites-le avec Aligner… — un clic sur Auto suffit.",
+      "align.rotStaleLog": "AVERTISSEMENT : un alignement enregistré porte une rotation non nulle sans marque de version. Les versions jusqu'à 1.0.0 stockaient le signe opposé : le rendu peut être décalé du double de l'angle par rapport au ciel. Refaites l'alignement une fois (Aligner… → Auto) pour lever le doute.",
       "btn.ok":            "OK",
       "btn.cancel":        "Annuler",
       "prog.title":        "Progression",
@@ -1775,6 +1789,53 @@ function parseConstellationLines( jsonText )
 // SETTINGS PERSISTENCE (single JSON blob; failures are non-fatal)
 // ============================================================================
 
+// Can a persisted reveal rotation be trusted?
+//
+// 1.1.0 unified the reveal→background map on R(+θ); ≤ 1.0.0 stored R(−θ). Same
+// key, same type, opposite meaning, and no stamp to tell them apart — so a value
+// saved by 1.0.0 renders 2·θ away from the sky under 1.1.0, silently.
+//
+// There is no way to recover the convention after the fact. It was checked
+// against the history rather than assumed: 1.1.0 added no configuration key at
+// all (its DEFAULT_CONFIG differs from 1.0.0's by one default VALUE), so nothing
+// in a saved blob dates it. Negating unstamped rotations on sight would fix the
+// 1.0.0 ones and break every 1.1.0 one in exactly the same silent way — trading
+// one set of victims for another. So the value is left untouched and the doubt
+// is REPORTED, which is the part that was actually missing: a wrong render that
+// announces itself is a nuisance, a wrong render that does not is a broken promise.
+//
+// 0° is the same angle in both conventions, which is why most users never saw this.
+function rotationNeedsCheck( cfgVersion, rotDeg )
+{
+   if ( !( Math.abs( rotDeg ) > 0 ) )
+      return false;
+   return !( cfgVersion && String( cfgVersion ).length );
+}
+
+// Both persisted alignments, checked at once: { zoom, stack, any }.
+function rotationsNeedingCheck( cfg )
+{
+   var zoom = rotationNeedsCheck( cfg.cfgVersion, cfg.zoomRevealRot );
+   var stack = rotationNeedsCheck( cfg.cfgVersion, cfg.stackRevealRot );
+   return { zoom: zoom, stack: stack, any: zoom || stack };
+}
+
+// Stamp the config with the build that wrote it — UNLESS a rotation is still
+// waiting to be checked. Leaving it unstamped is what makes the warning come
+// back on the next launch: stamping a config whose rotation is still in doubt
+// would silence the only signal the user has, which is how this bug worked.
+//
+// The stamp covers the whole config while the doubt is per alignment, so a user
+// who settles one of two doubtful rotations and then drags out a process icon
+// gets asked about the settled one again. That asymmetry errs towards asking a
+// question that was already answered, never towards vouching for a value nobody
+// checked, which is the only direction that matters here.
+function stampConfig( cfg, pending )
+{
+   cfg.cfgVersion = pending.any ? "" : SC_VERSION;
+   return cfg;
+}
+
 function loadConfig()
 {
    var cfg = {};
@@ -1838,6 +1899,19 @@ function importParameters( cfg )
       catch ( e )
       {
       }
+   }
+   // A process icon is a whole config, and one dragged out before the stamp
+   // existed cannot vouch for the rotation it carries. Drop the stamp the saved
+   // settings may have contributed, or the icon's alignment would inherit a
+   // guarantee that was given about a different alignment entirely.
+   try
+   {
+      if ( ( Parameters.has( "zoomRevealRot" ) || Parameters.has( "stackRevealRot" ) )
+           && !Parameters.has( "cfgVersion" ) )
+         cfg.cfgVersion = "";
+   }
+   catch ( e )
+   {
    }
    return cfg;
 }
@@ -3666,6 +3740,10 @@ Engine.prototype.run = function()
                                                 : tr( "run.styleStacking" );
    var inputCount = ( cfg.style == STYLE_ZOOM ) ? 1 : this.frames.length;
    console.noteln( tr( "run.start", SC_VERSION, inputCount, styleLabel ) );
+   // Repeated here, next to the render it is about: a user can reach Generate
+   // without ever looking at the notice in the window.
+   if ( ( cfg.style == STYLE_ZOOM ) ? gRotPending.zoom : gRotPending.stack )
+      console.warningln( tr( "align.rotStaleLog" ) );
    // Resolve the colour plan (filter→channel) before naming: the palette id is
    // woven into the output name. Filters survive registration, so decide now.
    var plan = { active: false, map: null };
@@ -4515,6 +4593,8 @@ class SessionCinemaDialog extends Dialog
       this.croppedSizer.add( this.alignButton );
       this.croppedSizer.addStretch();
 
+      this.rotWarnZoom = this.makeRotWarning();
+
       // Input group for Zoom Odyssey — takes the place of the frame list.
       this.zoomGroup = new GroupBox( this );
       this.zoomGroup.title = tr( "zoom.inputTitle" );
@@ -4526,6 +4606,7 @@ class SessionCinemaDialog extends Dialog
       this.zoomGroup.sizer.add( this.revealImageSizer );
       this.zoomGroup.sizer.add( this.revealHint );
       this.zoomGroup.sizer.add( this.croppedSizer );
+      this.zoomGroup.sizer.add( this.rotWarnZoom );
 
       this.stretchLabel = new Label( this );
       this.stretchLabel.text = tr( "stretch.label" );
@@ -4681,6 +4762,8 @@ class SessionCinemaDialog extends Dialog
       this.stackRevealHint.wordWrapping = true;
       this.stackRevealHint.enabled = false;
 
+      this.rotWarnStack = this.makeRotWarning();
+
       this.revealDurControl = new NumericControl( this );
       this.revealDurControl.label.text = tr( "seq.revealDur" );
       this.revealDurControl.label.minWidth = labelWidth;
@@ -4699,6 +4782,7 @@ class SessionCinemaDialog extends Dialog
       this.stackRevealGroup.sizer.spacing = 6;
       this.stackRevealGroup.sizer.add( this.stackRevealSizer );
       this.stackRevealGroup.sizer.add( this.stackRevealHint );
+      this.stackRevealGroup.sizer.add( this.rotWarnStack );
       this.stackRevealGroup.sizer.add( this.revealDurSizer );
 
       // Rendering options for the progressive stack.
@@ -5335,6 +5419,7 @@ class SessionCinemaDialog extends Dialog
       this.sizer.add( this.columnsSizer, 100 );
       this.sizer.add( this.bottomSizer );
 
+      this.updateRotWarnings();   // before adjustToContents: the notice takes room
       this.adjustToContents();
       this.autofillTitle();   // frames may already be loaded (e.g. language reload)
       this.refreshTree();
@@ -5345,6 +5430,17 @@ class SessionCinemaDialog extends Dialog
 
    // Header emblem: the script icon, drawn into a fixed-size Control. Located
    // from this file's own directory or the installed rsc path; null if absent.
+   // Notice for an alignment saved under the old rotation convention. Hidden and
+   // empty unless there is something to say (see updateRotWarnings).
+   makeRotWarning()
+   {
+      var l = new Label( this );
+      l.wordWrapping = true;
+      l.visible = false;
+      try { l.styleSheet = "QLabel { color: #d08a30; }"; } catch ( e ) {}
+      return l;
+   }
+
    makeEmblem()
    {
       var here = ( File.extractDrive( #__FILE__ ) + File.extractDirectory( #__FILE__ ) ).split( "\\" ).join( "/" );
@@ -5492,6 +5588,7 @@ class SessionCinemaDialog extends Dialog
    {
       if ( this.stackAlignButton )
          this.stackAlignButton.enabled = this.cfg.stackRevealPath.length > 0 && this.frames.length > 0;
+      this.updateRotWarnings();
    }
 
    updateEstimate()
@@ -5645,7 +5742,8 @@ class SessionCinemaDialog extends Dialog
    }
 
    // Config to persist: an auto-derived title is dropped so it never becomes a
-   // stale hand-typed name in a later session with different data.
+   // stale hand-typed name in a later session with different data, and the
+   // version stamp reflects whether an unchecked rotation is still riding along.
    persistableConfig()
    {
       var c = {};
@@ -5653,7 +5751,35 @@ class SessionCinemaDialog extends Dialog
          c[ k ] = this.cfg[ k ];
       if ( !this.titleTouched )
          c.ovTitle = "";
-      return c;
+      return stampConfig( c, gRotPending );
+   }
+
+   // A rotation the user has just re-established through the alignment popup is
+   // in the current convention by construction — the doubt on it is over. Once
+   // no doubt is left, the config (and any process icon dragged out of it) can
+   // be stamped.
+   rotChecked( which )
+   {
+      gRotPending[ which ] = false;
+      gRotPending.any = gRotPending.zoom || gRotPending.stack;
+      stampConfig( this.cfg, gRotPending );
+      this.updateRotWarnings();
+   }
+
+   // Show the stale-rotation notice next to the alignment it applies to, and
+   // only where that rotation would actually be used — an unused stored value is
+   // noise, and a notice that cries wolf is one the user learns to ignore.
+   updateRotWarnings()
+   {
+      if ( !this.rotWarnZoom || !this.rotWarnStack )
+         return;
+      var deg = function( r ) { return String( Math.round( r*10 )/10 ); };
+      var zoom = gRotPending.zoom && this.cfg.zoomRevealCropped;
+      var stack = gRotPending.stack && this.cfg.stackRevealPath.length > 0;
+      this.rotWarnZoom.text = zoom ? tr( "align.rotStale", deg( this.cfg.zoomRevealRot ) ) : "";
+      this.rotWarnZoom.visible = zoom;
+      this.rotWarnStack.text = stack ? tr( "align.rotStale", deg( this.cfg.stackRevealRot ) ) : "";
+      this.rotWarnStack.visible = stack;
    }
 
    onAddFiles()
@@ -5691,6 +5817,7 @@ class SessionCinemaDialog extends Dialog
    {
       this.alignButton.enabled = this.cfg.zoomRevealCropped &&
          this.cfg.zoomRevealPath.length > 0 && this.cfg.zoomImagePath.length > 0;
+      this.updateRotWarnings();
    }
 
    // Single owner of the ffmpeg sub-section state: header text (arrow +
@@ -5830,6 +5957,7 @@ class SessionCinemaDialog extends Dialog
          this.cfg.zoomRevealFlipV = dlg.flipV;
          this.cfg.zoomRevealCropped = true;
          this.croppedCheck.checked = true;
+         this.rotChecked( "zoom" );
       }
    }
 
@@ -5880,6 +6008,7 @@ class SessionCinemaDialog extends Dialog
          this.cfg.stackRevealFlipH = dlg.flipH;
          this.cfg.stackRevealFlipV = dlg.flipV;
          this.stackRevealEdit.text = this.cfg.stackRevealPath;
+         this.rotChecked( "stack" );
       }
    }
 
@@ -6352,7 +6481,8 @@ class AlignDialog extends Dialog
 
 function runHeadless( cfgPath )
 {
-   var result = { ok: false, rendered: 0, skipped: [], videoPath: "", framesDir: "", error: "" };
+   var result = { ok: false, rendered: 0, skipped: [], videoPath: "", framesDir: "",
+                  warnings: [], error: "" };
    var marker = "";
    try
    {
@@ -6362,6 +6492,14 @@ function runHeadless( cfgPath )
       for ( var k in DEFAULT_CONFIG )
          cfg[ k ] = user.hasOwnProperty( k ) ? user[ k ] : DEFAULT_CONFIG[ k ];
       gLanguage = cfg.language || "en";
+      // No dialog to carry the notice here, so an unstamped rotation is reported
+      // in the console AND in the result file — automation reads the file.
+      gRotPending = rotationsNeedingCheck( cfg );
+      if ( gRotPending.any )
+      {
+         console.warningln( tr( "align.rotStaleLog" ) );
+         result.warnings.push( tr( "align.rotStaleLog" ) );
+      }
       marker = user.marker || ( cfg.outputDir + "/sessioncinema-result.json" );
       var frames = [];
       var files = user.files || [];
@@ -6400,6 +6538,16 @@ function main()
    var cfg = loadConfig();
    importParameters( cfg );   // a launched process icon overrides saved settings
    gLanguage = cfg.language || "en";
+
+   // Reveal rotations saved before the convention changed cannot be recognised,
+   // so they are announced instead of guessed. The flag is deliberately NOT part
+   // of cfg: it must not be persisted, only the missing stamp is (stampConfig).
+   gRotPending = rotationsNeedingCheck( cfg );
+   if ( gRotPending.any )
+   {
+      console.show();
+      console.warningln( tr( "align.rotStaleLog" ) );
+   }
 
    // Generation runs inside the dialog (it stays open, shows progress, ends on
    // a result popup). Here we only loop to rebuild the dialog on a live language

@@ -179,4 +179,46 @@ assert.strictEqual( M.saMatrixToAlignment( [ 1, 0, 0, 1, 0, 0, 0, 0, 1 ], RW, RH
 assert.strictEqual( M.saMatrixToAlignment( null, RW, RH ), null );
 assert.strictEqual( M.saMatrixToAlignment( [ 1, 0, 0, 0, 1, 0, 0, 0, 1e-15 ], RW, RH ), null, "h33 ~ 0" );
 
+// --- rotations saved under the pre-1.1.0 convention --------------------------
+//
+// 1.1.0 flipped the sign of the STORED reveal rotation and nothing recorded
+// which convention a saved number belongs to, so a 1.0.0 alignment renders 2*θ
+// off. The value cannot be repaired blind (negating it would break every 1.1.0
+// config in the same silent way), so what is locked here is the reporting: the
+// doubt must be raised, and must SURVIVE until the user settles it.
+{
+   assert.strictEqual( M.rotationNeedsCheck( "", 32.2 ), true, "unstamped + rotation" );
+   assert.strictEqual( M.rotationNeedsCheck( "", -32.2 ), true, "sign does not matter" );
+   assert.strictEqual( M.rotationNeedsCheck( undefined, 328 ), true, "key absent entirely" );
+   assert.strictEqual( M.rotationNeedsCheck( "1.1.1", 328 ), false, "stamped: trusted" );
+   // 0 is the same angle in both conventions — the reason most users never saw this
+   assert.strictEqual( M.rotationNeedsCheck( "", 0 ), false );
+   assert.strictEqual( M.rotationNeedsCheck( "", -0 ), false );
+
+   const stale = { cfgVersion: "", zoomRevealRot: 328, stackRevealRot: 0 };
+   const pending = M.rotationsNeedingCheck( stale );
+   assert.deepStrictEqual( pending, { zoom: true, stack: false, any: true },
+                           "only the alignment that carries a rotation is doubted" );
+
+   // THE property this design rests on: saving while the doubt is open must NOT
+   // stamp the config, or the next launch would trust a value nobody checked and
+   // the warning would vanish after one session.
+   const saved = M.stampConfig( Object.assign( {}, stale ), pending );
+   assert.strictEqual( saved.cfgVersion, "" );
+   assert.deepStrictEqual( M.rotationsNeedingCheck( saved ), pending, "doubt survives a restart" );
+   assert.strictEqual( saved.zoomRevealRot, 328, "and the value itself is never touched" );
+
+   // Once the user redoes that alignment, the doubt is over and the stamp lands.
+   const settled = M.stampConfig( Object.assign( {}, stale ),
+                                  { zoom: false, stack: false, any: false } );
+   assert.ok( /^[0-9]+\.[0-9]+\.[0-9]+/.test( settled.cfgVersion ), settled.cfgVersion );
+   assert.deepStrictEqual( M.rotationsNeedingCheck( settled ),
+                           { zoom: false, stack: false, any: false } );
+
+   // A fresh install starts unstamped but with no rotation, so it says nothing.
+   assert.strictEqual( M.rotationsNeedingCheck( M.DEFAULT_CONFIG ).any, false );
+   assert.strictEqual( M.DEFAULT_CONFIG.cfgVersion, "",
+      "the default must NOT claim a stamp: it is what an old config looks like" );
+}
+
 console.log( "align.test.js OK" );
