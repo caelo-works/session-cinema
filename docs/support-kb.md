@@ -3,8 +3,13 @@
 **This is written for a support agent, not for a user.** Quote it, do not
 paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Applies to **1.1.0**. To check what the user is running: the version is printed
-under the script's name in the top-left of its window (`v1.1.0`).
+Applies to **1.1.1**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.1.1`).
+
+**Ask for that number early.** 1.1.1 fixed three bugs that 1.1.0 had, and the
+three of them are things a user reports rather than notices — see §*Known bugs*.
+On 1.1.0 you confirm the bug and tell them to update; on 1.1.1 the same symptom
+means something else entirely.
 
 **The interface is bilingual — English and French — and the user will describe
 *their* window.** A French user says *« Habillage »*, not "Overlay"; *« Brutes »*,
@@ -30,7 +35,7 @@ down to the user's image.
 
 | | |
 |---|---|
-| Version | 1.1.0 |
+| Version | 1.1.1 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 or newer** — Windows, macOS, Linux |
 | Where it appears | **Script → CaeloWorks → Session Cinema** |
@@ -201,9 +206,10 @@ using the **`FILTER`** header value:
 - **Frame counter**, **Cumulative exposure**, **UT clock** (from `DATE-OBS`),
   **Progress bar**, **Angular scale bar (zoom)**.
 - **Measured SNR gain (stacking)** — a noise-based gain in dB, measured on the
-  running stack, never a theoretical √N. **Warning: in version 1.1.0 this does not
-  draw at all when the colour composite is on, which is the default.** See the
-  known-bugs section.
+  running stack, never a theoretical √N. In mono and in colour alike since 1.1.1;
+  **in 1.1.0 it did not draw at all in colour, which is the default** — see the
+  known-bugs section. When the measurement itself fails, 1.1.1 writes `SNR —`
+  rather than dropping the figure.
 - **Subtitle**, **Distance**, **Signature** — free text.
 
 **Video** (*« Vidéo »*):
@@ -306,7 +312,12 @@ The settings can be saved and replayed two ways:
 a progressive stack must set `style` explicitly in the config.
 
 Also note: an alignment saved **before** 1.1.0 — in a process icon or in a JSON —
-is reinterpreted with the opposite rotation. See the known-bugs section.
+is reinterpreted with the opposite rotation. See the known-bugs section. Since
+1.1.1 a config carries `cfgVersion`, the build that wrote it, and a rotation that
+arrives without one is flagged rather than trusted: the warning appears in the
+console and, for a headless run, in the `warnings` field of
+`sessioncinema-result.json`. Someone hand-writing a config can set
+`"cfgVersion": "1.1.1"` to declare the rotation is in the current convention.
 
 ---
 
@@ -382,55 +393,76 @@ de SITELAT/SITELONG/DATE-OBS à lire. »*
 Shown by **"From a sub…"**. Have them pick a **raw** sub — integrated masters
 usually drop those headers.
 
+**"⚠ This alignment (rotation N°) was saved by an earlier version, which stored
+rotations the other way round. Check it, or redo it with Align… — one click on
+Auto is enough."** / *« ⚠ Cet alignement (rotation N°) a été enregistré par une
+version antérieure… »*
+New in 1.1.1, shown in the window next to the alignment it concerns, with the same
+warning in the console. **It is not an error and the render is not blocked.** It
+means the script found a saved rotation it cannot date: versions up to 1.0.0 stored
+the opposite sign, and nothing in the saved value says which one it is. The script
+does not guess — guessing would silently break the alignments that *are* correct.
+**Answer:** redo the alignment once (**Align… → Auto**) and the notice is gone for
+good. If they close the window without doing it, it comes back next time, on
+purpose. A rotation of exactly 0° never triggers it.
+
 ---
 
 ## Known bugs and limits — read before answering
 
-Three real bugs are open in 1.1.0. If a user reports one of them, **confirm it**.
-Do not send them back to their settings to look for a mistake they did not make.
+**No bug is open in 1.1.1.** The three that were open in 1.1.0 are fixed. They are
+kept here because users on 1.1.0 still hit them, and because the symptoms are
+distinctive enough to identify the version from the description alone.
 
-### The measured SNR gain never appears when the image is in colour
+**So: get the version first.** On **1.1.0**, confirm the bug — it is ours, the
+user did nothing wrong — and tell them to update. On **1.1.1**, the same
+description means something else and belongs in escalation, not here.
 
-**Symptom:** the user ticked **Measured SNR gain (stacking)** and the dB figure is
-simply not in the video. The overlay shows the frame count and the cumulative
-exposure, and nothing else.
+### Fixed in 1.1.1 — "the SNR gain never appears"
 
-**Cause:** in 1.1.0 the SNR gain is never drawn when the **colour composite** is
-on — and colour is **on by default**. It only works on mono renders. Nothing warns
-the user.
+**Symptom:** **Measured SNR gain (stacking)** is ticked and the dB figure is not in
+the video; the overlay shows only the frame count and the cumulative exposure.
 
-**This is a real bug and it is ours.** It is also the product's flagship claim
-("we only show measured facts"), so treat the report as legitimate and important.
-**Do not tell the user to re-tick the box.** Confirm it, apologise, and escalate.
-There is no workaround other than rendering in mono.
+**On 1.1.0:** real bug. The figure was never drawn on a **colour** composite, which
+is the default, and nothing said so. Mono renders were fine. Confirm it and tell
+them to update; there is no other workaround than rendering in mono.
 
-### A vertical (9:16) Zoom Odyssey ends with big black bands
+**On 1.1.1:** it is measured in colour too, and if it ever cannot be measured the
+overlay says **`SNR —`** instead of dropping the term. So a *missing* dB figure now
+means the box is unticked; a **`SNR —`** means the measurement failed — that one is
+worth escalating with the console output.
+
+### Fixed in 1.1.1 — "my vertical video ends half black"
 
 **Symptom:** "I rendered a Zoom Odyssey in 1080×1920 for Instagram/TikTok/Shorts
 and the end of the video is half black."
 
-**Cause:** in 1.1.0, the final framing of a Zoom Odyssey fits the *whole* revealed
-image inside the frame, even when **Framing** is set to **Fill (center crop)**.
-With a landscape image in a vertical frame, that leaves roughly **59 % of the
-frame black**.
+**On 1.1.0:** real bug. The final framing fitted the *whole* image inside the frame
+whatever **Framing** said, leaving about **59 %** of a vertical frame black even on
+**Fill (center crop)**. Workaround: render in 16:9, or crop afterwards.
 
-**Workaround:** none inside the script today. Either render in 16:9, or accept the
-bands, or crop the video afterwards in an external editor. Escalate — the fix is
-known.
+**On 1.1.1:** **Framing** is honoured. **Fill (center crop)** fills the frame and
+crops the sides; **Fit (letterbox)** still keeps the whole image with bands — which
+is a legitimate choice, so check which one they picked before calling it a bug.
+16:9 renders are unchanged.
 
-### After updating to 1.1.0, a saved alignment comes out rotated wrong
+### Fixed in 1.1.1 — "my revealed image is rotated wrong since the update"
 
-**Symptom:** "I updated and now my revealed image is rotated / lands in the wrong
+**Symptom:** "I updated and now my revealed image is rotated, or lands in the wrong
 place. I changed nothing."
 
-**Cause:** 1.1.0 changed the sign convention of the **stored** rotation of an
-alignment. An alignment saved by 1.0.0 or earlier — in the settings, in a process
-icon, or in a headless JSON — is now read with the opposite sign, and the image
-lands at twice the angle away from the truth. Silently: no error, no warning.
+**Cause, on any version:** 1.1.0 changed the sign convention of the **stored**
+rotation. An alignment saved by 1.0.0 or earlier — in the settings, in a process
+icon, or in a headless JSON — is read with the opposite sign and lands at twice the
+angle away. The stored number cannot be repaired automatically: nothing records
+which convention wrote it.
 
-**Answer, and it works immediately:** open **Align…** and redo the alignment once.
-**Auto** is enough. From then on it is correct. Alignments with no rotation at all
-are unaffected, which is why most users never see this.
+**Answer, and it works immediately, on every version:** open **Align…** and redo
+the alignment once. **Auto** is enough. Alignments with no rotation at all are
+unaffected, which is why most users never see this.
+
+**What 1.1.1 changed** is that the script now *says so* instead of rendering
+quietly — see the ⚠ notice in *Messages that do NOT stop the run*.
 
 ### The real-sky survey bridge needs an internet connection
 
@@ -463,17 +495,22 @@ The channel mapping is driven by the **`FILTER`** header. If the panel still say
 value — the channels must be mapped by hand in **Colour (multi-filter)**.
 
 **"The SNR gain never appears."**
-Known bug in 1.1.0: it is never drawn when the colour composite is on, which is the
-default. Confirm it, do not blame the user, and escalate.
+Ask for the version. **1.1.0:** known bug, never drawn on a colour composite, which
+is the default — confirm it and tell them to update. **1.1.1:** the box is
+unticked. If it shows **`SNR —`**, the measurement failed: escalate with the
+console output.
 
 **"My revealed image is rotated wrong since the update."**
-Known bug in 1.1.0: alignments saved by an earlier version are read with the
-opposite rotation. Have them open **Align…** and redo the alignment once (**Auto**
-is enough). It is correct from then on.
+Alignments saved before 1.1.0 are read with the opposite rotation, on every
+version. Have them open **Align…** and redo the alignment once (**Auto** is
+enough). It is correct from then on. On 1.1.1 the script flags this itself with a
+⚠ notice.
 
 **"The video is vertical and half black."**
-Known limit in 1.1.0: a Zoom Odyssey rendered in 9:16 fits the whole image inside
-the vertical frame instead of filling it. Render in 16:9, or crop afterwards.
+Ask for the version. **1.1.0:** known bug, a 9:16 Zoom Odyssey fits the whole image
+inside the frame instead of filling it — render in 16:9, crop afterwards, or
+update. **1.1.1:** check **Framing** — **Fit (letterbox)** keeps the bands by
+design; **Fill (center crop)** is the one that fills the frame.
 
 **"ffmpeg failed."**
 The frames are safe: the script keeps the PNG sequence and an `encode.sh` /
@@ -493,8 +530,10 @@ restarted** after the install.
 
 **Escalate, and do not improvise, when:**
 
-- the user reports one of the three known bugs above — confirm the bug, then hand
-  over; do not promise a date;
+- the user is on **1.1.0** and reports one of its three known bugs — confirm the
+  bug, tell them to update, then hand over; do not promise a date;
+- the user is on **1.1.1** and reports one of those same symptoms anyway. That is
+  a new fact, not a known bug, and it needs the console output;
 - the user reports something this document does not cover. Say *"I don't know, I'm
   passing this to the team"*. A plausible-sounding guess about someone's data is
   worse than silence;
