@@ -137,6 +137,7 @@ module.exports = {
    constellationLabelAlpha: constellationLabelAlpha,
    fadeBand: fadeBand,
    makeSurveyWcs: makeSurveyWcs,
+   drawZoomReveal: drawZoomReveal,
    scaleWcsToDims: scaleWcsToDims,
    cropWcs: cropWcs,
    cropWcsCentered: cropWcsCentered,
