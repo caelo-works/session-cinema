@@ -3639,7 +3639,7 @@ Engine.prototype.runZoom = function()
             // are 1.2x and 0.56x of it), and stay keyed to P for that reason.
             var wa = fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 );
             if ( wa > 0 )
-               drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
+               drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa, 8 );
          }
          if ( nearBmp )
          {
@@ -4283,18 +4283,64 @@ function blitOriented( g, c, ex, ey, imgW, imgH, bmp, alpha, outlineColor )
    g.opacity = prevOp;
 }
 
+function blitOrientedRect( g, c, ex, ey, dstW, dstH, bmp, srcRect, alpha )
+{
+   var ux = ( ex.x - c.x )/( dstW/2 ), uy = ( ex.y - c.y )/( dstW/2 );
+   var scale = Math.sqrt( ux*ux + uy*uy );
+   if ( !( scale > 0 ) )
+      return;
+   var angle = ( 2*Math.PI - Math.atan2( uy, ux ) ) % ( 2*Math.PI );
+   var wyx = ( ey.x - c.x )/( -dstH/2 ), wyy = ( ey.y - c.y )/( -dstH/2 );
+   var flip = ( ux*wyy - uy*wyx < 0 ) ? -1 : 1;
+   var prevOp = g.opacity;
+   g.opacity = clamp01( alpha );
+   g.resetTransformation();
+   g.translateTransformation( c.x, c.y );
+   g.rotateTransformation( angle );
+   g.scaleTransformation( scale, scale*flip );
+   g.drawBitmapRect( new Point( -dstW/2, -dstH/2 ), bmp, srcRect );
+   g.resetTransformation();
+   g.opacity = prevOp;
+}
+
 // Place the revealed image at its true on-sky position, orientation and scale.
-function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha )
+// For wide survey cutouts, split the source on integer pixel boundaries and fit
+// one local similarity per tile.  The default remains a single blit so the near
+// survey, the revealed photo and the alignment preview keep their old placement.
+function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha, tiles )
 {
    function scr( px, py )
    {
       var s = wcsPixelToSky( wcs, px, py );
       return projectToScreen( cam, s.ra, s.dec );
    }
-   var c = scr( imgW/2, imgH/2 );
-   if ( !c.front )
+   var n = Math.max( 1, Math.floor( tiles || 1 ) );
+   if ( n <= 1 )
+   {
+      var c = scr( imgW/2, imgH/2 );
+      if ( !c.front )
+         return;
+      blitOriented( g, c, scr( imgW, imgH/2 ), scr( imgW/2, 0 ), imgW, imgH, bmp, alpha );
       return;
-   blitOriented( g, c, scr( imgW, imgH/2 ), scr( imgW/2, 0 ), imgW, imgH, bmp, alpha );
+   }
+
+   for ( var ty = 0; ty < n; ++ty )
+   {
+      var y0 = Math.floor( ty*imgH/n ), y1 = Math.floor( ( ty + 1 )*imgH/n );
+      for ( var tx = 0; tx < n; ++tx )
+      {
+         var x0 = Math.floor( tx*imgW/n ), x1 = Math.floor( ( tx + 1 )*imgW/n );
+         var tw = x1 - x0, th = y1 - y0;
+         if ( tw <= 0 || th <= 0 )
+            continue;
+         var mx = ( x0 + x1 )/2, my = ( y0 + y1 )/2;
+         var tc = scr( mx, my );
+         if ( !tc.front )
+            continue;
+         blitOrientedRect( g, tc, scr( x1, my ), scr( mx, y0 ), tw, th, bmp,
+                           new Rect( x0, y0, x1, y1 ), alpha );
+      }
+   }
 }
 
 // True if the revealed image, projected, fully covers the frame — so the layers

@@ -404,3 +404,50 @@ near( M.angularSepDeg( 88.793, 7.407, 78.634, -8.202 ), 18.65, 0.2, "Betelgeuse-
 }
 
 console.log( "zoom.test.js OK" );
+
+// --- tiled survey reveal: integer source partitions, default path unchanged ---
+{
+   global.Point = function ( x, y ) { this.x = x; this.y = y; };
+   global.Rect = function ( x0, y0, x1, y1 ) { this.x0 = x0; this.y0 = y0; this.x1 = x1; this.y1 = y1; };
+
+   function mockGraphics()
+   {
+      return {
+         opacity: 1,
+         bitmapCalls: [],
+         rectCalls: [],
+         resetTransformation: function () {},
+         translateTransformation: function () {},
+         rotateTransformation: function () {},
+         scaleTransformation: function () {},
+         drawBitmap: function ( x, y, bmp ) { this.bitmapCalls.push( { x: x, y: y, bmp: bmp } ); },
+         drawBitmapRect: function ( p, bmp, r ) { this.rectCalls.push( { p: p, bmp: bmp, r: r } ); }
+      };
+   }
+
+   const cam = M.makeCamera( 274.7, -13.8, 60, 0, 1920, 1080 );
+   const wcs = M.makeSurveyWcs( 274.7, -13.8, 60, 6 );
+   const bmp = { tag: "survey" };
+
+   const single = mockGraphics();
+   M.drawZoomReveal( single, cam, wcs, 6, 4, bmp, 0.5 );
+   assert.strictEqual( single.bitmapCalls.length, 1, "default reveal uses the original single-bitmap path" );
+   assert.strictEqual( single.rectCalls.length, 0, "default reveal does not crop into tiles" );
+   assert.strictEqual( single.opacity, 1, "default reveal restores graphics opacity" );
+
+   const tiled = mockGraphics();
+   M.drawZoomReveal( tiled, cam, wcs, 5, 3, bmp, 0.5, 2 );
+   assert.strictEqual( tiled.bitmapCalls.length, 0, "tiled reveal avoids the whole-bitmap affine" );
+   assert.strictEqual( tiled.rectCalls.length, 4, "2x2 reveal draws four local tiles" );
+   assert.deepStrictEqual(
+      tiled.rectCalls.map( c => [ c.r.x0, c.r.y0, c.r.x1, c.r.y1 ] ),
+      [ [ 0, 0, 2, 1 ], [ 2, 0, 5, 1 ], [ 0, 1, 2, 3 ], [ 2, 1, 5, 3 ] ],
+      "tile source rectangles are integer, gap-free partitions of the bitmap"
+   );
+   assert.deepStrictEqual(
+      tiled.rectCalls.map( c => [ c.p.x, c.p.y ] ),
+      [ [ -1, -0.5 ], [ -1.5, -0.5 ], [ -1, -1 ], [ -1.5, -1 ] ],
+      "each tile is drawn around its own local centre"
+   );
+   assert.strictEqual( tiled.opacity, 1, "tiled reveal restores graphics opacity" );
+}
