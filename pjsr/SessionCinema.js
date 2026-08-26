@@ -325,6 +325,7 @@ var STRINGS = {
       "video.quality.balanced": "balanced",
       "video.quality.small": "smaller file",
       "video.estimate":    "Estimated video: %1 rendered frame(s), ~%2 at %3 fps.",
+      "video.estimateFrom": "Starts at sub %1, the first with every colour channel.",
 
       "out.title":         "Output",
       "out.dir":           "Folder:",
@@ -539,6 +540,7 @@ var STRINGS = {
       "video.quality.balanced": "équilibrée",
       "video.quality.small": "fichier plus léger",
       "video.estimate":    "Vidéo estimée : %1 image(s) rendue(s), ~%2 à %3 ips.",
+      "video.estimateFrom": "Démarre à la brute %1, la première où tous les canaux sont alimentés.",
 
       "out.title":         "Sortie",
       "out.dir":           "Dossier :",
@@ -753,6 +755,97 @@ function computeRenderIndices( N, fps, targetDuration )
    if ( indices[ indices.length - 1 ] != N )
       indices.push( N );
    return indices;
+}
+
+// The colour cadence, as pure arithmetic. Rendering only starts once EVERY mapped
+// channel has a sub, so the animation is spread over [firstFullN, N] rather than
+// [1, N] — and on a filter-per-night set that is most of the list. It lived inside
+// the engine loop, where the dialog could not see it, so the dialog announced the
+// mono count instead: twice the frames on a two-block sequence, three times on
+// three nights. One definition now, and the only cadence in the product that had
+// no test has one.
+function colorRenderPlan( frames, map, fps, targetDuration )
+{
+   var keys = [ "R", "G", "B" ];
+   var N = frames.length;
+   var fed = { R: false, G: false, B: false }, mappedFrames = 0;
+   var i, ch, c;
+   for ( i = 0; i < N; ++i )
+   {
+      ch = channelsFedBy( frames[ i ].filter, map );
+      if ( ch.length )
+         ++mappedFrames;
+      for ( c = 0; c < ch.length; ++c )
+         fed[ ch[ c ] ] = true;
+   }
+   var need = [];
+   for ( i = 0; i < 3; ++i )
+      if ( map[ keys[ i ] ] && fed[ keys[ i ] ] )
+         need.push( keys[ i ] );
+   var seen = { R: 0, G: 0, B: 0 }, firstFullN = N;
+   for ( i = 0; i < N; ++i )
+   {
+      ch = channelsFedBy( frames[ i ].filter, map );
+      for ( c = 0; c < ch.length; ++c )
+         seen[ ch[ c ] ] = 1;
+      var all = true;
+      for ( c = 0; c < need.length; ++c )
+         if ( !seen[ need[ c ] ] )
+            all = false;
+      if ( all ) { firstFullN = i + 1; break; }
+   }
+   // Cadence over the positions that will actually render: the loop skips a sub
+   // whose filter feeds no channel BEFORE consulting renderSet, so spreading over
+   // raw positions announced frames that were never written — 247 for 148 on an
+   // LRGB night pulled in RGB.
+   var eligible = [];
+   for ( i = firstFullN - 1; i < N; ++i )
+      if ( channelsFedBy( frames[ i ].filter, map ).length )
+         eligible.push( i + 1 );
+   var T = computeRenderIndices( N, fps, targetDuration ).length;
+   var E = eligible.length;
+   var renderSet = {}, totalRenders = 0;
+   for ( i = 0; i < T && E > 0; ++i )
+   {
+      var rn = ( T > 1 ) ? eligible[ Math.round( i*( E - 1 )/( T - 1 ) ) ] : eligible[ E - 1 ];
+      if ( !renderSet[ rn ] ) { renderSet[ rn ] = true; ++totalRenders; }
+   }
+   return { mappedFrames: mappedFrames, firstFullN: firstFullN,
+            renderSet: renderSet, totalRenders: totalRenders };
+}
+
+// The end reveal writes this many frames, or none when there is no image to
+// reveal. Read by the renderer AND by the estimate, so the count announced before
+// the run and the total reported during it cannot come apart.
+function revealTailFrames( cfg )
+{
+   if ( !cfg.stackRevealPath || !cfg.stackRevealPath.length )
+      return 0;
+   var sec = ( cfg.stackRevealSec > 0 ) ? cfg.stackRevealSec : STACK_REVEAL_SEC;
+   return Math.max( 1, Math.round( cfg.fps*sec ) );
+}
+
+// How many frames a progressive-stack run will WRITE — the whole run, animation
+// plus reveal tail. This is the number the dialog announces and the number the
+// engine counts against; tests/announced.test.js holds the two together.
+// map = null for mono, the resolved channel map for colour.
+function plannedFrameCount( frames, cfg, map )
+{
+   var N = frames.length;
+   if ( N == 0 )
+      return { animation: 0, reveal: 0, total: 0, firstFullN: 1 };
+   var animation, firstFullN = 1;
+   if ( map )
+   {
+      var plan = colorRenderPlan( frames, map, cfg.fps, cfg.targetDuration );
+      animation = plan.totalRenders;
+      firstFullN = plan.firstFullN;
+   }
+   else
+      animation = computeRenderIndices( N, cfg.fps, cfg.targetDuration ).length;
+   var reveal = revealTailFrames( cfg );
+   return { animation: animation, reveal: reveal,
+            total: animation + reveal, firstFullN: firstFullN };
 }
 
 // Destination rectangle of the source image inside the output frame.
@@ -3104,12 +3197,17 @@ Engine.prototype.runStacking = function()
 
 // Resolve whether colour compositing applies to the current frames, and how.
 // Active only when enabled and at least two distinct filters feed the channels.
+function colorPlanFor( frames, cfg )
+{
+   var filters = detectFilters( frames );
+   var map = resolveChannelMap( cfg, filters );
+   var active = !!cfg.colorEnabled && mappedFilters( map ).length >= 2;
+   return { active: active, map: map, filters: filters };
+}
+
 Engine.prototype.colorPlan = function()
 {
-   var filters = detectFilters( this.frames );
-   var map = resolveChannelMap( this.cfg, filters );
-   var active = !!this.cfg.colorEnabled && mappedFilters( map ).length >= 2;
-   return { active: active, map: map, filters: filters };
+   return colorPlanFor( this.frames, this.cfg );
 };
 
 // Assemble an RGB bitmap from up to three stretched mono channel images
@@ -3189,37 +3287,12 @@ Engine.prototype.runStackingColor = function( map )
    var N = this.frames.length;
    var keys = [ "R", "G", "B" ];
 
-   // Which channels are actually fed (their filter survives in this.frames), and
-   // the total number of channel-feeding subs (drives the global brightness ramp).
-   var fed = { R: false, G: false, B: false }, mappedFrames = 0;
-   for ( var f = 0; f < N; ++f )
-   {
-      var fch = channelsFedBy( this.frames[ f ].filter, map );
-      if ( fch.length ) ++mappedFrames;
-      for ( var fc = 0; fc < fch.length; ++fc ) fed[ fch[ fc ] ] = true;
-   }
-   var need = [];
-   for ( var nk = 0; nk < 3; ++nk )
-      if ( map[ keys[ nk ] ] && fed[ keys[ nk ] ] ) need.push( keys[ nk ] );
-   var seen = { R: 0, G: 0, B: 0 }, firstFullN = N;
-   for ( var s0 = 0; s0 < N; ++s0 )
-   {
-      var sch = channelsFedBy( this.frames[ s0 ].filter, map );
-      for ( var sc = 0; sc < sch.length; ++sc ) seen[ sch[ sc ] ] = 1;
-      var all = true;
-      for ( var an = 0; an < need.length; ++an ) if ( !seen[ need[ an ] ] ) all = false;
-      if ( all ) { firstFullN = s0 + 1; break; }
-   }
-
-   // Spread the render cadence over [firstFullN, N] so the first rendered frame
-   // is the first full-colour one and the last is the complete integration.
-   var T = computeRenderIndices( N, cfg.fps, cfg.targetDuration ).length;
-   var renderSet = {}, totalRenders = 0;
-   for ( var kk = 0; kk < T; ++kk )
-   {
-      var rn = ( T > 1 ) ? ( firstFullN + Math.round( kk*( N - firstFullN )/( T - 1 ) ) ) : N;
-      if ( !renderSet[ rn ] ) { renderSet[ rn ] = true; ++totalRenders; }
-   }
+   // The cadence is spread over [firstFullN, N] so the first rendered frame is the
+   // first full-colour one and the last is the complete integration. Same call the
+   // dialog makes for its estimate — that is the point of it being a function.
+   var plan = colorRenderPlan( this.frames, map, cfg.fps, cfg.targetDuration );
+   var mappedFrames = plan.mappedFrames, renderSet = plan.renderSet;
+   var totalRenders = plan.totalRenders;
 
    console.writeln( tr( "run.pass1", N ) );
    var stretches = this.channelStretches( map );
@@ -3318,9 +3391,17 @@ Engine.prototype.runStackingColor = function( map )
             ent.push( { weight: wByFilter[ fN ],
                         sigmaFirst: sigFirst[ fN ], sigmaCurrent: sigCur[ fN ] } );
          var snr = compositeSnrSigmas( ent );
+         // integrated, not n: a sub whose filter feeds no channel of this palette
+         // is skipped and stays out of cumExposure, but n is its POSITION in the
+         // list. Printing it put "200 x 120 s" — 6h40 — next to "4h00" on the same
+         // line. The exposure is the running mean for the same reason: with two
+         // filters at different exposures, fr.exposure flickers between them from
+         // one frame to the next, where mono shows the mean and does not.
          var ov = buildOverlayInfo( cfg, {
-            index: n, total: N,
-            cumulativeExposure: cumExposure, exposure: fr.exposure, dateObs: fr.dateObs,
+            index: integrated, total: mappedFrames,
+            cumulativeExposure: cumExposure,
+            exposure: integrated > 0 ? cumExposure/integrated : fr.exposure,
+            dateObs: fr.dateObs,
             sigmaFirst: snr.first, sigmaCurrent: snr.current, title: this.title } );
          var bmp = composeColorBitmap( chImgs, cfg, ov );
          if ( n == N )                                   // final frame → overlay-free reveal base
@@ -3345,7 +3426,7 @@ Engine.prototype.runStackingColor = function( map )
    // base is overlay-free; the overlay is redrawn fixed on top of every reveal
    // frame so it does not zoom with the image.
    if ( !this.aborted && revealBase && geomW )
-      this.renderStackReveal( revealBase, geomW, geomH, lastOv, outIndex );
+      this.renderStackReveal( revealBase, geomW, geomH, lastOv, outIndex, totalRenders );
 };
 
 // Append the end-reveal frames: over STACK_REVEAL_SEC, cross-fade the final
@@ -3353,7 +3434,7 @@ Engine.prototype.runStackingColor = function( map )
 // aligned onto the stack (stackReveal* config), while a view zoom carries that
 // image from its stack-aligned placement to filling the video frame (contain
 // fit, no crop). stackW/stackH are the sub/accumulator dimensions.
-Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, outIndex )
+Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, outIndex, renderedSoFar )
 {
    var cfg = this.cfg;
    if ( !cfg.stackRevealPath || !cfg.stackRevealPath.length )
@@ -3412,8 +3493,11 @@ Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, out
       og.end();
    }
 
-   var revealSec = ( cfg.stackRevealSec > 0 ) ? cfg.stackRevealSec : STACK_REVEAL_SEC;
-   var tailFrames = Math.max( 1, Math.round( cfg.fps*revealSec ) );
+   var tailFrames = revealTailFrames( cfg );
+   // outIndex already carries the main loop's count, so reporting against
+   // tailFrames alone read "Render 201 / 60 (reveal)" at 335%. The total is the
+   // whole run: what has been written plus what this tail will write.
+   var grandTotal = ( renderedSoFar || 0 ) + tailFrames;
    for ( var tf = 1; tf <= tailFrames; ++tf )
    {
       if ( this.checkAbort() ) break;
@@ -3440,7 +3524,7 @@ Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, out
       }
       g.end();
       this.saveFrame( out, ++outIndex );
-      this.progress( outIndex, tailFrames, tr( "run.render", outIndex, tailFrames, "reveal" ),
+      this.progress( outIndex, grandTotal, tr( "run.render", outIndex, grandTotal, "reveal" ),
                      ( ( tf & 1 ) == 0 ) ? out : null );
    }
    return outIndex;
@@ -5853,11 +5937,18 @@ class SessionCinemaDialog extends Dialog
          this.estimateLabel.text = "";
          return;
       }
-      var idx = computeRenderIndices( N, this.cfg.fps, this.cfg.targetDuration );
-      var count2 = idx.length;
-      var seconds2 = count2/this.cfg.fps;
-      seconds2 += this.cfg.holdFirst + this.cfg.holdLast;
-      this.estimateLabel.text = tr( "video.estimate", count2, formatDuration( seconds2 ), this.cfg.fps );
+      // The same plan the engine renders from, so the number under the button is
+      // the number that comes out — colour cadence included, and the end reveal,
+      // which the estimate never counted in either mode.
+      var cp = colorPlanFor( this.frames, this.cfg );
+      var plan = plannedFrameCount( this.frames, this.cfg, cp.active ? cp.map : null );
+      var seconds = plan.total/this.cfg.fps + this.cfg.holdFirst + this.cfg.holdLast;
+      var text = tr( "video.estimate", plan.total, formatDuration( seconds ), this.cfg.fps );
+      // Colour skips the subs before every channel has one. That is a defensible
+      // choice; leaving the user to discover it after the render is not.
+      if ( plan.firstFullN > 1 )
+         text += "  " + tr( "video.estimateFrom", plan.firstFullN );
+      this.estimateLabel.text = text;
    }
 
    updateStyleDependents()
@@ -6298,7 +6389,10 @@ class SessionCinemaDialog extends Dialog
          {
             self.progressBar.__indet = false;
             self.progressBar.__frac = done/total;
-            self.progressStatus.text = g + "   " + msg + "   (" + Math.round( 100*done/total ) + "%)";
+            // The bar was clamped in onPaint and the text was not, which is why it
+            // could read 335% while the bar sat full.
+            self.progressStatus.text = g + "   " + msg +
+               "   (" + Math.round( 100*clamp01( done/total ) ) + "%)";
          }
          else
          {

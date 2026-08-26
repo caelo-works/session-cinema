@@ -133,4 +133,66 @@ assert.strictEqual( M.formatSnrGainDb( 1, 1 ), "+0.0 dB" );
 // cardinal points in the opening. J2000.0 is the published anchor.
 near( M.gmstDeg( 2451545.0 ), 280.46061837, 1e-6, "GMST at J2000.0" );
 
+// --- the stack: what the dialog announces is what the engine writes ----------
+//
+// Replays the render loop against the plan the dialog reads. The loop skips a sub
+// whose filter feeds no channel BEFORE consulting renderSet, so any position in
+// the set that is not mapped is an announced frame nobody writes.
+{
+   const cfg = Object.assign( {}, M.DEFAULT_CONFIG, { fps: 30, targetDuration: 12 } );
+   const blocks = spec => { const o = []; let k = 0;
+      for ( const [ f, n ] of spec ) for ( let i = 0; i < n; ++i )
+         o.push( { filter: f, exposure: 300, name: "f" + ( ++k ) } );
+      return o; };
+   const cycles = ( fs, n ) => { const o = []; let k = 0;
+      for ( let c = 0; c < n; ++c ) for ( const f of fs )
+         o.push( { filter: f, exposure: 300, name: "f" + ( ++k ) } );
+      return o; };
+   const HOO = { R: "Ha", G: "OIII", B: "OIII" };
+   const CASES = [
+      [ "SHO blocks in HOO",   blocks( [ [ "Ha", 80 ], [ "OIII", 80 ], [ "SII", 80 ] ] ), HOO ],
+      [ "SHO interleaved",     cycles( [ "Ha", "OIII", "SII" ], 80 ),                     HOO ],
+      [ "two blocks",          blocks( [ [ "Ha", 120 ], [ "OIII", 120 ] ] ),              HOO ],
+      [ "night per filter",    blocks( [ [ "Ha", 67 ], [ "OIII", 67 ], [ "SII", 66 ] ] ),
+                               { R: "SII", G: "Ha", B: "OIII" } ],
+      [ "LRGB cycles in RGB",  cycles( [ "L", "R", "G", "B", "Ha" ], 50 ),
+                               { R: "R", G: "G", B: "B" } ]
+   ];
+   for ( const [ name, frames, map ] of CASES )
+   {
+      const plan = M.colorRenderPlan( frames, map, cfg.fps, cfg.targetDuration );
+      let written = 0, integrated = 0, lastIndex = 0;
+      for ( let i = 0; i < frames.length; ++i )
+      {
+         if ( M.channelsFedBy( frames[ i ].filter, map ).length === 0 ) continue;
+         ++integrated;
+         if ( plan.renderSet[ i + 1 ] ) { ++written; lastIndex = integrated; }
+      }
+      assert.strictEqual( written, plan.totalRenders,
+         `${name}: announces ${plan.totalRenders} frames, writes ${written}` );
+      // #7: the overlay counter is the number of subs IN the image, and it ends
+      // on the total it is printed against.
+      assert.strictEqual( integrated, plan.mappedFrames,
+         `${name}: overlay total ${plan.mappedFrames} is not the number of subs composited` );
+      assert.strictEqual( lastIndex, plan.mappedFrames,
+         `${name}: the last frame reads ${lastIndex}/${plan.mappedFrames}, not 100%` );
+   }
+
+   // The dialog counts the reveal tail, in both modes; it counted neither before.
+   const frames = cycles( [ "Ha", "OIII" ], 60 );
+   const withReveal = Object.assign( {}, cfg, { stackRevealPath: "/tmp/x.jpg", stackRevealSec: 2 } );
+   assert.strictEqual( M.revealTailFrames( cfg ), 0 );
+   assert.strictEqual( M.revealTailFrames( withReveal ), 60 );
+   for ( const map of [ null, HOO ] )
+   {
+      const bare = M.plannedFrameCount( frames, cfg, map );
+      const full = M.plannedFrameCount( frames, withReveal, map );
+      assert.strictEqual( full.total, bare.animation + 60,
+         "the estimate must include the frames the end reveal writes" );
+      // #17: the reveal reports against the whole run, so it cannot pass 100%.
+      assert.ok( full.animation + full.reveal === full.total && full.total >= full.animation );
+   }
+   assert.strictEqual( M.plannedFrameCount( [], cfg, null ).total, 0 );
+}
+
 console.log( "announced.test.js OK" );
