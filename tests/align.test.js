@@ -195,10 +195,27 @@ assert.strictEqual( M.saMatrixToAlignment( [ 1, 0, 0, 0, 1, 0, 0, 0, 1e-15 ], RW
    assert.strictEqual( M.rotationNeedsCheck( "", 0 ), false );
    assert.strictEqual( M.rotationNeedsCheck( "", -0 ), false );
 
-   const stale = { cfgVersion: "", zoomRevealRot: 328, stackRevealRot: 0 };
+   // A rotation is only doubted where it is actually APPLIED. The notice used to
+   // fire on a placement nothing reads, with no way to dismiss it.
+   const stale = { cfgVersion: "", zoomRevealRot: 328, stackRevealRot: 0,
+                   zoomRevealCropped: true, zoomRevealAligned: true, zoomRevealScale: 1,
+                   stackRevealPath: "", stackRevealAligned: false, stackRevealScale: 0 };
    const pending = M.rotationsNeedingCheck( stale );
    assert.deepStrictEqual( pending, { zoom: true, stack: false, any: true },
                            "only the alignment that carries a rotation is doubted" );
+
+   // Same rotation, but the crop box is off: nothing reads it, so nothing to say.
+   const unused = Object.assign( {}, stale, { zoomRevealCropped: false } );
+   assert.deepStrictEqual( M.rotationsNeedingCheck( unused ), { zoom: false, stack: false, any: false },
+                           "a rotation the render never applies must not raise a notice" );
+
+   // And a stack rotation with no presentation image is equally unused.
+   const noImage = { cfgVersion: "", zoomRevealRot: 0, stackRevealRot: 180,
+                     zoomRevealCropped: false, zoomRevealAligned: false, zoomRevealScale: 0,
+                     stackRevealPath: "", stackRevealAligned: true, stackRevealScale: 1 };
+   assert.strictEqual( M.rotationsNeedingCheck( noImage ).stack, false );
+   assert.strictEqual( M.rotationsNeedingCheck(
+      Object.assign( {}, noImage, { stackRevealPath: "/tmp/final.jpg" } ) ).stack, true );
 
    // THE property this design rests on: saving while the doubt is open must NOT
    // stamp the config, or the next launch would trust a value nobody checked and
