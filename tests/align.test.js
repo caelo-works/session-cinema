@@ -344,3 +344,26 @@ console.log( "align.test.js OK (one aligned)" );
 }
 
 console.log( "align.test.js OK (stamp, config filter)" );
+
+// --- what an exported process icon may carry ---------------------------------
+//
+// Everything in DEFAULT_CONFIG used to be exported by design, which put the
+// observer's coordinates — read from the headers without being asked for, to four
+// decimals — inside every icon posted on a forum.
+{
+   const D = M.DEFAULT_CONFIG;
+   for ( const k of [ "observerLat", "observerLong", "observerDateUtc", "language" ] )
+      assert.ok( M.PERSONAL_KEYS[ k ], `${k} identifies the recipient or the site: keep it local` );
+
+   // The sentinel matters: a trimmed icon must fall back to "read the headers",
+   // not to zero, which is a real place in the Gulf of Guinea.
+   assert.strictEqual( D.observerLat, 999 );
+   assert.strictEqual( D.observerLong, 999 );
+
+   // And the rest of the recipe still travels, or the icon would be pointless.
+   for ( const k of [ "style", "fps", "targetDuration", "formatIndex", "palette",
+                      "ovShowSnr", "stackRevealPath" ] )
+      assert.ok( !M.PERSONAL_KEYS[ k ], `${k} is part of the recipe and must travel` );
+}
+
+console.log( "align.test.js OK (what an icon carries)" );
