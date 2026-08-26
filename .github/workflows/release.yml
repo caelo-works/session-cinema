@@ -12,16 +12,24 @@ on:
 permissions:
   contents: read
 
+# Two tags pushed back to back must not race for the same release. Never cancel:
+# a half-run publication is worse than a queued one.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   tests:
     name: Gate — the tag must be releasable
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Actions are pinned by commit SHA in this repo: a mutable tag in the
+      # workflow that publishes is a dependency nobody here controls.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # merge-base needs the history, not just the tagged commit.
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
       - name: Tag must point at a commit on main
@@ -43,7 +51,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # This job holds the write token; nothing here talks to the remote over
+          # git, so the token has no reason to sit in .git/config while the build
+          # script runs.
+          persist-credentials: false
       - name: Version from tag
         id: v
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"

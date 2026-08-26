@@ -66,6 +66,7 @@ module.exports = {
    DEFAULT_CONFIG: DEFAULT_CONFIG,
    STRINGS: STRINGS,
    tr: tr,
+   versionLabel: versionLabel,
    setLanguage: function (lang) { gLanguage = lang; },
    clamp01: clamp01,
    mtf: mtf,

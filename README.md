@@ -185,8 +185,9 @@ This produces two files under `dist/`:
   PixInsight updater (`src/scripts/CaeloWorks/SessionCinema/SessionCinema.js`
   plus the script icon, shipped both under `rsc/icons/script/` for the menu
   entry and next to the script for the dialog emblem). The archive is
-  reproducible on a given build
-  environment: rebuilt there, its sha1 only changes when the content changes.
+  reproducible: entries are sorted, timestamps and permissions are fixed, and
+  nothing is compressed, so the same content rebuilt on any machine yields the
+  same sha1 — which is how a published package can be checked after the fact.
 - **`update-package.json`** — the metadata contract for the site: name, slug,
   version, `fileName`, `sha1`, type, `releaseDate`, `piVersionRange`, title
   and `descriptionHtml`.
