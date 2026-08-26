@@ -420,6 +420,8 @@ var STRINGS = {
       "result.aborted":    "Aborted. %1 frame(s) were rendered.",
       "result.nothing":    "Nothing was rendered.",
       "zoom.noLocation":   "\"Simulate the shoot location\" is on, but no usable latitude, longitude and date were found — the headers carry none and none was typed in. The opening falls back to the equatorial sky.",
+      "net.unavailable":   "No network: the sky survey bridge is switched off for this run. The video renders from the star catalogue instead.",
+      "zoom.rootNoCatalogs": "Found a PixInsight directory at %1 but no star catalogue under it. Set SESSIONCINEMA_PI_HOME to the real installation if the sky comes out empty.",
       "zoom.noConstellations": "Constellation data not found (%1). These files belong to the AnnotateImage script, which ships with PixInsight — the zoom runs without them, with named stars but no figures, borders or labels.",
       "zoom.aspectDiffers": "The image to reveal has a different aspect ratio from the solved image. It is treated as a centred crop at the same pixel scale. If its framing is not centred, tick \"Different crop from the solved image\" and align it.",
       "zoom.errCropNotAligned": "\"Different crop from the solved image\" is ticked but the reveal has not been aligned. Open Align… and place it, or untick the box.",
@@ -661,6 +663,8 @@ var STRINGS = {
       "result.aborted":    "Interrompu. %1 image(s) rendue(s).",
       "result.nothing":    "Rien n'a été rendu.",
       "zoom.noLocation":   "« Simuler le lieu de prise de vue » est actif, mais aucune latitude, longitude et date exploitables n'ont été trouvées — les en-têtes n'en portent pas et rien n'a été saisi. L'ouverture retombe sur le ciel équatorial.",
+      "net.unavailable":   "Pas de réseau : le pont vers le relevé du ciel est coupé pour ce rendu. La vidéo est produite à partir du catalogue d'étoiles.",
+      "zoom.rootNoCatalogs": "Répertoire PixInsight trouvé dans %1 mais aucun catalogue d'étoiles dessous. Définissez SESSIONCINEMA_PI_HOME sur l'installation réelle si le ciel sort vide.",
       "zoom.noConstellations": "Données de constellations introuvables (%1). Ces fichiers appartiennent au script AnnotateImage, livré avec PixInsight — le zoom fonctionne sans, avec les étoiles nommées mais sans figures, frontières ni libellés.",
       "zoom.aspectDiffers": "L'image à révéler n'a pas le même rapport d'aspect que l'image résolue. Elle est traitée comme un recadrage centré à la même échelle. Si son cadrage n'est pas centré, cochez « Cadrage différent de l'image résolue » et alignez-la.",
       "zoom.errCropNotAligned": "« Cadrage différent de l'image résolue » est coché mais l'image à révéler n'a pas été alignée. Ouvrez Aligner… pour la placer, ou décochez la case.",
@@ -2755,12 +2759,35 @@ function piInstallRoot()
       cands.push( ( ( pf && pf.length ) ? pf.split( "\\" ).join( "/" ) : "C:/Program Files" ) + "/PixInsight" );
    }
    else if ( kind == "macos" )
+   {
+      // The real tree is inside the bundle; /Applications/PixInsight exists on
+      // some installs and holds nothing this script reads, which is why the
+      // "directory exists" test below was the wrong question.
+      cands.push( "/Applications/PixInsight.app/Contents/PixInsight" );
+      cands.push( "/Applications/PixInsight.app/Contents/Resources/PixInsight" );
       cands.push( "/Applications/PixInsight" );
+   }
    else
+   {
       cands.push( "/opt/PixInsight" );
+      cands.push( "/usr/local/PixInsight" );
+      var home = getEnvironmentVariable( "HOME" );
+      if ( home && home.length )
+         cands.push( home + "/PixInsight" );
+   }
+   // A root is a root if the file we came for is under it. A wrong-but-existing
+   // directory used to be returned as a success, and the run then found no
+   // catalogues and printed a console warning on a sky the user simply finds
+   // empty.
    for ( var k = 0; k < cands.length; ++k )
-      if ( File.directoryExists( cands[ k ] ) )
+      if ( File.exists( cands[ k ] + "/include/pjsr/astrometry/NamedStars.csv" ) )
          return cands[ k ];
+   for ( k = 0; k < cands.length; ++k )
+      if ( File.directoryExists( cands[ k ] ) )
+      {
+         console.warningln( tr( "zoom.rootNoCatalogs", cands[ k ] ) );
+         return cands[ k ];
+      }
    return "";
 }
 
@@ -3258,15 +3285,35 @@ function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
 // redirects, failing on HTTP errors. The process timeout is derived from
 // curl's own --max-time so the two can never drift apart. Returns true when
 // curl ran to success and wrote more than minBytes.
+// gNoNetwork: set once curl says it could not connect. A DNS failure or a closed
+// port does not heal in ninety seconds, but the survey bridge retried three times
+// per cutout and fetches two cutouts — six connect timeouts of 20 s in series,
+// about two minutes of a run that had already decided nothing would come. Once
+// this is set the bridge stops asking and the run continues on the catalogue.
+var gNoNetwork = false;
+
 function curlDownload( url, outPath, maxTimeSec, minBytes, onTick )
 {
    try { File.remove( outPath ); } catch ( e ) {}
    var curl = ( platformKind() == "windows" ) ? "curl.exe" : "curl";
+   if ( gNoNetwork )
+      return false;
    var r = runExternal( curl, [ "-f", "-s", "-S", "-L", "-o", outPath,
                                 "--connect-timeout", "20",
                                 "--max-time", String( maxTimeSec ), url ],
                         ( maxTimeSec + 60 )*1000, true, onTick );
-   return r.started && r.exitCode == 0 && fileSize( outPath ) > minBytes;
+   if ( r.started && r.exitCode == 0 && fileSize( outPath ) > minBytes )
+      return true;
+   // curl exits 6 on a name it cannot resolve and 7 on a connection refused;
+   // "could not start" means no curl at all. None of those is worth a retry, and
+   // none of them is worth five more.
+   if ( !r.started || r.exitCode == 6 || r.exitCode == 7 )
+   {
+      if ( !gNoNetwork )
+         console.warningln( tr( "net.unavailable" ) );
+      gNoNetwork = true;
+   }
+   return false;
 }
 
 function detectFfmpeg( userPath )
@@ -3307,7 +3354,10 @@ function installFfmpegFromMirror( onTick )
    {
       // Ask the machine its architecture so the native build downloads first.
       var uf = File.systemTempDirectory + "/sc-uname.txt";
-      runExternal( "/bin/sh", [ "-c", "uname -m > \"" + uf + "\"" ], 5000, false );
+      // By name, not by absolute path: /bin/sh and /bin/chmod hold on macOS and on
+      // most distributions, and not on NixOS or a stripped container. PATH is what
+      // the platform is for.
+      runExternal( "sh", [ "-c", "uname -m > \"" + uf + "\"" ], 5000, false );
       try { names = orderMirrorCandidatesByArch( names, File.readTextFile( uf ) ); } catch ( eu ) {}
       try { File.remove( uf ); } catch ( eu2 ) {}
    }
@@ -3318,7 +3368,7 @@ function installFfmpegFromMirror( onTick )
       if ( !curlDownload( FFMPEG_MIRROR_BASE + names[ c ], dest, 900, 1000000, onTick ) )
          continue;
       if ( kind != "windows" )
-         runExternal( "/bin/chmod", [ "+x", dest ], 5000, false );
+         runExternal( "chmod", [ "+x", dest ], 5000, false );
       // Exiting 0 is not evidence of being ffmpeg: an HTML error page saved under
       // the name and made executable would not, but a wrapper or a truncated
       // archive might. Require it to say what it is.
@@ -3341,7 +3391,7 @@ function writeEncodeScript( framesDir, ffmpegArgs, ffmpegPath )
    var scriptPath = framesDir + ( isWin ? "/encode.bat" : "/encode.sh" );
    File.writeTextFile( scriptPath, buildEncodeScriptText( isWin, ffmpegArgs, ffmpegPath ) );
    if ( !isWin )
-      runExternal( "/bin/chmod", [ "+x", scriptPath ], 5000, false );
+      runExternal( "chmod", [ "+x", scriptPath ], 5000, false );
    return scriptPath;
 }
 

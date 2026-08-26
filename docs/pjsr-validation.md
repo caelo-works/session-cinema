@@ -61,8 +61,15 @@ Keep them, and the probes, in a staging directory outside the repository.
 
 ## What is still unverified
 
-Everything platform-specific off Windows. CI runs on Linux but executes only the
-pure functions under Node: it exercises no platform-specific line and opens no
-socket. The macOS and Linux install roots, the `chmod` calls and the POSIX encode
-script have never been run. See the corresponding issue before claiming those
-platforms in a release note.
+**Everything platform-specific off Windows.** CI runs on Linux but executes only
+the pure functions under Node: it exercises no platform-specific line and opens no
+socket. The macOS and Linux install roots, the `chmod` and `sh` calls and the POSIX
+encode script have never been run on those platforms. Do not claim them in a
+release note without a run.
+
+**A real connection failure.** The survey bridge stops asking once curl reports it
+could not resolve or could not connect — exit 6, exit 7, or curl missing entirely.
+The opposite direction is verified: an HTTP 404 (exit 22) does **not** switch the
+bridge off, and the run completes from the star catalogue. A genuine offline run
+has not been reproduced against PixInsight from this bench; cutting the network
+under it is not something the harness can do.
