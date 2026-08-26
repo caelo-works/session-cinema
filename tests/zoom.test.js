@@ -405,49 +405,221 @@ near( M.angularSepDeg( 88.793, 7.407, 78.634, -8.202 ), 18.65, 0.2, "Betelgeuse-
 
 console.log( "zoom.test.js OK" );
 
-// --- tiled survey reveal: integer source partitions, default path unchanged ---
+// --- the wide survey reveal: measured drift, measured seams ---------------
+//
+// A survey cutout spanning tens of degrees is placed by composing the cutout's
+// gnomonic WCS with the stereographic camera. That composition is neither linear
+// nor conformal, so a single similarity cannot express it and the cutout drifts
+// off the stars drawn over it. The reveal answers by cutting the source into
+// tiles with one affine each. Two properties have to hold, and neither of them is
+// about how many draw calls happen:
+//
+//   drift — how far a source pixel lands from where its own sky position projects
+//   seam  — how far two neighbouring tiles disagree about the edge they share
+//
+// The second is the one that bites: trading an invisible drift for a visible grid
+// of cracks across the sky would be a worse product, not a better one.
 {
-   global.Point = function ( x, y ) { this.x = x; this.y = y; };
-   global.Rect = function ( x0, y0, x1, y1 ) { this.x0 = x0; this.y0 = y0; this.x1 = x1; this.y1 = y1; };
+   const WIDE = 2600;
 
-   function mockGraphics()
+   // PixInsight's rotateTransformation is CLOCKWISE and ignores negative angles.
+   const Rp = t => [ [ Math.cos( t ), Math.sin( t ) ], [ -Math.sin( t ), Math.cos( t ) ] ];
+
+   // 1. the decomposition is exact, and stays inside what the API accepts
    {
-      return {
-         opacity: 1,
-         bitmapCalls: [],
-         rectCalls: [],
-         resetTransformation: function () {},
-         translateTransformation: function () {},
-         rotateTransformation: function () {},
-         scaleTransformation: function () {},
-         drawBitmap: function ( x, y, bmp ) { this.bitmapCalls.push( { x: x, y: y, bmp: bmp } ); },
-         drawBitmapRect: function ( p, bmp, r ) { this.rectCalls.push( { p: p, bmp: bmp, r: r } ); }
-      };
+      let worst = 0, lo = Infinity, hi = -Infinity;
+      let seed = 12345;
+      const rnd = () => { seed = ( seed*1103515245 + 12345 ) & 0x7fffffff; return seed/0x7fffffff*4 - 2; };
+      for ( let k = 0; k < 20000; ++k )
+      {
+         const ax = rnd(), ay = rnd(), bx = rnd(), by = rnd();
+         const d = M.decomposeAffine( ax, ay, bx, by );
+         const R1 = Rp( d.a1 ), R2 = Rp( d.a2 );
+         // Rp(a1) . diag(sx,sy) . Rp(a2)
+         const m00 = R1[0][0]*d.sx*R2[0][0] + R1[0][1]*d.sy*R2[1][0];
+         const m01 = R1[0][0]*d.sx*R2[0][1] + R1[0][1]*d.sy*R2[1][1];
+         const m10 = R1[1][0]*d.sx*R2[0][0] + R1[1][1]*d.sy*R2[1][0];
+         const m11 = R1[1][0]*d.sx*R2[0][1] + R1[1][1]*d.sy*R2[1][1];
+         worst = Math.max( worst, Math.abs( m00 - ax ), Math.abs( m01 - bx ),
+                                  Math.abs( m10 - ay ), Math.abs( m11 - by ) );
+         lo = Math.min( lo, d.a1, d.a2 ); hi = Math.max( hi, d.a1, d.a2 );
+      }
+      assert.ok( worst < 1e-9, `decomposeAffine does not reconstruct its input (worst ${worst})` );
+      assert.ok( lo >= 0 && hi < 2*Math.PI,
+         `rotateTransformation ignores negative angles: got ${lo} .. ${hi}, must be [0, 2pi)` );
    }
 
-   const cam = M.makeCamera( 274.7, -13.8, 60, 0, 1920, 1080 );
-   const wcs = M.makeSurveyWcs( 274.7, -13.8, 60, 6 );
-   const bmp = { tag: "survey" };
+   // 2. a mirrored placement survives as a negative y scale, and a similarity
+   //    comes back conformal — the single-blit path is the degenerate case of the
+   //    tiled one, not a second implementation of it
+   {
+      const m = M.decomposeAffine( 1, 0, 0, -1 );
+      assert.ok( m.sy < 0, "a mirrored placement must decompose to a negative y scale" );
+      const s = 0.7152, nx = 0.9962, ny = -0.0872;      // a rotated, unmirrored similarity
+      const c = M.decomposeAffine( s*nx, s*ny, -s*ny, s*nx );
+      near( c.sx, c.sy, 1e-9, "a similarity must decompose to equal axis scales" );
+   }
 
-   const single = mockGraphics();
-   M.drawZoomReveal( single, cam, wcs, 6, 4, bmp, 0.5 );
-   assert.strictEqual( single.bitmapCalls.length, 1, "default reveal uses the original single-bitmap path" );
-   assert.strictEqual( single.rectCalls.length, 0, "default reveal does not crop into tiles" );
-   assert.strictEqual( single.opacity, 1, "default reveal restores graphics opacity" );
+   // 2b. the conformal path is unchanged. blitOriented now goes through the same
+   //     primitive, so prove the matrix it builds is the one it used to hand to
+   //     translate/rotate/scale: columns (ux,uy) and flip*perp(u), against
+   //     Rp(angle) . diag(scale, scale*flip) with angle = -atan2(uy,ux).
+   {
+      let seed = 777;
+      const rnd = () => { seed = ( seed*1103515245 + 12345 ) & 0x7fffffff; return seed/0x7fffffff; };
+      let worst = 0;
+      for ( let k = 0; k < 5000; ++k )
+      {
+         const scale = 0.05 + rnd()*3, dir = rnd()*2*Math.PI, flip = rnd() < 0.5 ? -1 : 1;
+         const ux = scale*Math.cos( dir ), uy = scale*Math.sin( dir );
+         const angle = ( 2*Math.PI - Math.atan2( uy, ux ) ) % ( 2*Math.PI );
+         const R = Rp( angle );
+         const oldA = [ [ R[0][0]*scale, R[0][1]*scale*flip ],
+                        [ R[1][0]*scale, R[1][1]*scale*flip ] ];
+         const newA = [ [ ux, -flip*uy ], [ uy, flip*ux ] ];
+         worst = Math.max( worst, Math.abs( oldA[0][0] - newA[0][0] ), Math.abs( oldA[0][1] - newA[0][1] ),
+                                  Math.abs( oldA[1][0] - newA[1][0] ), Math.abs( oldA[1][1] - newA[1][1] ) );
+      }
+      assert.ok( worst < 1e-12,
+         `the conformal placement changed: the alignment preview and the stack reveal ` +
+         `would no longer agree with the renderer (worst ${worst})` );
+   }
 
-   const tiled = mockGraphics();
-   M.drawZoomReveal( tiled, cam, wcs, 5, 3, bmp, 0.5, 2 );
-   assert.strictEqual( tiled.bitmapCalls.length, 0, "tiled reveal avoids the whole-bitmap affine" );
-   assert.strictEqual( tiled.rectCalls.length, 4, "2x2 reveal draws four local tiles" );
-   assert.deepStrictEqual(
-      tiled.rectCalls.map( c => [ c.r.x0, c.r.y0, c.r.x1, c.r.y1 ] ),
-      [ [ 0, 0, 2, 1 ], [ 2, 0, 5, 1 ], [ 0, 1, 2, 3 ], [ 2, 1, 5, 3 ] ],
-      "tile source rectangles are integer, gap-free partitions of the bitmap"
-   );
-   assert.deepStrictEqual(
-      tiled.rectCalls.map( c => [ c.p.x, c.p.y ] ),
-      [ [ -1, -0.5 ], [ -1.5, -0.5 ], [ -1, -1 ], [ -1.5, -1 ] ],
-      "each tile is drawn around its own local centre"
-   );
-   assert.strictEqual( tiled.opacity, 1, "tiled reveal restores graphics opacity" );
+   // 3. small fields cost nothing: a sub-degree image measures no bow and takes the
+   //    single blit, and a few-degree survey needs a handful of tiles, not a grid
+   {
+      const scrOf = ( cam, wcs ) => ( px, py ) => {
+         const sky = M.wcsPixelToSky( wcs, px, py );
+         return M.projectToScreen( cam, sky.ra, sky.dec );
+      };
+      for ( const [ fov, px, cap ] of [ [ 0.8, 4000, 1 ], [ 1.5, 4000, 1 ],
+                                        [ 3.0, 4000, 2 ], [ 7.5, 3200, 4 ] ] )
+         for ( const mult of [ 0.95, 1.2, 2.0 ] )
+         {
+            const cam = M.makeCamera( 274.7, -13.8, fov*mult, 11, 1920, 1080 );
+            const wcs = M.makeSurveyWcs( 274.7, -13.8, fov, px );
+            const n = M.revealTileCount( scrOf( cam, wcs ), px, px );
+            assert.ok( n <= cap,
+               `a ${fov} degree field asked for ${n}x${n} tiles, more than the ${cap} it needs` );
+         }
+   }
+
+   // 4. the wide survey, over the whole band it is visible in: fadeBand keeps it
+   //    on screen between 0.95x and 2.8x its own field, at any roll
+   {
+      const single = ( scr, w, h ) => {          // the placement before tiling
+         const c = scr( w/2, h/2 ), ex = scr( w, h/2 ), ey = scr( w/2, 0 );
+         const ux = ( ex.x - c.x )/( w/2 ), uy = ( ex.y - c.y )/( w/2 );
+         const wyx = ( ey.x - c.x )/( -h/2 ), wyy = ( ey.y - c.y )/( -h/2 );
+         const flip = ( ux*wyy - uy*wyx < 0 ) ? -1 : 1;
+         return ( sx, sy ) => {
+            const a = sx - w/2, b = sy - h/2;
+            return { x: c.x + ux*a - flip*uy*b, y: c.y + uy*a + flip*ux*b };
+         };
+      };
+      const affine = t => ( sx, sy ) =>
+         ( { x: t.ox + t.ax*( sx - t.x0 ) + t.bx*( sy - t.y0 ),
+             y: t.oy + t.ay*( sx - t.x0 ) + t.by*( sy - t.y0 ) } );
+
+      let worstSeam = 0, worstAfter = 0, worstBefore = 0, worstN = 0;
+      for ( const wideFov of [ 35, 45, 60 ] )
+         for ( const mult of [ 0.95, 1.2, 1.6, 2.2, 2.8 ] )
+            for ( const roll of [ 0, 17, 73, 195 ] )
+            {
+               const cam = M.makeCamera( 274.7, -13.8, wideFov*mult, roll, 1920, 1080 );
+               const wcs = M.makeSurveyWcs( 274.7, -13.8, wideFov, WIDE );
+               const scr = ( px, py ) => {
+                  const sky = M.wcsPixelToSky( wcs, px, py );
+                  return M.projectToScreen( cam, sky.ra, sky.dec );
+               };
+               const n = M.revealTileCount( scr, WIDE, WIDE );
+               assert.ok( n > 1, `a ${wideFov} degree cutout at ${( wideFov*mult ).toFixed( 0 )} degrees must tile` );
+               worstN = Math.max( worstN, n );
+
+               const tiles = M.revealTiles( scr, WIDE, WIDE, n );
+               assert.strictEqual( tiles.length, n*n,
+                  "every tile must be placed when nothing is culled" );
+
+               // Culling must never drop a tile that shows: compare against the
+               // uncut list, tile by tile, on the tile's own drawn quad.
+               const kept = new Set( M.revealTiles( scr, WIDE, WIDE, n, 1920, 1080 )
+                                      .map( t => `${t.x0},${t.y0}` ) );
+               for ( const t of tiles )
+               {
+                  const q = [ [ t.x0, t.y0 ], [ t.x1, t.y0 ], [ t.x0, t.y1 ], [ t.x1, t.y1 ] ]
+                     .map( ( [ sx, sy ] ) => ( { x: t.ox + t.ax*( sx - t.x0 ) + t.bx*( sy - t.y0 ),
+                                                 y: t.oy + t.ay*( sx - t.x0 ) + t.by*( sy - t.y0 ) } ) );
+                  const onScreen = Math.max( ...q.map( p => p.x ) ) >= 0 &&
+                                   Math.min( ...q.map( p => p.x ) ) <= 1920 &&
+                                   Math.max( ...q.map( p => p.y ) ) >= 0 &&
+                                   Math.min( ...q.map( p => p.y ) ) <= 1080;
+                  if ( onScreen )
+                     assert.ok( kept.has( `${t.x0},${t.y0}` ),
+                        `culling dropped a tile that is on screen (${t.x0},${t.y0})` );
+               }
+               const index = new Map();
+               tiles.forEach( t => index.set( `${t.x0},${t.y0}`, t ) );
+
+               // drift: a source pixel against its own projected sky position
+               const before = single( scr, WIDE, WIDE );
+               for ( const t of tiles )
+               {
+                  const f = affine( t );
+                  for ( const [ sx, sy ] of [ [ t.x0, t.y0 ], [ t.x1, t.y0 ], [ t.x0, t.y1 ],
+                                              [ t.x1, t.y1 ], [ ( t.x0 + t.x1 )/2, ( t.y0 + t.y1 )/2 ] ] )
+                  {
+                     const k = scr( sx, sy ), g = f( sx, sy ), b = before( sx, sy );
+                     worstAfter  = Math.max( worstAfter,  Math.hypot( g.x - k.x, g.y - k.y ) );
+                     worstBefore = Math.max( worstBefore, Math.hypot( b.x - k.x, b.y - k.y ) );
+                  }
+               }
+
+               // seam: the two tiles sharing an edge, sampled along the whole edge
+               for ( const t of tiles )
+               {
+                  const right = index.get( `${t.x1},${t.y0}` );
+                  const below = index.get( `${t.x0},${t.y1}` );
+                  const fa = affine( t );
+                  if ( right )
+                  {
+                     const fb = affine( right );
+                     for ( let q = 0; q <= 8; ++q )
+                     {
+                        const y = t.y0 + q*( t.y1 - t.y0 )/8;
+                        const a = fa( t.x1, y ), b = fb( t.x1, y );
+                        worstSeam = Math.max( worstSeam, Math.hypot( a.x - b.x, a.y - b.y ) );
+                     }
+                  }
+                  if ( below )
+                  {
+                     const fb = affine( below );
+                     for ( let q = 0; q <= 8; ++q )
+                     {
+                        const x = t.x0 + q*( t.x1 - t.x0 )/8;
+                        const a = fa( x, t.y1 ), b = fb( x, t.y1 );
+                        worstSeam = Math.max( worstSeam, Math.hypot( a.x - b.x, a.y - b.y ) );
+                     }
+                  }
+               }
+            }
+
+      // The seam is the budget the tile count is solved for. This is the assertion
+      // that keeps REVEAL_SEAM_K honest: if the law ever stops holding, this fails
+      // rather than the product growing a visible grid nobody measured.
+      assert.ok( worstSeam <= M.REVEAL_SEAM_BUDGET_PX,
+         `neighbouring tiles disagree by ${worstSeam.toFixed( 3 )} px, over the ` +
+         `${M.REVEAL_SEAM_BUDGET_PX} px budget the tile count is solved for` );
+      // And the drift the tiling exists to remove really is removed.
+      assert.ok( worstAfter < worstBefore/8,
+         `tiling must cut the drift by at least 8x: ${worstBefore.toFixed( 1 )} px -> ` +
+         `${worstAfter.toFixed( 1 )} px` );
+      assert.ok( worstAfter < 2,
+         `the survey still lands ${worstAfter.toFixed( 2 )} px off the stars drawn over it` );
+
+      console.log( `zoom reveal: worst drift ${worstBefore.toFixed( 1 )} px -> ` +
+                   `${worstAfter.toFixed( 2 )} px, worst seam ${worstSeam.toFixed( 3 )} px, ` +
+                   `up to ${worstN}x${worstN} tiles` );
+   }
 }
+
+console.log( "zoom.test.js OK (reveal placement)" );
