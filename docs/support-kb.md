@@ -174,7 +174,13 @@ words on the left are the **exact** strings the dialog shows.
   hides the very noise improvement the video exists to show. If a user complains
   the brightness pulses, this is the setting.
 - **Linked RGB channels** — stretch the channels together rather than separately.
-- **Debayer CFA frames** — auto-detected via the `BAYERPAT` header.
+- **Debayer CFA frames** — auto-detected via the `BAYERPAT` header. With
+  **Register subs** on, the debayering happens **before** registration: the subs
+  are debayered into the registration cache and StarAlignment aligns colour
+  images. An OSC session therefore comes out in colour whether registration is on
+  or off. (Up to 1.1.1 it did not: a registered OSC session rendered as a raw
+  Bayer mosaic, grey from end to end, with nothing said. If a user reports a grey
+  or oddly cross-hatched video from a colour camera, ask for their version.)
 - **Register subs** — StarAlignment; corrects dithering and meridian flips. Leave
   it on unless the subs are already registered.
 
