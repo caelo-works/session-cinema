@@ -404,6 +404,7 @@ var STRINGS = {
       "result.skipped":    "%1 input(s) were skipped (unreadable or geometry mismatch).",
       "result.aborted":    "Aborted. %1 frame(s) were rendered.",
       "result.nothing":    "Nothing was rendered.",
+      "zoom.aspectDiffers": "The image to reveal has a different aspect ratio from the solved image. It is treated as a centred crop at the same pixel scale. If its framing is not centred, tick \"Different crop from the solved image\" and align it.",
       "zoom.errCropNotAligned": "\"Different crop from the solved image\" is ticked but the reveal has not been aligned. Open Align… and place it, or untick the box.",
       "zoom.errOpen":      "PixInsight could not open %1. Check the file is a readable FITS/XISF/TIFF and not in use elsewhere.",
       "result.openVideo":  "Open video",
@@ -628,6 +629,7 @@ var STRINGS = {
       "result.skipped":    "%1 entrée(s) ignorée(s) (illisibles ou géométrie différente).",
       "result.aborted":    "Interrompu. %1 image(s) rendues.",
       "result.nothing":    "Rien n'a été rendu.",
+      "zoom.aspectDiffers": "L'image à révéler n'a pas le même rapport d'aspect que l'image résolue. Elle est traitée comme un recadrage centré à la même échelle. Si son cadrage n'est pas centré, cochez « Cadrage différent de l'image résolue » et alignez-la.",
       "zoom.errCropNotAligned": "« Cadrage différent de l'image résolue » est coché mais l'image à révéler n'a pas été alignée. Ouvrez Aligner… pour la placer, ou décochez la case.",
       "zoom.errOpen":      "PixInsight n'a pas pu ouvrir %1. Vérifiez que le fichier est un FITS/XISF/TIFF lisible et qu'il n'est pas ouvert ailleurs.",
       "result.openVideo":  "Ouvrir la vidéo",
@@ -1624,6 +1626,24 @@ function altAzToRaDec( alt, az, lst, latDeg )
 // Camera along the zoom at normalized time t in [0,1]: center fixed on the
 // target, FOV shrinking log-linearly (a "powers of ten" feel), north kept up
 // so the image drops in at its true orientation on reveal.
+// The opening field of view.
+//   location mode  the framing locationStartFraming just solved IS the
+//                  constraint — a P*4 floor applied over it wins the max and
+//                  opens on a different field while altC still encodes the one
+//                  it solved for, so both constraints it exists to satisfy are
+//                  missed;
+//   sky mode       the 180 cap comes LAST. Applied before the P*4 floor a
+//                  wide-field solve walked past it: P = 74 gave 296 degrees, and
+//                  at that field the whole visible hemisphere sits inside a
+//                  275 px radius of a 1920 px frame while the rest of it shows
+//                  sky BEHIND the camera.
+function zoomStartFov( P, solvedFraming, cfgStartFov )
+{
+   if ( solvedFraming > 0 )
+      return solvedFraming;
+   return Math.min( 180, Math.max( P*4, cfgStartFov || 180 ) );
+}
+
 function zoomCameraAt( t, target, startFovDeg, W, H )
 {
    var e = smootherstep01( t );   // ease-in-out: gentle start AND stop
@@ -1813,6 +1833,27 @@ function scaleWcsToDims( wcs, fromW, fromH, toW, toH )
    return makeWcs( wcs.refRA, wcs.refDec, wcs.refX*sx, wcs.refY*sy,
       [ [ wcs.cd[ 0 ][ 0 ]/sx, wcs.cd[ 0 ][ 1 ]/sy ],
         [ wcs.cd[ 1 ][ 0 ]/sx, wcs.cd[ 1 ][ 1 ]/sy ] ] );
+}
+
+// Same field, delivered at a different pixel grid — and possibly cropped. Unlike
+// scaleWcsToDims this keeps ONE scale factor for both axes: an image delivered at
+// a different aspect ratio is a crop, not a squash, so its pixel scale is
+// unchanged on the axis that survived. Scaling the two axes independently made
+// the CD non-conformal and inflated the field the product reports: a 6000x4000
+// master with a 16:9 6000x3375 export read P = 1.8144 degrees instead of 1.6667
+// (+8.9%), and the zoom ended on THAT field, painting the photo 1763x992 inside
+// 1920x1080 — 78 px of black down each side of the last frame.
+// The crop is taken as centred, which is what "the same framing" means; a crop
+// that is not centred is what the alignment tool is for.
+// With matching aspects this is exactly scaleWcsToDims.
+function scaleWcsCropped( wcs, fromW, fromH, toW, toH )
+{
+   var f = Math.max( toW/fromW, toH/fromH );
+   return makeWcs( wcs.refRA, wcs.refDec,
+                   wcs.refX*f - ( fromW*f - toW )/2,
+                   wcs.refY*f - ( fromH*f - toH )/2,
+                   [ [ wcs.cd[ 0 ][ 0 ]/f, wcs.cd[ 0 ][ 1 ]/f ],
+                     [ wcs.cd[ 1 ][ 0 ]/f, wcs.cd[ 1 ][ 1 ]/f ] ] );
 }
 
 // WCS for a reveal image that maps onto the solved image by the similarity
@@ -3891,7 +3932,9 @@ Engine.prototype.runZoom = function()
       revealWcs = ( cfg.zoomRevealCropped && revealAligned( cfg, "zoom" ) )
                   ? cropWcsCentered( wcs, cfg.zoomRevealOffX, cfg.zoomRevealOffY, cfg.zoomRevealScale,
                                      cfg.zoomRevealRot, cfg.zoomRevealFlipH, cfg.zoomRevealFlipV, revealW, revealH )
-                  : scaleWcsToDims( wcs, imgW, imgH, revealW, revealH );
+                  : scaleWcsCropped( wcs, imgW, imgH, revealW, revealH );
+      if ( revealW*imgH != revealH*imgW )
+         console.warningln( tr( "zoom.aspectDiffers" ) );
       console.writeln( tr( "zoom.revealFrom", File.extractName( cfg.zoomRevealPath ) +
                            File.extractExtension( cfg.zoomRevealPath ), revealW, revealH ) );
    }
@@ -4014,10 +4057,15 @@ Engine.prototype.runZoom = function()
       var sf = locationStartFraming( obs.targetAlt, W, H );
       obs.startFov = sf.fovDeg;
       obs.altC = sf.altCDeg;
-      startFov = Math.max( sf.fovDeg, P*4 );
+      // The framing solved just above puts the target a quarter down the frame
+      // and the horizon just above the overlay. A P*4 floor applied over it wins
+      // the max and opens on a different field while altC still encodes the one
+      // it solved for — the two constraints it exists to satisfy are both missed.
+      // The solution is the constraint; nothing else is.
+      startFov = zoomStartFov( P, sf.fovDeg, cfg.zoomStartFov );
    }
    else
-      startFov = Math.max( P*4, Math.min( 180, cfg.zoomStartFov || 180 ) );
+      startFov = zoomStartFov( P, 0, cfg.zoomStartFov );
 
    // Spread the camera roll all the way from the opening to where the photo
    // starts to appear (fov = endFov·photoWideMult), so it's a slow, gentle turn
@@ -4065,31 +4113,34 @@ Engine.prototype.runZoom = function()
       if ( !covered )
       {
          _t0 = Date.now();
-         // Wide-field cues, then catalog star dots — all UNDER the survey images.
-         if ( !obs && cfg.ovShowHorizon )
-            drawZoomHorizon( g, cam, unit );
+         // Survey alphas first: the artificial horizon has to know how much real
+         // imagery is about to arrive.
+         // The wide cutout hands over to the NEAR one, not to the photo: the
+         // fade-out bounds are that cutout's own size (nearFov = P*2.5, so 3P and
+         // 1.4P are 1.2x and 0.56x of it), and stay keyed to P for that reason.
+         var wa = wideBmp ? fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 ) : 0;
+         var na = nearBmp ? fadeBand( fov, nearFov*3, nearFov*1.2, nearOut*1.2, nearOut*0.85 ) : 0;
+
          if ( cfg.ovShowGrid )
             drawEquatorialGrid( g, pj, cat.grid, unit );
          drawZoomStars( g, pj, cat.stars, unit );
+         // The artificial horizon goes over the grid and the star dots, which is
+         // what ground does — they used to show through opaque land because it was
+         // painted first. It does NOT go over the surveys: its own strength is cut
+         // by whatever real imagery is on screen, so it has retreated by the time
+         // the DSS2 cutout arrives instead of being clipped out of it. And it stays
+         // under the constellation figures, which a decorative flat band at 72% of
+         // the frame has no business amputating.
+         if ( !obs && cfg.ovShowHorizon )
+            drawZoomHorizon( g, cam, unit, 1 - Math.max( wa, na ) );
          PERF.sky += Date.now() - _t0;
 
          _t0 = Date.now();
          // Real-sky survey layers (DSS2), covering the star dots with real stars.
-         if ( wideBmp )
-         {
-            // Hands over to the NEAR cutout, not to the photo: the fade-out
-            // bounds are that cutout's own size (nearFov = P*2.5, so 3P and 1.4P
-            // are 1.2x and 0.56x of it), and stay keyed to P for that reason.
-            var wa = fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 );
-            if ( wa > 0 )
-               drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
-         }
-         if ( nearBmp )
-         {
-            var na = fadeBand( fov, nearFov*3, nearFov*1.2, nearOut*1.2, nearOut*0.85 );
-            if ( na > 0 )
-               drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
-         }
+         if ( wa > 0 )
+            drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
+         if ( na > 0 )
+            drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
          PERF.survey += Date.now() - _t0;
 
          _t0 = Date.now();
@@ -4338,12 +4389,19 @@ function drawZoomStarNames( g, cam, stars, unit )
    g.font = f;
    g.pen = new Pen( 0xB0EAF2FF );
    var magLimit = Math.min( limitingMagnitude( cam.fovDeg ), 3.2 );
+   // By magnitude, not by file order. parseStarCatalog fills the list in the
+   // order of the CSV and the bundled catalogue is sorted by right ascension, so
+   // the cap of 14 used to name Alpheratz, Caph, Algenib, Ankaa, Schedar… and
+   // leave Sirius, Betelgeuse and Vega unlabelled.
+   var named = [];
+   for ( var s0 = 0; s0 < stars.length; ++s0 )
+      if ( stars[ s0 ].name && stars[ s0 ].name.length && stars[ s0 ].mag <= magLimit )
+         named.push( stars[ s0 ] );
+   named.sort( function( a, b ) { return a.mag - b.mag; } );
    var drawn = 0;
-   for ( var i = 0; i < stars.length && drawn < 14; ++i )
+   for ( var i = 0; i < named.length && drawn < 14; ++i )
    {
-      var st = stars[ i ];
-      if ( !st.name || !st.name.length || st.mag > magLimit )
-         continue;
+      var st = named[ i ];
       var p = projectToScreen( cam, st.ra, st.dec );
       if ( !p.front || p.x < 40 || p.x > cam.W - 40 || p.y < 30 || p.y > cam.H - 60 )
          continue;
@@ -4401,10 +4459,11 @@ function drawZoomConstellationNames( g, cam, centroids, labels, unit )
 // a scale/orientation cue that fades as we zoom in (auto in v1; a decorative
 // ground, not yet a location-accurate alt-az line). Full on the opening
 // whole-sky frames, gone by ~30°.
-function drawZoomHorizon( g, cam, unit )
+function drawZoomHorizon( g, cam, unit, strength )
 {
    var fov = cam.fovDeg;
    var a = ( fov >= 90 ) ? 1 : ( fov <= 30 ? 0 : smoothstep01( ( fov - 30 )/60 ) );
+   a *= ( strength === undefined ) ? 1 : clamp01( strength );
    if ( a <= 0 )
       return;
    var W = cam.W, H = cam.H;

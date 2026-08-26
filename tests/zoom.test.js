@@ -621,3 +621,54 @@ console.log( "zoom.test.js OK" );
 }
 
 console.log( "zoom.test.js OK (reveal placement)" );
+
+// --- a reveal delivered at another aspect is a crop, not a squash ------------
+{
+   // 6000x4000 solved at 1"/px = 1.6667 deg across, exported 16:9 as 6000x3375.
+   const solved = M.makeWcs( 274.7, -13.8, 3000, 2000,
+      [ [ -1/3600, 0 ], [ 0, -1/3600 ] ] );
+   const before = M.wcsImageFraming( M.scaleWcsToDims( solved, 6000, 4000, 6000, 3375 ),
+                                     6000, 3375 );
+   const after = M.wcsImageFraming( M.scaleWcsCropped( solved, 6000, 4000, 6000, 3375 ),
+                                    6000, 3375 );
+   near( before.fovDeg, 1.8144, 1e-3, "the old scaling inflated the field" );
+   near( after.fovDeg, 6000/3600, 1e-9, "one factor keeps the true field" );
+   // The centre must not move: a centred crop is still centred on the target.
+   near( after.centerRA, 274.7, 1e-9, "centre RA" );
+   near( after.centerDec, -13.8, 1e-9, "centre dec" );
+
+   // Matching aspects: identical to the old behaviour.
+   const a = M.scaleWcsCropped( solved, 6000, 4000, 3000, 2000 );
+   const b = M.scaleWcsToDims( solved, 6000, 4000, 3000, 2000 );
+   for ( const k of [ "refRA", "refDec", "refX", "refY" ] )
+      near( a[ k ], b[ k ], 1e-9, `matching aspect: ${k}` );
+   near( a.cd[ 0 ][ 0 ], b.cd[ 0 ][ 0 ], 1e-12 );
+   near( a.cd[ 1 ][ 1 ], b.cd[ 1 ][ 1 ], 1e-12 );
+
+   // A crop that preserves the height instead.
+   const tall = M.wcsImageFraming( M.scaleWcsCropped( solved, 6000, 4000, 4500, 4000 ),
+                                   4500, 4000 );
+   near( tall.fovDeg, 4500/3600, 1e-9, "width cropped, pixel scale unchanged" );
+}
+
+console.log( "zoom.test.js OK (cropped reveal)" );
+
+// --- the opening field ---------------------------------------------------
+{
+   // Sky mode: never past a full-sky 180, whatever the plate solve.
+   assert.strictEqual( M.zoomStartFov( 74, 0, 180 ), 180,
+      "a 74 degree solve used to open at 296" );
+   assert.strictEqual( M.zoomStartFov( 74, 0, 0 ), 180 );
+   assert.strictEqual( M.zoomStartFov( 1.5, 0, 180 ), 180 );
+   // A narrow field still gets its P*4 floor.
+   assert.strictEqual( M.zoomStartFov( 2, 0, 6 ), 8 );
+   assert.strictEqual( M.zoomStartFov( 2, 0, 40 ), 40 );
+
+   // Location mode: the solved framing is the constraint, nothing overrides it.
+   const sf = M.locationStartFraming( 20, 1920, 1080 );
+   assert.ok( sf.fovDeg > 0 );
+   assert.strictEqual( M.zoomStartFov( 20, sf.fovDeg, 180 ), sf.fovDeg,
+      "P*4 used to win the max and open on a field altC was not solved for" );
+}
+
+console.log( "zoom.test.js OK (opening field)" );
