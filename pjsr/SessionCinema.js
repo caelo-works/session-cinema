@@ -385,6 +385,11 @@ var STRINGS = {
       "run.framesKept":    "Frame sequence: %1",
       "run.done":          "Done. %1 frame(s) rendered in %2.",
       "run.error":         "Generation failed: %1",
+      "run.frameLost":     "A frame could not be written: %1. Check free space and folder permissions.",
+      "run.framesLost":    "%1 frame(s) could not be written — the video would be short. Nothing was deleted.",
+      "run.encodeSaid":    "ffmpeg said: %1",
+      "run.encodeNoStart": "ffmpeg could not be started (%1). The BMP sequence and %2 are left for manual encoding.",
+      "run.encodeTimeout": "ffmpeg was still running after %1 s and was stopped. The BMP sequence and %2 are left for manual encoding.",
 
       "result.title":      "Session Cinema — done",
       "result.rendered":   "%1 frame(s) rendered.",
@@ -601,6 +606,11 @@ var STRINGS = {
       "run.framesKept":    "Séquence d'images : %1",
       "run.done":          "Terminé. %1 image(s) rendues en %2.",
       "run.error":         "Échec de la génération : %1",
+      "run.frameLost":     "Une image n'a pas pu être écrite : %1. Vérifiez l'espace disque et les droits du dossier.",
+      "run.framesLost":    "%1 image(s) n'ont pas pu être écrites — la vidéo serait incomplète. Rien n'a été supprimé.",
+      "run.encodeSaid":    "ffmpeg a répondu : %1",
+      "run.encodeNoStart": "ffmpeg n'a pas pu démarrer (%1). La séquence BMP et %2 restent disponibles pour un encodage manuel.",
+      "run.encodeTimeout": "ffmpeg tournait encore après %1 s et a été arrêté. La séquence BMP et %2 restent disponibles pour un encodage manuel.",
 
       "result.title":      "Session Cinema — terminé",
       "result.rendered":   "%1 image(s) rendues.",
@@ -2711,17 +2721,38 @@ function platformKind()
 // Run a program to completion; returns { started, exitCode }.
 function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
 {
-   var result = { started: false, exitCode: -1 };
+   // failure distinguishes the ways this returns without a clean exit:
+   // "notFound", "noStart", "timeout", "exit". output is what the program said —
+   // it went in the bin with the process object. Verified on PixInsight: stdout
+   // carries the text and stderr always reads empty, so the two are merged
+   // upstream; output takes whichever is non-empty and never promises which.
+   var result = { started: false, exitCode: -1, failure: "notFound",
+                  waitedMs: 0, output: "" };
+   var P = null;
+   function harvest()
+   {
+      if ( P == null )
+         return;
+      var o = "";
+      try { o = String( P.stderr || "" ); } catch ( e ) {}
+      if ( !o.length )
+         try { o = String( P.stdout || "" ); } catch ( e ) {}
+      result.output = o;
+   }
    try
    {
-      var P = new ExternalProcess;
+      P = new ExternalProcess;
       P.start( program, args );
       // A program that fails to launch still reports exitCode 0 (Qt trap):
       // require an actual start before trusting anything else.
       try
       {
          if ( !P.waitForStarted( 5000 ) )
+         {
+            result.failure = "noStart";
+            harvest();
             return result;
+         }
       }
       catch ( e )
       {
@@ -2739,6 +2770,12 @@ function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
          if ( timeoutMs > 0 && waited >= timeoutMs )
          {
             try { P.kill(); } catch ( e ) {}
+            // It demonstrably started; saying otherwise sent a timeout down the
+            // same path as a missing binary.
+            result.started = true;
+            result.failure = "timeout";
+            result.waitedMs = waited;
+            harvest();
             return result;
          }
          if ( !P.isRunning )
@@ -2746,10 +2783,13 @@ function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
       }
       result.started = true;
       result.exitCode = P.exitCode;
+      result.failure = ( result.exitCode == 0 ) ? "" : "exit";
+      harvest();
    }
    catch ( e )
    {
       // Program not found or failed to start.
+      result.output = e.message || String( e );
    }
    return result;
 }
@@ -2872,6 +2912,7 @@ function Engine( cfg, frames )
    // was quoting a message the user never saw.
    this.errorKey = "";
    this.errorText = "";
+   this.lostFrames = 0;      // frames whose write did not land
    this.onProgress = null;   // optional (done, total, message, previewBmp?)
    this.shouldAbort = null;  // optional () -> true to cancel
 }
@@ -2986,10 +3027,22 @@ Engine.prototype.makeAccumulator = function( id )
    return null;
 };
 
+// A frame that never reached the disk used to count all the same: rendered is
+// what decides whether to encode at all, and what the run reports. A full disk
+// then produced a video short of the frames it claimed, and the sequence was
+// deleted afterwards because ffmpeg had returned 0.
 Engine.prototype.saveFrame = function( bmp, index )
 {
    var path = this.framesDir() + "/" + frameFileName( index );
-   bmp.save( path );
+   var ok = false;
+   try { bmp.save( path ); ok = File.exists( path ); } catch ( e ) { ok = false; }
+   if ( !ok )
+   {
+      this.lostFrames = ( this.lostFrames || 0 ) + 1;
+      if ( this.lostFrames == 1 )
+         console.criticalln( tr( "run.frameLost", path ) );
+      return "";
+   }
    ++this.rendered;
    return path;
 };
@@ -3911,7 +3964,9 @@ Engine.prototype.encode = function()
    if ( r.started && r.exitCode == 0 && File.exists( this.videoPath() ) )
    {
       console.noteln( tr( "run.encodeOk", this.videoPath() ) );
-      if ( !cfg.keepFrames )
+      // A lost frame means the sequence is short of what was counted; deleting it
+      // would remove the only evidence and the only way to re-encode by hand.
+      if ( !cfg.keepFrames && !this.lostFrames )
       {
          var toRemove = [];
          var ff = new FileFind;
@@ -3927,7 +3982,25 @@ Engine.prototype.encode = function()
       }
       return { encoded: true, scriptPath: scriptPath, videoPath: this.videoPath() };
    }
-   console.warningln( tr( "run.encodeFail", r.exitCode, scriptPath ) );
+   // Three ways to get here that used to collapse into one exit code.
+   if ( r.failure == "notFound" || r.failure == "noStart" )
+      console.warningln( tr( "run.encodeNoStart", ffmpeg, scriptPath ) );
+   else if ( r.failure == "timeout" )
+      console.warningln( tr( "run.encodeTimeout",
+                             Math.round( r.waitedMs/1000 ), scriptPath ) );
+   else
+      console.warningln( tr( "run.encodeFail", r.exitCode, scriptPath ) );
+   // What ffmpeg actually said, which used to be discarded with the process.
+   // Last lines only: the banner is noise.
+   var why = r.output;
+   if ( why && why.length )
+   {
+      var lines = String( why ).split( "\n" );
+      while ( lines.length && !lines[ lines.length - 1 ].length )
+         lines.pop();
+      console.warningln( tr( "run.encodeSaid",
+                             lines.slice( Math.max( 0, lines.length - 6 ) ).join( "\n" ) ) );
+   }
    return { encoded: false, scriptPath: scriptPath };
 };
 
@@ -3982,7 +4055,7 @@ Engine.prototype.run = function()
    this.skipped = this.regDropped.concat( this.skipped );
    var result = { ok: false, rendered: this.rendered, skipped: this.skipped.slice(),
                   aborted: this.aborted, videoPath: "", scriptPath: "",
-                  framesDir: this.framesDir(),
+                  framesDir: this.framesDir(), lostFrames: this.lostFrames,
                   errorKey: this.errorKey, error: this.errorText };
 
    if ( this.errorKey.length )
@@ -3992,6 +4065,8 @@ Engine.prototype.run = function()
    }
    if ( this.skipped.length )
       console.warningln( tr( "run.skipped", this.skipped.join( ", " ) ) );
+   if ( this.lostFrames )
+      console.criticalln( tr( "run.framesLost", this.lostFrames ) );
    if ( this.aborted )
    {
       console.warningln( tr( "run.aborted", this.rendered ) );
@@ -6929,6 +7004,8 @@ function runHeadless( cfgPath )
          result.error = r.error;
       // ok:true with an empty videoPath read as a success to every harness. Say
       // it: frames exist, no video, and here is the script that encodes them.
+      if ( r.lostFrames )
+         result.warnings.push( tr( "run.framesLost", r.lostFrames ) );
       if ( r.ok && !( r.videoPath && r.videoPath.length ) )
          result.warnings.push( tr( "result.script", r.scriptPath || result.framesDir ) );
       if ( engine.perf )
