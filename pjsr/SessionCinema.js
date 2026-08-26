@@ -408,6 +408,7 @@ var STRINGS = {
       "run.frameLost":     "A frame could not be written: %1. Check free space and folder permissions.",
       "run.framesLost":    "%1 frame(s) could not be written — the video would be short. Nothing was deleted.",
       "run.encodeSaid":    "ffmpeg said: %1",
+      "run.encodeRenameFailed": "The video was encoded but could not be renamed: it is at %1. The previous file of the final name may still be in the folder.",
       "run.encodeCancelled": "Encoding cancelled. No partial video was left behind; the BMP sequence and %1 are still there.",
       "run.encodeNoStart": "ffmpeg could not be started (%1). The BMP sequence and %2 are left for manual encoding.",
       "run.encodeTimeout": "ffmpeg was still running after %1 s and was stopped. The BMP sequence and %2 are left for manual encoding.",
@@ -651,6 +652,7 @@ var STRINGS = {
       "run.frameLost":     "Une image n'a pas pu être écrite : %1. Vérifiez l'espace disque et les droits du dossier.",
       "run.framesLost":    "%1 image(s) n'ont pas pu être écrites — la vidéo serait incomplète. Rien n'a été supprimé.",
       "run.encodeSaid":    "ffmpeg a répondu : %1",
+      "run.encodeRenameFailed": "La vidéo a été encodée mais n'a pas pu être renommée : elle est dans %1. L'ancien fichier portant le nom final est peut-être encore là.",
       "run.encodeCancelled": "Encodage annulé. Aucune vidéo partielle n'a été laissée ; la séquence BMP et %1 sont toujours là.",
       "run.encodeNoStart": "ffmpeg n'a pas pu démarrer (%1). La séquence BMP et %2 restent disponibles pour un encodage manuel.",
       "run.encodeTimeout": "ffmpeg tournait encore après %1 s et a été arrêté. La séquence BMP et %2 restent disponibles pour un encodage manuel.",
@@ -4819,9 +4821,25 @@ Engine.prototype.encode = function()
       console.warningln( tr( "run.encodeCancelled", scriptPath ) );
       return { encoded: false, scriptPath: scriptPath };
    }
+   var moved = false;
    if ( r.started && r.exitCode == 0 && File.exists( partPath ) )
    {
+      // File.move refuses an existing destination, and regenerating into the same
+      // folder is the normal case — so the previous video has to go first. When
+      // that was missing the move failed, the catch swallowed it, the .part.mp4
+      // stayed, and the existence test below then found the PREVIOUS render and
+      // called the run a success. "Open video" opened last week's file.
+      try { if ( File.exists( finalPath ) ) File.remove( finalPath ); } catch ( e ) {}
       try { File.move( partPath, finalPath ); } catch ( e ) {}
+      moved = File.exists( finalPath ) && !File.exists( partPath );
+      if ( !moved )
+      {
+         // The video exists; only its name is wrong. Say so and hand over the one
+         // that is really there, rather than pointing at whatever the folder held.
+         console.warningln( tr( "run.encodeRenameFailed", partPath ) );
+         if ( File.exists( partPath ) )
+            return { encoded: true, scriptPath: scriptPath, videoPath: partPath };
+      }
    }
    else
    {
@@ -4829,8 +4847,9 @@ Engine.prototype.encode = function()
       // name that says it is.
       try { if ( File.exists( partPath ) ) File.remove( partPath ); } catch ( e ) {}
    }
-   // The written file is the ground truth — exit codes can lie (see above).
-   if ( r.started && r.exitCode == 0 && File.exists( this.videoPath() ) )
+   // The file THIS run produced — not merely a file of that name, which is what a
+   // bare existence check accepts when the folder already held one.
+   if ( moved )
    {
       console.noteln( tr( "run.encodeOk", this.videoPath() ) );
       // A lost frame means the sequence is short of what was counted; deleting it
