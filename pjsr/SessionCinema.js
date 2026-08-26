@@ -97,6 +97,8 @@ var DEFAULT_CONFIG = {
    // see rotationNeedsCheck(): 1.1.0 flipped the sign convention of the stored
    // rotation and nothing recorded which convention a given number belongs to.
    cfgVersion:      "",
+   lastMsPerFrame:  0,           // measured on the previous run of this style;
+                                 //   0 = never run, so nothing is claimed
    language:        "en",
    style:           STYLE_ZOOM,   // headless configs should set style explicitly
    stretchRef:      STRETCH_REF_FINAL,
@@ -334,6 +336,7 @@ var STRINGS = {
       "video.quality.small": "smaller file",
       "video.estimate":    "Estimated video: %1 rendered frame(s), ~%2 at %3 fps.",
       "video.estimateFrom": "Starts at sub %1, the first with every colour channel.",
+      "video.estimateTime": "About %1 to render, at your last run's rate.",
 
       "out.title":         "Output",
       "out.dir":           "Folder:",
@@ -379,6 +382,7 @@ var STRINGS = {
       "zoom.noCatalogs":   "Star/constellation catalogs not found in the PixInsight install — the sky will be sparse.",
       "zoom.errUnsolved":  "This image has no astrometric solution. Solve it first (Script > Image Analysis > ImageSolver), then run Session Cinema again.",
       "run.pass1":         "Pass 1 of 2 — integrating %1 frames to compute the reference stretch…",
+      "run.pass1Cached":   "Reusing the stretch measured on this exact set of subs — pass 1 skipped.",
       "run.pass1Done":     "Reference stretch computed on the final stack.",
       "run.registering":   "Registering %1 sub(s) (StarAlignment: dithering + meridian flip)…",
       "run.regCached":     "Registration reused from cache.",
@@ -393,6 +397,7 @@ var STRINGS = {
       "run.encodeScript":  "ffmpeg not available — BMP sequence kept, run %1 to encode.",
       "run.framesKept":    "Frame sequence: %1",
       "run.done":          "Done. %1 frame(s) rendered in %2.",
+      "run.diskUsed":      "On disk: %1 (registered subs %2, survey cutouts %3, this frame sequence %4). The caches live in %5 and can be deleted; keeping them is what makes a re-run fast.",
       "run.error":         "Generation failed: %1",
       "cfg.unreadable":    "Saved settings could not be read (%1). Defaults are in use — nothing has been overwritten yet.",
       "cfg.rejected":      "Ignored in the configuration: %1",
@@ -568,6 +573,7 @@ var STRINGS = {
       "video.quality.small": "fichier plus léger",
       "video.estimate":    "Vidéo estimée : %1 image(s) rendue(s), ~%2 à %3 ips.",
       "video.estimateFrom": "Démarre à la brute %1, la première où tous les canaux sont alimentés.",
+      "video.estimateTime": "Environ %1 de rendu, au rythme de votre dernier rendu.",
 
       "out.title":         "Sortie",
       "out.dir":           "Dossier :",
@@ -613,6 +619,7 @@ var STRINGS = {
       "zoom.noCatalogs":   "Catalogues d'étoiles/constellations introuvables dans l'install PixInsight — le ciel sera clairsemé.",
       "zoom.errUnsolved":  "Cette image n'a pas de solution astrométrique. Résolvez-la d'abord (Script > Image Analysis > ImageSolver), puis relancez Session Cinema.",
       "run.pass1":         "Passe 1 sur 2 — intégration des %1 brutes pour calculer l'étirement de référence…",
+      "run.pass1Cached":   "Réutilisation de l'étirement mesuré sur exactement ces brutes — passe 1 sautée.",
       "run.pass1Done":     "Étirement de référence calculé sur le stack final.",
       "run.registering":   "Recalage de %1 brute(s) (StarAlignment : dithering + flip méridien)…",
       "run.regCached":     "Recalage réutilisé depuis le cache.",
@@ -627,6 +634,7 @@ var STRINGS = {
       "run.encodeScript":  "ffmpeg indisponible — séquence BMP conservée, lancez %1 pour encoder.",
       "run.framesKept":    "Séquence d'images : %1",
       "run.done":          "Terminé. %1 image(s) rendues en %2.",
+      "run.diskUsed":      "Sur le disque : %1 (brutes recalées %2, découpes de relevé %3, cette séquence d'images %4). Les caches sont dans %5 et peuvent être supprimés ; les garder est ce qui rend un nouveau rendu rapide.",
       "run.error":         "Échec de la génération : %1",
       "cfg.unreadable":    "Les réglages enregistrés n'ont pas pu être lus (%1). Les valeurs par défaut sont utilisées — rien n'a encore été écrasé.",
       "cfg.rejected":      "Ignoré dans la configuration : %1",
@@ -2779,6 +2787,63 @@ function hips2fitsUrl( hips, ra, dec, fovDeg, nPx )
 // as a Bitmap. Retries a few times (the first request can be slow to warm up),
 // validates the payload, and returns null only after all attempts fail — the
 // zoom then simply falls back to the catalog star field.
+// Bytes under a directory, recursively. Used to say what a session has left
+// behind: registered subs, survey cutouts and kept frame sequences are tens of GB
+// on a real night, under the system temp directory where nobody looks.
+function dirSize( dir, depth )
+{
+   var total = 0;
+   if ( !dir || !dir.length || !( depth > 0 ) )
+      return 0;
+   try
+   {
+      if ( !File.directoryExists( dir ) )
+         return 0;
+      var ff = new FileFind;
+      if ( ff.begin( dir + "/*" ) )
+         do
+         {
+            if ( ff.name == "." || ff.name == ".." )
+               continue;
+            if ( ff.isDirectory )
+               total += dirSize( dir + "/" + ff.name, depth - 1 );
+            else
+               total += ( ff.size > 0 ) ? ff.size : 0;
+         }
+         while ( ff.next() );
+   }
+   catch ( e ) {}
+   return total;
+}
+
+function formatBytes( n )
+{
+   if ( !( n > 0 ) )
+      return "0 B";
+   var u = [ "B", "KB", "MB", "GB", "TB" ], i = 0, v = n;
+   while ( v >= 1024 && i < u.length - 1 ) { v /= 1024; ++i; }
+   return ( ( v >= 10 || i == 0 ) ? Math.round( v ) : ( Math.round( v*10 )/10 ) ) + " " + u[ i ];
+}
+
+// What Session Cinema is holding on disk right now: the registration cache and
+// the survey cutouts, both under TEMP, plus this run's frame sequence.
+function cacheFootprint( framesDir )
+{
+   var tmp = File.systemTempDirectory;
+   var reg = dirSize( tmp + "/sc-reg", 4 );
+   var hips = 0;
+   try
+   {
+      var ff = new FileFind;
+      if ( ff.begin( tmp + "/sc-hips-*" ) )
+         do { if ( ff.isFile && ff.size > 0 ) hips += ff.size; } while ( ff.next() );
+   }
+   catch ( e ) {}
+   var frames = dirSize( framesDir, 2 );
+   return { reg: reg, hips: hips, frames: frames, total: reg + hips + frames,
+            regDir: tmp + "/sc-reg", hipsDir: tmp };
+}
+
 function fileSize( path )
 {
    try { var f = new File; f.openForReading( path ); var n = f.size; f.close(); return n; }
@@ -2796,7 +2861,11 @@ function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx, onTick )
    if ( gHipsCache[ key ] )
       return gHipsCache[ key ];
 
-   var out = File.systemTempDirectory + "/sc-hips-" +
+   // The survey id is in the memory key and used to be missing from the disk one,
+   // so switching hipsSurvey and regenerating silently redrew the previous
+   // survey's cutout — the one thing the user had just changed was the one thing
+   // the key left out.
+   var out = File.systemTempDirectory + "/sc-hips-" + pathKey( hips ) + "-" +
              Math.round( ra*1000 ) + "_" + Math.round( dec*1000 ) + "_" +
              Math.round( fovDeg*1000 ) + "_" + nPx + ".jpg";
 
@@ -3334,6 +3403,47 @@ Engine.prototype.clearFrames = function()
 // and carried into the headless result.
 // Idempotent: registration is timed before the render path starts, and starting
 // twice would throw that away.
+// The key is the exact set that was integrated, plus what the transfer depends
+// on. Any change to either — one sub added, linked toggled — is a different key,
+// so a stale transfer can never be served.
+Engine.prototype.stretchCacheKey = function()
+{
+   var parts = [ "v1", this.cfg.stretchLinked ? "linked" : "unlinked" ];
+   for ( var i = 0; i < this.frames.length; ++i )
+      parts.push( this.frames[ i ].path );
+   return pathKey( parts.join( "\u0000" ) );
+};
+
+function stretchCachePath( key )
+{
+   return File.systemTempDirectory + "/sc-reg/stretch-" + key + ".json";
+}
+
+function readCachedStretch( key )
+{
+   try
+   {
+      var p = stretchCachePath( key );
+      if ( !File.exists( p ) )
+         return null;
+      var v = JSON.parse( File.readTextFile( p ) );
+      return ( v && v.channels && v.channels.length ) ? v : null;
+   }
+   catch ( e ) { return null; }
+}
+
+function writeCachedStretch( key, stretch )
+{
+   try
+   {
+      var dir = File.systemTempDirectory + "/sc-reg";
+      if ( !File.directoryExists( dir ) )
+         File.createDirectory( dir, true );
+      File.writeTextFile( stretchCachePath( key ), JSON.stringify( stretch ) );
+   }
+   catch ( e ) {}
+}
+
 Engine.prototype.perfStart = function()
 {
    if ( !this.perfAcc )
@@ -3597,7 +3707,18 @@ Engine.prototype.runStacking = function()
    var stretch = null;
 
    // Pass 1 (final-stack stretch reference only): full integration, no render.
+   // Its whole output is a transfer function of a few numbers, and it used to be
+   // recomputed on every generation — a re-run after changing the frame rate paid
+   // a full read of the set, tens of GB of I/O, for values that could not have
+   // changed. Cached on the set it was computed from.
    if ( cfg.stretchRef == STRETCH_REF_FINAL )
+   {
+      var pass1Key = this.stretchCacheKey();
+      stretch = readCachedStretch( pass1Key );
+      if ( stretch )
+         console.noteln( tr( "run.pass1Cached" ) );
+   }
+   if ( cfg.stretchRef == STRETCH_REF_FINAL && !stretch )
    {
       console.writeln( tr( "run.pass1", N ) );
       this.progress( -1, 0, tr( "run.pass1", N ) );
@@ -3617,6 +3738,7 @@ Engine.prototype.runStacking = function()
       acc1.forceClose();
       stretch = computeStretchForImage( meanFinal.mainView.image, cfg.stretchLinked );
       meanFinal.forceClose();
+      writeCachedStretch( pass1Key, stretch );
       gc();
       console.writeln( tr( "run.pass1Done" ) );
    }
@@ -4628,6 +4750,21 @@ Engine.prototype.run = function()
    if ( cfg.keepFrames || !enc.encoded )
       console.writeln( tr( "run.framesKept", this.framesDir() ) );
    console.noteln( tr( "run.done", this.rendered, formatDuration( ( Date.now() - t0 )/1000 ) ) );
+   // Tens of GB accumulate under the system temp directory across a season, and
+   // nothing ever said so. The registration cache is what makes a re-run fast, so
+   // it is not deleted behind the user's back — it is counted, named, and left to
+   // them.
+   // What this machine actually did, so the next run can be estimated instead of
+   // guessed. Only the render is counted: startup and pass 1 are not per-frame.
+   if ( this.rendered > 0 )
+      this.msPerFrame = ( Date.now() - t0 )/this.rendered;
+   var disk = cacheFootprint( this.framesDir() );
+   result.disk = disk;
+   result.msPerFrame = this.msPerFrame || 0;
+   if ( disk.total > 0 )
+      console.noteln( tr( "run.diskUsed", formatBytes( disk.total ),
+                          formatBytes( disk.reg ), formatBytes( disk.hips ),
+                          formatBytes( disk.frames ), disk.regDir ) );
    return result;
 };
 
@@ -4644,6 +4781,8 @@ function argb( alpha, rgb )
 // Stars from the bright-star catalog, deepening as we zoom in. Uses the frame
 // projector and precomputed star vectors; the cull in projectVecPre skips
 // off-screen stars before any projection math.
+var STAR_BRUSHES = [];
+
 function drawZoomStars( g, pj, stars, unit )
 {
    var magLimit = limitingMagnitude( pj.fovDeg );
@@ -4659,8 +4798,13 @@ function drawZoomStars( g, pj, stars, unit )
       var r = starRadius( st.mag, magLimit, unit );
       if ( r <= 0 )
          continue;
+      // One Brush per star per frame was thousands of allocations a second for
+      // 32 distinguishable alphas. Bucketed and cached; the quantisation is finer
+      // than the 8-bit alpha channel the brush ends up in.
       var a = 0.25 + 0.75*clamp01( ( magLimit - st.mag )/magLimit );
-      g.brush = new Brush( argb( a, 0xFFFFFF ) );
+      var bi = Math.round( a*31 );
+      g.brush = STAR_BRUSHES[ bi ] ||
+                ( STAR_BRUSHES[ bi ] = new Brush( argb( bi/31, 0xFFFFFF ) ) );
       g.fillCircle( p.x, p.y, r );
    }
 }
@@ -5310,12 +5454,22 @@ function revealCoversFrame( cam, wcs, imgW, imgH )
    return true;
 }
 
+// Up to six Fonts were rebuilt per zoom frame and three per stacked frame, always
+// from the same handful of (size, weight) pairs. Cached on that pair.
+var ZOOM_FONTS = {};
+
 function zoomFont( px, bold )
 {
-   var f = new Font( "Open Sans" );
-   f.pixelSize = Math.round( px );
+   var size = Math.round( px );
+   var key = size + ( bold ? "b" : "" );
+   var f = ZOOM_FONTS[ key ];
+   if ( f )
+      return f;
+   f = new Font( "Open Sans" );
+   f.pixelSize = size;
    if ( bold )
       try { f.bold = true; } catch ( e ) {}
+   ZOOM_FONTS[ key ] = f;
    return f;
 }
 
@@ -6694,6 +6848,11 @@ class SessionCinemaDialog extends Dialog
       // choice; leaving the user to discover it after the render is not.
       if ( plan.firstFullN > 1 )
          text += "  " + tr( "video.estimateFrom", plan.firstFullN );
+      // The one number nobody could see before pressing the button. Based on this
+      // machine's own last run, and labelled as such — it is not a model.
+      if ( this.cfg.lastMsPerFrame > 0 && plan.total > 0 )
+         text += "  " + tr( "video.estimateTime",
+                            formatDuration( plan.total*this.cfg.lastMsPerFrame/1000 ) );
       this.estimateLabel.text = text;
    }
 
@@ -7257,6 +7416,11 @@ class SessionCinemaDialog extends Dialog
                            StdIcon.Error, StdButton.Ok ) ).execute();
          return;
       }
+      if ( result && result.msPerFrame > 0 )
+      {
+         this.cfg.lastMsPerFrame = result.msPerFrame;
+         this.updateEstimate();
+      }
       if ( result )
          ( new SessionCinemaResultDialog( result, this.cfg ) ).execute();
    }
@@ -7693,6 +7857,9 @@ function runHeadless( cfgPath )
          result.error = r.error;
       // ok:true with an empty videoPath read as a success to every harness. Say
       // it: frames exist, no video, and here is the script that encodes them.
+      if ( r.disk )
+         result.disk = r.disk;
+      result.msPerFrame = r.msPerFrame || 0;
       if ( r.lostFrames )
          result.warnings.push( tr( "run.framesLost", r.lostFrames ) );
       if ( r.ok && !( r.videoPath && r.videoPath.length ) )
