@@ -91,3 +91,46 @@ for ( const p of [ "windows", "macos", "linux" ] )
 }
 
 console.log( "ffmpeg.test.js OK" );
+
+// --- the fallback script calls a binary that exists --------------------------
+{
+   const args = [ "-y", "-framerate", "30", "-i", "/tmp/f/frame_%05d.bmp", "/tmp/out.mp4" ];
+
+   // Bare "ffmpeg" fails wherever it is not on PATH — including the copy the
+   // Install button puts in the script's own data directory.
+   const withPath = M.buildEncodeScriptText( false, args, "/home/a/.local/share/x/ffmpeg" );
+   assert.ok( withPath.indexOf( "/home/a/.local/share/x/ffmpeg" ) >= 0,
+      "the known ffmpeg path must be in the script" );
+   assert.ok( withPath.indexOf( "set -e" ) >= 0,
+      "a POSIX script must stop on failure, not report success" );
+
+   const noPath = M.buildEncodeScriptText( false, args, "" );
+   assert.ok( noPath.indexOf( "ffmpeg" ) >= 0, "without one, fall back to the name" );
+
+   // Windows: the file is written UTF-8 by a Qt toolkit, so the console has to be
+   // told, or every accented path becomes mojibake and then is not found.
+   const bat = M.buildEncodeScriptText( true, args, "C:/tools/ffmpeg.exe" );
+   assert.ok( bat.indexOf( "chcp 65001" ) >= 0, "encode.bat must set its code page" );
+   assert.ok( bat.indexOf( "%%" ) >= 0, "and still escape the frame pattern" );
+}
+
+// --- a latitude typed the way half of Europe writes one ----------------------
+{
+   assert.strictEqual( M.parseCoord( "43.60" ), 43.6 );
+   assert.strictEqual( M.parseCoord( "43,60" ), 43.6, "parseFloat stopped at the comma and gave 43" );
+   assert.strictEqual( M.parseCoord( " -7,25 " ), -7.25 );
+   assert.strictEqual( M.parseCoord( "" ), null );
+   assert.strictEqual( M.parseCoord( "north" ), null );
+}
+
+// A POSIX shell expands $ and backticks inside double quotes; cmd does not.
+{
+   const q = M.buildEncodeScriptText( false, [ "/tmp/a$b`c`/frame_%05d.bmp" ], "ffmpeg" );
+   assert.ok( q.indexOf( "$b" ) >= 0, "the path is still there" );
+   assert.ok( q.indexOf( "\"/tmp/a$b" ) < 0,
+      "but not inside double quotes, where the shell would expand it" );
+   const w = M.buildEncodeScriptText( true, [ "C:/a b/frame_%05d.bmp" ], "ffmpeg.exe" );
+   assert.ok( w.indexOf( "\"C:/a b/frame_%%05d.bmp\"" ) >= 0, "cmd keeps double quotes" );
+}
+
+console.log( "ffmpeg.test.js OK (encode script, coordinates)" );
