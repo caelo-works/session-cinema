@@ -59,3 +59,37 @@ console.log( "i18n.test.js OK" );
 }
 
 console.log( "i18n.test.js OK (label column)" );
+
+// --- no dead keys, no phantom ones -------------------------------------------
+//
+// The parity check compares the two halves of STRINGS against each other, so a
+// key translated and maintained for a text nobody displays passes, and so does a
+// tr() call for a key that does not exist — it silently renders the key itself.
+{
+   const fs = require( "fs" ), path = require( "path" );
+   const src = fs.readFileSync( path.join( __dirname, "..", "pjsr", "SessionCinema.js" ), "utf8" );
+
+   // Keys reached through tr(), plus the ones reached through a table of keys.
+   const used = new Set();
+   for ( const m of src.matchAll( /\btr\(\s*"([^"]+)"/g ) ) used.add( m[ 1 ] );
+   // LABEL_COLUMN_KEYS and any other literal list of keys in the source.
+   for ( const m of src.matchAll( /"((?:[a-z][A-Za-z0-9]*\.)+[A-Za-z0-9]+)"/g ) ) used.add( m[ 1 ] );
+   // Built at run time: tr( isZoom ? "help.zoom" : "help.stack" ) is caught above,
+   // but a key assembled from pieces would not be — none exists today, and this
+   // test is the thing that would notice one being introduced.
+
+   const defined = Object.keys( M.STRINGS.en );
+   const dead = defined.filter( k => !used.has( k ) );
+   assert.deepStrictEqual( dead, [],
+      "these keys are translated and maintained for a text nothing displays" );
+
+   // And the other direction: tr() on a key that does not exist renders the key.
+   const phantom = [ ...used ].filter(
+      k => /^[a-z][A-Za-z0-9]*\.[A-Za-z0-9.]+$/.test( k ) &&
+           src.indexOf( '"' + k + '":' ) < 0 &&
+           new RegExp( '\\btr\\(\\s*"' + k.replace( /\./g, "\\." ) + '"' ).test( src ) );
+   assert.deepStrictEqual( phantom, [],
+      "tr() on an undefined key renders the key itself, in front of the user" );
+}
+
+console.log( "i18n.test.js OK (no dead or phantom keys)" );

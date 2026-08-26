@@ -85,3 +85,32 @@ assert.strictEqual( M.frameFileName( 1 ), "frame_00001.bmp" );
 assert.strictEqual( M.frameFileName( 12345 ), "frame_12345.bmp" );
 
 console.log( "video.test.js OK" );
+
+// --- one description of what a style is --------------------------------------
+//
+// Every capability the modes differ on used to be re-derived by comparing against
+// one of the two constants, sixteen times, with nothing saying what either mode
+// meant. This is that description, and the test that keeps it complete.
+{
+   const stack = M.styleCaps( M.STYLE_STACKING );
+   const zoom = M.styleCaps( M.STYLE_ZOOM );
+
+   // Every style answers every question — a mode that leaves one out would fall
+   // back to undefined, which reads as "no" and hides the omission.
+   const keys = Object.keys( stack );
+   for ( const [ name, caps ] of [ [ "stacking", stack ], [ "zoom", zoom ] ] )
+      for ( const k of keys )
+         assert.ok( caps[ k ] !== undefined, `${name} does not answer "${k}"` );
+
+   // The two are genuinely different modes, not one with a flag.
+   assert.notStrictEqual( stack.usesFrames, zoom.usesFrames );
+   assert.notStrictEqual( stack.usesSolvedImage, zoom.usesSolvedImage );
+   assert.strictEqual( stack.tag, "stack" );
+   assert.strictEqual( zoom.tag, "zoom" );
+
+   // An unknown style is answered, not crashed on: a config can carry anything.
+   assert.strictEqual( M.styleCaps( 99 ), stack, "an unknown style falls back, it does not throw" );
+   assert.strictEqual( M.styleCaps( undefined ), stack );
+}
+
+console.log( "video.test.js OK (style capabilities)" );
