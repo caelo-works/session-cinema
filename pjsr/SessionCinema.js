@@ -3617,7 +3617,7 @@ Engine.prototype.runZoom = function()
             // are 1.2x and 0.56x of it), and stay keyed to P for that reason.
             var wa = fadeBand( fov, wideFov*2.8, wideFov*0.95, P*3, P*1.4 );
             if ( wa > 0 )
-               drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa, 8 );
+               drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
          }
          if ( nearBmp )
          {
@@ -4229,70 +4229,207 @@ function autoAlignReveal( bgBmp, revealBmp, onProgress )
 // (with a parity flip) and blits. Shared by the zoom renderer and the alignment
 // preview, so what you align is exactly what renders. An optional outline is
 // drawn under the same transform, so it can never diverge from the image.
+// Express a 2x2 as the three transformation calls PixInsight actually offers:
+//   A = Rp(a1) . diag(sx,sy) . Rp(a2)
+// where Rp is rotateTransformation — CLOCKWISE on screen, and it IGNORES negative
+// angles, so both angles come back normalised into [0, 2pi). This is the SVD of A
+// with the reflection carried by a negative sy, which is how a mirrored placement
+// survives. A similarity comes back with sx == sy, so the conformal path below is
+// the degenerate case of this one rather than a second implementation of it.
+function decomposeAffine( ax, ay, bx, by )
+{
+   var E = ( ax + by )/2, F = ( ax - by )/2, G = ( ay + bx )/2, H = ( ay - bx )/2;
+   var Q = Math.sqrt( E*E + H*H ), R = Math.sqrt( F*F + G*G );
+   var a1s = Math.atan2( G, F ), a2s = Math.atan2( H, E );
+   var TWO_PI = 2*Math.PI;
+   return {
+      a1: ( ( -( a2s + a1s )/2 % TWO_PI ) + TWO_PI ) % TWO_PI,
+      sx: Q + R,
+      sy: Q - R,
+      a2: ( ( -( a2s - a1s )/2 % TWO_PI ) + TWO_PI ) % TWO_PI
+   };
+}
+
+// The one placement primitive. Draws bmp — or the sub-rectangle srcRect of it —
+// so that its own pixel (0,0), or srcRect's top-left, lands on (ox,oy) and its
+// +x and +y axes follow (ax,ay) and (bx,by) screen pixels each. Everything that
+// puts an image on the sky goes through here, so a placement can never diverge
+// from the outline drawn around it or from a neighbouring tile of the same image.
+function blitAffine( g, ox, oy, ax, ay, bx, by, w, h, bmp, srcRect, alpha, outlineColor )
+{
+   var d = decomposeAffine( ax, ay, bx, by );
+   if ( !( Math.abs( d.sx ) > 0 ) )
+      return;
+   var prevOp = g.opacity;
+   g.opacity = clamp01( alpha );
+   g.resetTransformation();
+   g.translateTransformation( ox, oy );
+   g.rotateTransformation( d.a1 );
+   g.scaleTransformation( d.sx, d.sy );
+   g.rotateTransformation( d.a2 );
+   if ( srcRect === undefined )
+      g.drawBitmap( 0, 0, bmp );
+   else
+      g.drawBitmapRect( new Point( 0, 0 ), bmp, srcRect );
+   if ( outlineColor !== undefined )
+   {
+      // Pen width is given in source pixels, so undo the placement's own scale to
+      // keep the outline the same thickness on screen whatever the zoom.
+      var lin = Math.sqrt( Math.abs( ax*by - bx*ay ) );
+      g.opacity = 1;
+      g.pen = new Pen( outlineColor, Math.max( 0.5, 2/( lin > 0 ? lin : 1 ) ) );
+      g.brush = new Brush( 0x00000000 );
+      g.drawRect( new Rect( 0, 0, w, h ) );
+   }
+   g.resetTransformation();
+   g.opacity = prevOp;
+}
+
 function blitOriented( g, c, ex, ey, imgW, imgH, bmp, alpha, outlineColor )
 {
    var ux = ( ex.x - c.x )/( imgW/2 ), uy = ( ex.y - c.y )/( imgW/2 );
    var scale = Math.sqrt( ux*ux + uy*uy );
    if ( !( scale > 0 ) )
       return;
-   // rotateTransformation rotates CLOCKWISE (positive angle → screen-CW) and
-   // ignores negative angles, so to place the image's x-axis along (ux,uy) we
-   // pass the NEGATED atan2, normalised into [0, 2π). Getting this sign wrong is
-   // invisible when the image is axis-aligned (angle≈0) but makes surveys rotate
-   // OPPOSITE to the directly-projected stars whenever the camera is rolled.
-   var angle = ( 2*Math.PI - Math.atan2( uy, ux ) ) % ( 2*Math.PI );
    var wyx = ( ey.x - c.x )/( -imgH/2 ), wyy = ( ey.y - c.y )/( -imgH/2 );
    var flip = ( ux*wyy - uy*wyx < 0 ) ? -1 : 1;
-   var prevOp = g.opacity;
-   g.opacity = clamp01( alpha );
-   g.resetTransformation();
-   g.translateTransformation( c.x, c.y );
-   g.rotateTransformation( angle );
-   g.scaleTransformation( scale, scale*flip );
-   g.drawBitmap( -imgW/2, -imgH/2, bmp );
-   if ( outlineColor !== undefined )
-   {
-      g.opacity = 1;
-      g.pen = new Pen( outlineColor, Math.max( 0.5, 2/scale ) );
-      g.brush = new Brush( 0x00000000 );
-      g.drawRect( new Rect( -imgW/2, -imgH/2, imgW/2, imgH/2 ) );
-   }
-   g.resetTransformation();
-   g.opacity = prevOp;
+   // The image's +x axis follows (ux,uy) and its +y axis the perpendicular, which
+   // is what makes this conformal: one scale, one rotation, one parity. The y
+   // anchor ey is read for its handedness only — its length and its exact
+   // direction are what a similarity cannot honour, and what the tiled path below
+   // exists to honour.
+   var bx = -flip*uy, by = flip*ux;
+   blitAffine( g, c.x - ( ux*imgW + bx*imgH )/2, c.y - ( uy*imgW + by*imgH )/2,
+               ux, uy, bx, by, imgW, imgH, bmp, undefined, alpha, outlineColor );
 }
 
-function blitOrientedRect( g, c, ex, ey, dstW, dstH, bmp, srcRect, alpha )
+// How far a straight-line placement bows off the truth: the projected footprint's
+// edge midpoints against the chords between its corners, plus the centre against
+// the corner mean. Zero for any linear map, and it grows as the square of the
+// field — which is what makes the tile count below solvable instead of chosen.
+// Returns -1 when any probe is behind the camera, i.e. "do not tile, fall back".
+function revealSagitta( scr, imgW, imgH )
 {
-   var ux = ( ex.x - c.x )/( dstW/2 ), uy = ( ex.y - c.y )/( dstW/2 );
-   var scale = Math.sqrt( ux*ux + uy*uy );
-   if ( !( scale > 0 ) )
-      return;
-   var angle = ( 2*Math.PI - Math.atan2( uy, ux ) ) % ( 2*Math.PI );
-   var wyx = ( ey.x - c.x )/( -dstH/2 ), wyy = ( ey.y - c.y )/( -dstH/2 );
-   var flip = ( ux*wyy - uy*wyx < 0 ) ? -1 : 1;
-   var prevOp = g.opacity;
-   g.opacity = clamp01( alpha );
-   g.resetTransformation();
-   g.translateTransformation( c.x, c.y );
-   g.rotateTransformation( angle );
-   g.scaleTransformation( scale, scale*flip );
-   g.drawBitmapRect( new Point( -dstW/2, -dstH/2 ), bmp, srcRect );
-   g.resetTransformation();
-   g.opacity = prevOp;
+   var q = [ [ 0, 0 ], [ imgW, 0 ], [ imgW, imgH ], [ 0, imgH ] ];
+   var p = [], k;
+   for ( k = 0; k < 4; ++k )
+   {
+      p[ k ] = scr( q[ k ][ 0 ], q[ k ][ 1 ] );
+      if ( !p[ k ].front )
+         return -1;
+   }
+   var m = 0, dx, dy;
+   for ( k = 0; k < 4; ++k )
+   {
+      var a = p[ k ], b = p[ ( k + 1 ) % 4 ];
+      var qa = q[ k ], qb = q[ ( k + 1 ) % 4 ];
+      var mid = scr( ( qa[ 0 ] + qb[ 0 ] )/2, ( qa[ 1 ] + qb[ 1 ] )/2 );
+      if ( !mid.front )
+         return -1;
+      dx = mid.x - ( a.x + b.x )/2; dy = mid.y - ( a.y + b.y )/2;
+      m = Math.max( m, Math.sqrt( dx*dx + dy*dy ) );
+   }
+   var c = scr( imgW/2, imgH/2 );
+   if ( !c.front )
+      return -1;
+   dx = c.x - ( p[0].x + p[1].x + p[2].x + p[3].x )/4;
+   dy = c.y - ( p[0].y + p[1].y + p[2].y + p[3].y )/4;
+   return Math.max( m, Math.sqrt( dx*dx + dy*dy ) );
+}
+
+// Neighbouring tiles are fitted through corners they SHARE, so what is left of
+// their disagreement is the second-order term, and it falls as 1/n^2. Measured
+// over the whole zoom envelope, the worst seam is REVEAL_SEAM_K times the
+// sagitta divided by n^2 — so the tile count is solved for the budget instead of
+// picked, and tests/zoom.test.js checks the seam it actually produces rather than
+// trusting the law. Quantised so the grid cannot change from one frame to the
+// next; capped because past the cap the seam is long since invisible.
+var REVEAL_SEAM_BUDGET_PX = 1;
+var REVEAL_SEAM_K = 9;
+var REVEAL_TILE_STEPS = [ 1, 2, 3, 4, 6, 8, 12, 16, 24, 32 ];
+
+function revealTileCount( scr, imgW, imgH )
+{
+   var sag = revealSagitta( scr, imgW, imgH );
+   if ( !( sag > 0 ) )
+      return 1;
+   var want = Math.sqrt( REVEAL_SEAM_K*sag/REVEAL_SEAM_BUDGET_PX );
+   for ( var i = 0; i < REVEAL_TILE_STEPS.length; ++i )
+      if ( REVEAL_TILE_STEPS[ i ] >= want )
+         return REVEAL_TILE_STEPS[ i ];
+   return REVEAL_TILE_STEPS[ REVEAL_TILE_STEPS.length - 1 ];
+}
+
+// The placement of every tile, as pure geometry: no graphics context, so the
+// drift against the directly-projected sky and the seam between neighbours are
+// both measurable in a test. Each tile's affine passes exactly through three
+// corners of a grid every tile reads from, so two neighbours agree exactly at
+// the corners they have in common.
+// clipW/clipH, when given, drop the tiles that fall entirely outside the frame.
+// Early in the fade band the cutout is nearly frame-filling and nothing is culled;
+// late in it the cutout is a small patch and most of the grid is off screen, where
+// tiling it would be paid for and never seen.
+function revealTiles( scr, imgW, imgH, n, clipW, clipH )
+{
+   var cutX = function( k ) { return Math.floor( k*imgW/n ); };
+   var cutY = function( k ) { return Math.floor( k*imgH/n ); };
+   var P = [], i, j;
+   for ( j = 0; j <= n; ++j )
+   {
+      P[ j ] = [];
+      for ( i = 0; i <= n; ++i )
+         P[ j ][ i ] = scr( cutX( i ), cutY( j ) );
+   }
+   var out = [];
+   for ( j = 0; j < n; ++j )
+      for ( i = 0; i < n; ++i )
+      {
+         var x0 = cutX( i ), x1 = cutX( i + 1 ), y0 = cutY( j ), y1 = cutY( j + 1 );
+         var w = x1 - x0, h = y1 - y0;
+         if ( w <= 0 || h <= 0 )
+            continue;
+         var A = P[ j ][ i ], B = P[ j ][ i + 1 ], C = P[ j + 1 ][ i ];
+         // All four corners, so a tile straddling the horizon is dropped whole
+         // rather than drawn from an extrapolated third corner.
+         if ( !A.front || !B.front || !C.front || !P[ j + 1 ][ i + 1 ].front )
+            continue;
+         if ( clipW !== undefined )
+         {
+            // The drawn quad's corners: three read from the grid, the fourth the
+            // affine's own image of the far corner. One pixel of margin covers the
+            // difference between that and the grid's own fourth corner.
+            var D = { x: B.x + C.x - A.x, y: B.y + C.y - A.y };
+            var lo = Math.min( A.x, B.x, C.x, D.x ), hi = Math.max( A.x, B.x, C.x, D.x );
+            if ( hi < -1 || lo > clipW + 1 )
+               continue;
+            lo = Math.min( A.y, B.y, C.y, D.y ); hi = Math.max( A.y, B.y, C.y, D.y );
+            if ( hi < -1 || lo > clipH + 1 )
+               continue;
+         }
+         out.push( { x0: x0, y0: y0, x1: x1, y1: y1,
+                     ox: A.x, oy: A.y,
+                     ax: ( B.x - A.x )/w, ay: ( B.y - A.y )/w,
+                     bx: ( C.x - A.x )/h, by: ( C.y - A.y )/h } );
+      }
+   return out;
 }
 
 // Place the revealed image at its true on-sky position, orientation and scale.
-// For wide survey cutouts, split the source on integer pixel boundaries and fit
-// one local similarity per tile.  The default remains a single blit so the near
-// survey, the revealed photo and the alignment preview keep their old placement.
-function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha, tiles )
+// A small field measures no bow and takes the single conformal blit, which is the
+// same call the alignment preview makes — so what you align is still exactly what
+// renders. A wide survey cutout spans tens of degrees, where the composition of
+// the cutout's gnomonic WCS with the stereographic camera is neither linear nor
+// conformal: it shears and its scale is anisotropic, so ONE similarity cannot
+// place it and the error lands as the survey drifting off the stars drawn over it.
+// There the source is cut into tiles and each gets its own affine.
+function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha )
 {
    function scr( px, py )
    {
       var s = wcsPixelToSky( wcs, px, py );
       return projectToScreen( cam, s.ra, s.dec );
    }
-   var n = Math.max( 1, Math.floor( tiles || 1 ) );
+   var n = revealTileCount( scr, imgW, imgH );
    if ( n <= 1 )
    {
       var c = scr( imgW/2, imgH/2 );
@@ -4301,23 +4438,12 @@ function drawZoomReveal( g, cam, wcs, imgW, imgH, bmp, alpha, tiles )
       blitOriented( g, c, scr( imgW, imgH/2 ), scr( imgW/2, 0 ), imgW, imgH, bmp, alpha );
       return;
    }
-
-   for ( var ty = 0; ty < n; ++ty )
+   var tiles = revealTiles( scr, imgW, imgH, n, cam.W, cam.H );
+   for ( var k = 0; k < tiles.length; ++k )
    {
-      var y0 = Math.floor( ty*imgH/n ), y1 = Math.floor( ( ty + 1 )*imgH/n );
-      for ( var tx = 0; tx < n; ++tx )
-      {
-         var x0 = Math.floor( tx*imgW/n ), x1 = Math.floor( ( tx + 1 )*imgW/n );
-         var tw = x1 - x0, th = y1 - y0;
-         if ( tw <= 0 || th <= 0 )
-            continue;
-         var mx = ( x0 + x1 )/2, my = ( y0 + y1 )/2;
-         var tc = scr( mx, my );
-         if ( !tc.front )
-            continue;
-         blitOrientedRect( g, tc, scr( x1, my ), scr( mx, y0 ), tw, th, bmp,
-                           new Rect( x0, y0, x1, y1 ), alpha );
-      }
+      var t = tiles[ k ];
+      blitAffine( g, t.ox, t.oy, t.ax, t.ay, t.bx, t.by, t.x1 - t.x0, t.y1 - t.y0,
+                  bmp, new Rect( t.x0, t.y0, t.x1, t.y1 ), alpha );
    }
 }
 
