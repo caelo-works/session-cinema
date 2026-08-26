@@ -273,6 +273,7 @@ var STRINGS = {
       "prog.idle":         "Idle — press Generate to start.",
       "prog.done":         "Done.",
       "prog.starting":     "Starting…",
+      "overlay.snrCost":   "Measured, not estimated — which costs a noise estimation per channel on every rendered frame. On a large sensor that is the single most expensive thing in the render; the PERF line at the end of the run says exactly how much.",
       "out.installingFor": "Downloading ffmpeg… %1 s",
       "prog.pause":        "Pause",
       "prog.resume":       "Resume",
@@ -506,6 +507,7 @@ var STRINGS = {
       "prog.idle":         "En attente — cliquez sur Générer.",
       "prog.done":         "Terminé.",
       "prog.starting":     "Démarrage…",
+      "overlay.snrCost":   "Mesuré, pas estimé — ce qui coûte une estimation de bruit par canal sur chaque image rendue. Sur un grand capteur c'est le poste le plus cher du rendu ; la ligne PERF en fin de rendu dit exactement combien.",
       "out.installingFor": "Téléchargement de ffmpeg… %1 s",
       "prog.pause":        "Pause",
       "prog.resume":       "Reprendre",
@@ -2882,6 +2884,11 @@ function renderOutputBitmap( view, cfg, ov )
 {
    var fmtDef = OUTPUT_FORMATS[ cfg.formatIndex ];
    var W = fmtDef.w, H = fmtDef.h;
+   // Measured before assuming: downsampling the view first, as an integer average,
+   // is SLOWER than letting render() and a scaled blit do it. On a 5100x5100 RGB
+   // view to 1920x1080, 48 ms becomes 195 ms — IntegerResample rewrites 313 MB to
+   // save a blit Qt does in tens of milliseconds, and render() still runs after
+   // it. The cost on this path is memory bandwidth, not time; see #46.
    var src = view.image.render();
    var out = new Bitmap( W, H );
    out.fill( 0xFF000000 );
@@ -3321,6 +3328,37 @@ Engine.prototype.clearFrames = function()
    return toRemove.length;
 };
 
+// The zoom has had a per-phase breakdown since it was written; the stacking paths
+// had none, so "my render took forty minutes" could not be answered. Same shape:
+// milliseconds per phase, divided by the frames written, printed once at the end
+// and carried into the headless result.
+// Idempotent: registration is timed before the render path starts, and starting
+// twice would throw that away.
+Engine.prototype.perfStart = function()
+{
+   if ( !this.perfAcc )
+      this.perfAcc = { read: 0, register: 0, stretch: 0, noise: 0, compose: 0, save: 0 };
+};
+
+Engine.prototype.perfAdd = function( key, t0 )
+{
+   if ( this.perfAcc )
+      this.perfAcc[ key ] += Date.now() - t0;
+};
+
+Engine.prototype.perfReport = function( label, frames )
+{
+   if ( !this.perfAcc || frames <= 0 )
+      return;
+   var p = this.perfAcc, tot = 0, k;
+   for ( k in p ) tot += p[ k ];
+   var parts = [];
+   for ( k in p ) parts.push( k + " " + ( p[ k ]/frames ).toFixed( 1 ) );
+   console.noteln( "PERF " + label + " (" + frames + " frames, " + tot +
+                   " ms; per-frame avg): " + parts.join( " | " ) + " ms" );
+   this.perf = p;
+};
+
 Engine.prototype.saveFrame = function( bmp, index )
 {
    var path = this.framesDir() + "/" + frameFileName( index );
@@ -3549,6 +3587,7 @@ Engine.prototype.runStacking = function()
 {
    var cfg = this.cfg;
    var self = this;
+   this.perfStart();
    var N = this.frames.length;
    var indices = computeRenderIndices( N, cfg.fps, cfg.targetDuration );
    var renderSet = {};
@@ -3606,11 +3645,15 @@ Engine.prototype.runStacking = function()
       if ( !renderSet[ n ] )
          return;
 
+      var _p = Date.now();
       var mean = meanOf( accImg, n, "__sc_mean" );
+      self.perfAdd( "compose", _p );
 
       // Linear mean, before the stretch below. Noise estimation is not free, so
       // it only runs when the overlay asks for the figure.
+      _p = Date.now();
       var sigma = cfg.ovShowSnr ? estimateSigma( mean.mainView.image ) : 0;
+      self.perfAdd( "noise", _p );
 
       var s = stretch;
       if ( s == null || cfg.stretchRef == STRETCH_REF_EACH )
@@ -3620,9 +3663,11 @@ Engine.prototype.runStacking = function()
             stretch = s2;
          s = s2;
       }
+      _p = Date.now();
       mean.mainView.beginProcess( UndoFlag.NoSwapFile );
       applyStretchToView( mean.mainView, s );
       mean.mainView.endProcess();
+      self.perfAdd( "stretch", _p );
 
       var ov = buildOverlayInfo( cfg, {
          index: n,
@@ -3636,9 +3681,13 @@ Engine.prototype.runStacking = function()
       } );
       lastOv = ov;
       if ( !geomW ) { geomW = accImg.width; geomH = accImg.height; }
+      _p = Date.now();
       var bmp = renderOutputBitmap( mean.mainView, cfg, ov );
       mean.forceClose();
+      self.perfAdd( "compose", _p );
+      _p = Date.now();
       self.saveFrame( bmp, ++outIndex );
+      self.perfAdd( "save", _p );
       self.progress( outIndex, totalRenders, tr( "run.render", outIndex, totalRenders, frame.name ),
                      ( ( outIndex & 3 ) == 0 ) ? bmp : null );
       console.writeln( tr( "run.render", outIndex, totalRenders, frame.name ) );
@@ -3675,6 +3724,7 @@ Engine.prototype.runStacking = function()
       outIndex = this.renderStackReveal( revealBase, geomW, geomH, lastOv, outIndex, totalRenders );
    }
    acc.forceClose();
+   this.perfReport( "stack mono", outIndex );
    gc();
 };
 
@@ -3777,6 +3827,7 @@ Engine.prototype.channelStretches = function( map )
 Engine.prototype.runStackingColor = function( map )
 {
    var cfg = this.cfg;
+   this.perfStart();
    var N = this.frames.length;
    var keys = [ "R", "G", "B" ];
 
@@ -3803,7 +3854,9 @@ Engine.prototype.runStackingColor = function( map )
       var fr = this.frames[ i ];
       var chans = channelsFedBy( fr.filter, map );
       if ( !chans.length ) continue;
+      var _p = Date.now();
       var win = this.openFrame( fr );
+      this.perfAdd( "read", _p );
       if ( win == null ) continue;
       ++integrated;
       var im = win.mainView.image;
@@ -3813,8 +3866,10 @@ Engine.prototype.runStackingColor = function( map )
       // and the same retry, the mono path now takes in accumulate(). Noise
       // estimation is not free, so it only runs when the overlay asks for it.
       var frCanon = canonicalFilter( fr.filter );
+      _p = Date.now();
       if ( cfg.ovShowSnr && !( sigFirst[ frCanon ] > 0 ) )
          sigFirst[ frCanon ] = estimateSigma( im );
+      this.perfAdd( "noise", _p );
       for ( var c = 0; c < chans.length; ++c )
       {
          var ch = chans[ c ];
@@ -3847,8 +3902,10 @@ Engine.prototype.runStackingColor = function( map )
                // from one OIII mean), and only over the channels actually drawn.
                var fName = canonicalFilter( map[ key ] );
                wByFilter[ fName ] = ( wByFilter[ fName ] || 0 ) + 1;
+               var _pn = Date.now();
                if ( cfg.ovShowSnr && sigCur[ fName ] === undefined )
                   sigCur[ fName ] = estimateSigma( mw.mainView.image );
+               this.perfAdd( "noise", _pn );
                applyStretchToView( mw.mainView, stretches[ key ] );
                // Dim the *stretched* (balanced) channel by the global ramp: scaling
                // the linear signal instead would push the faint channels below their
@@ -3899,19 +3956,27 @@ Engine.prototype.runStackingColor = function( map )
             dateObs: fr.dateObs,
             sigmaFirst: snr.first, sigmaCurrent: snr.current, snrPartial: snr.partial,
             title: this.title } );
+         var _pc = Date.now();
          var bmp = composeColorBitmap( chImgs, cfg, ov );
          // The LAST RENDERED position, not n == N. N is the last sub in shoot
          // order, and both skips above happen before n is computed: an SHO night
          // pulled in HOO ends on an SII sub every time, so the equality never held
          // and the whole end of the video — cross-fade, zoom, hold, the placement
          // the user aligned by hand — vanished without a word.
-         if ( n == lastRender )
+         // …and only when there is something to reveal. This second composite —
+         // a full-sensor RGB window, a render() and a scaled blit — was built on
+         // the final frame of every colour run, including the ones where
+         // renderStackReveal returns immediately because no path is set.
+         if ( n == lastRender && revealTailFrames( cfg ) > 0 )
          {
             revealBase = composeColorBitmap( chImgs, cfg, null );
             lastOv = ov;
          }
          for ( var kc in mwByKey ) mwByKey[ kc ].forceClose();
+         this.perfAdd( "compose", _pc );
+         _pc = Date.now();
          this.saveFrame( bmp, ++outIndex );
+         this.perfAdd( "save", _pc );
          this.progress( outIndex, totalRenders, tr( "run.render", outIndex, totalRenders, fr.name ),
                         ( ( outIndex & 3 ) == 0 ) ? bmp : null );
          console.writeln( tr( "run.render", outIndex, totalRenders, fr.name ) );
@@ -3930,6 +3995,7 @@ Engine.prototype.runStackingColor = function( map )
       this.renderStackReveal( revealBase, geomW, geomH, lastOv, outIndex, totalRenders );
    else if ( revealTailFrames( cfg ) > 0 && !this.aborted )
       this.skipped.push( "end reveal (no final composite to fade from)" );
+   this.perfReport( "stack colour", outIndex );
 };
 
 // Append the end-reveal frames: over STACK_REVEAL_SEC, cross-fade the final
@@ -4508,7 +4574,12 @@ Engine.prototype.run = function()
    {
       // Progressive stack: register to a common reference first (dithering + flip).
       if ( cfg.style == STYLE_STACKING )
+      {
+         var _pr = Date.now();
+         this.perfStart();
          this.frames = this.registerFrames();
+         this.perfAdd( "register", _pr );
+      }
 
       if ( cfg.style == STYLE_ZOOM )
          this.runZoom();
@@ -5797,6 +5868,7 @@ class SessionCinemaDialog extends Dialog
 
       this.snrCheck = new CheckBox( this );
       this.snrCheck.text = tr( "overlay.snr" );
+      this.snrCheck.toolTip = tr( "overlay.snrCost" );
       this.snrCheck.checked = cfg.ovShowSnr;
       this.snrCheck.onCheck = ( c ) => { self.cfg.ovShowSnr = c; };
 
