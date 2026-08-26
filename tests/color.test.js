@@ -54,3 +54,31 @@ eq( M.mappedFilters( { R:"S", G:"H", B:"O" } ).sort(), [ "H", "O", "S" ] );
 eq( M.mappedFilters( { R:"H", G:"O", B:"O" } ).sort(), [ "H", "O" ], "distinct filters only" );
 
 console.log( "OK color.test.js (" + n + " assertions)" );
+
+// --- (none) on a channel means none ------------------------------------------
+//
+// "" is what an unset channel is AND what "take it from the palette" is, so
+// choosing (none) had no way to say so and the palette refilled the channel.
+{
+   const filters = [ { filter: "Ha", count: 10 }, { filter: "OIII", count: 10 },
+                     { filter: "SII", count: 10 } ];
+   const base = { palette: "SHO", chR: "", chG: "", chB: "" };
+   const full = M.resolveChannelMap( base, filters );
+   assert.strictEqual( full.R, "SII" );
+   assert.strictEqual( full.G, "Ha" );
+   assert.strictEqual( full.B, "OIII" );
+
+   const noBlue = M.resolveChannelMap(
+      { palette: "SHO", chR: "", chG: "", chB: M.CH_NONE }, filters );
+   assert.strictEqual( noBlue.B, "", "an explicit (none) must leave the channel empty" );
+   assert.strictEqual( noBlue.R, "SII", "the other channels are untouched" );
+   assert.strictEqual( noBlue.G, "Ha" );
+
+   // Still a colour composite: two filters feed channels.
+   assert.strictEqual( M.mappedFilters( noBlue ).length, 2 );
+
+   // The sentinel cannot be a FILTER value read from a header.
+   assert.ok( M.CH_NONE.charAt( 0 ) === "!" );
+}
+
+console.log( "color.test.js OK (channel none)" );
