@@ -80,9 +80,11 @@ updates are delivered automatically through the same channel.
 
 ### Manual install
 
-Download `SessionCinema.js` from the **[Releases](https://github.com/caelo-works/session-cinema/releases)**, then in
-PixInsight use **Script → Feature Scripts…**, click **Add** and select the
-folder containing the file. Alternatively, run it once via
+Download `SessionCinema.js` **and** `SessionCinema.svg` from the
+**[Releases](https://github.com/caelo-works/session-cinema/releases)** and put
+both in the same folder — the `.svg` is the emblem the dialog header looks for
+beside the script. Then in PixInsight use **Script → Feature Scripts…**, click
+**Add** and select that folder. Alternatively, run it once via
 **Script → Execute Script File…**.
 
 > **Requires PixInsight 1.9.4 or newer** — Windows, macOS and Linux.
