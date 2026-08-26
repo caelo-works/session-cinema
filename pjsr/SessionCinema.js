@@ -940,19 +940,29 @@ function formatSnrGainDb( sigmaFirst, sigmaCurrent )
 // overlay says the figure is unavailable rather than quietly dropping it.
 function compositeSnrSigmas( entries )
 {
-   var K = 0, sumCurrent = 0, sumFirst = 0;
+   var K = 0, sumCurrent = 0, sumFirst = 0, dropped = 0;
    for ( var i = 0; i < entries.length; ++i )
    {
       var e = entries[ i ], w = e.weight;
       if ( !( w > 0 ) || !( e.sigmaFirst > 0 ) || !( e.sigmaCurrent > 0 ) )
+      {
+         if ( w > 0 )
+            ++dropped;
          continue;
+      }
       K += w;
       sumCurrent += w*w*e.sigmaCurrent*e.sigmaCurrent;
       sumFirst += w*e.sigmaFirst*e.sigmaFirst;
    }
    if ( K <= 0 )
-      return { first: 0, current: 0 };
-   return { first: Math.sqrt( sumFirst/K ), current: Math.sqrt( sumCurrent )/K };
+      return { first: 0, current: 0, partial: false };
+   // A filter whose noise did not measure drops out of both sums AND of K, so the
+   // ratio stays self-coherent while no longer describing the image on screen.
+   // Measured on HOO with 50 Ha + 50 OIII: complete +19.5 dB, the same call with
+   // OIII missing +17.0 dB, truth +26.5 dB. Wrong, not merely imprecise — so the
+   // figure is marked and drawn with a "~".
+   return { first: Math.sqrt( sumFirst/K ), current: Math.sqrt( sumCurrent )/K,
+            partial: dropped > 0 };
 }
 
 // UT clock "23:47:13" from epoch seconds.
@@ -997,7 +1007,10 @@ function buildOverlayInfo( cfg, info )
       // Asked for but not measurable → SAY so. Dropping the term silently makes a
       // measurement that failed look exactly like one that was never requested.
       var db = formatSnrGainDb( info.sigmaFirst, info.sigmaCurrent );
-      parts.push( "SNR " + ( db.length ? db : SNR_UNAVAILABLE ) );
+      // "~" when a channel could not be measured: the figure is built from the
+      // rest, and the noise of the image on screen is not what it describes.
+      parts.push( "SNR " + ( db.length ? ( ( info.snrPartial ? "~" : "" ) + db )
+                                       : SNR_UNAVAILABLE ) );
    }
    if ( parts.length )
       subLeft.push( parts.join( "  ·  " ) );
@@ -2932,6 +2945,7 @@ function Engine( cfg, frames )
    this.errorKey = "";
    this.errorText = "";
    this.lostFrames = 0;      // frames whose write did not land
+   this.sigmaRef = 0;        // single-sub noise, the SNR reference (mono path)
    this.onProgress = null;   // optional (done, total, message, previewBmp?)
    this.shouldAbort = null;  // optional () -> true to cancel
 }
@@ -3015,6 +3029,13 @@ Engine.prototype.accumulate = function( accWin, renderCallback )
          win.forceClose();
          continue;
       }
+      // The SNR reference is the noise of a SINGLE sub. It used to be re-measured
+      // on the running mean whenever it was not yet positive, so a first sub that
+      // did not measure made the reference the mean of k subs — noise s1/sqrt(k) —
+      // and the rest of the video under-reported the gain by 10*log10(k) dB, 6 dB
+      // at k = 4. Measured here, on the opened sub, and never rewritten once set.
+      if ( this.cfg.ovShowSnr && !( this.sigmaRef > 0 ) )
+         this.sigmaRef = estimateSigma( img );
       accWin.mainView.image.apply( img, ImageOp.Add );
       ++n;
       win.forceClose();
@@ -3333,7 +3354,6 @@ Engine.prototype.runStacking = function()
    if ( acc == null )
       return;
    this.skipped = [];
-   var sigmaFirst = 0;
    var cumExposure = 0;
    var meanExposure = 0;
    var outIndex = 0;
@@ -3355,8 +3375,6 @@ Engine.prototype.runStacking = function()
       // Linear mean, before the stretch below. Noise estimation is not free, so
       // it only runs when the overlay asks for the figure.
       var sigma = cfg.ovShowSnr ? estimateSigma( mean.mainView.image ) : 0;
-      if ( n == 1 || sigmaFirst <= 0 )
-         sigmaFirst = sigma;
 
       var s = stretch;
       if ( s == null || cfg.stretchRef == STRETCH_REF_EACH )
@@ -3376,7 +3394,7 @@ Engine.prototype.runStacking = function()
          cumulativeExposure: cumExposure,
          exposure: meanExposure,
          dateObs: frame.dateObs,
-         sigmaFirst: sigmaFirst,
+         sigmaFirst: self.sigmaRef,
          sigmaCurrent: sigma,
          title: self.title
       } );
@@ -3545,9 +3563,9 @@ Engine.prototype.runStackingColor = function( map )
       ++integrated;
       var im = win.mainView.image;
       if ( !geomW ) { geomW = im.width; geomH = im.height; }
-      // Single-sub noise of this filter, measured on its first sub — the same
-      // reference the mono path takes at n = 1. Retried on the next sub while it
-      // does not come out positive, exactly as the mono path does. Noise
+      // Single-sub noise of this filter, measured on its first sub and retried on
+      // the next one while it does not come out positive — the same reference,
+      // and the same retry, the mono path now takes in accumulate(). Noise
       // estimation is not free, so it only runs when the overlay asks for it.
       var frCanon = canonicalFilter( fr.filter );
       if ( cfg.ovShowSnr && !( sigFirst[ frCanon ] > 0 ) )
@@ -3634,7 +3652,8 @@ Engine.prototype.runStackingColor = function( map )
             cumulativeExposure: cumExposure,
             exposure: integrated > 0 ? cumExposure/integrated : fr.exposure,
             dateObs: fr.dateObs,
-            sigmaFirst: snr.first, sigmaCurrent: snr.current, title: this.title } );
+            sigmaFirst: snr.first, sigmaCurrent: snr.current, snrPartial: snr.partial,
+            title: this.title } );
          var bmp = composeColorBitmap( chImgs, cfg, ov );
          // The LAST RENDERED position, not n == N. N is the last sub in shoot
          // order, and both skips above happen before n is computed: an SHO night
