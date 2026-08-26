@@ -375,6 +375,7 @@ var STRINGS = {
       "run.registering":   "Registering %1 sub(s) (StarAlignment: dithering + meridian flip)…",
       "run.regCached":     "Registration reused from cache.",
       "run.regRef":        "Alignment reference: %1",
+      "run.debayered":     "Debayered %1 CFA sub(s) before registration.",
       "run.render":        "Rendered %1 / %2 (%3)",
       "run.skipped":       "Skipped (unreadable or geometry mismatch): %1",
       "run.aborted":       "Aborted by user. %1 frame(s) were rendered.",
@@ -596,6 +597,7 @@ var STRINGS = {
       "run.registering":   "Recalage de %1 brute(s) (StarAlignment : dithering + flip méridien)…",
       "run.regCached":     "Recalage réutilisé depuis le cache.",
       "run.regRef":        "Référence d'alignement : %1",
+      "run.debayered":     "%1 brute(s) CFA dématricées avant recalage.",
       "run.render":        "Rendu %1 / %2 (%3)",
       "run.skipped":       "Ignorées (illisibles ou géométrie différente) : %1",
       "run.aborted":       "Interrompu par l'utilisateur. %1 image(s) rendues.",
@@ -3164,9 +3166,53 @@ Engine.prototype.registerFrames = function()
    {
       console.noteln( tr( "run.registering", todo.length ) );
       this.progress( 0, todo.length, tr( "run.registering", todo.length ) );
+      // StarAlignment writes an INTERPOLATED image: its output carries no Bayer
+      // grid, and the registered frame list clears cfa accordingly. So debayering
+      // can never fire on a registered sub, and an OSC session used to render as
+      // a raw mosaic from end to end without a word. It has to happen first.
+      var cfaDir = cacheDir + "/cfa", srcOf = {}, t, anyCfa = false;
+      for ( t = 0; t < todo.length; ++t )
+         if ( todo[ t ].cfa ) { anyCfa = true; break; }
+      if ( cfg.debayer && ( anyCfa || ref.cfa ) )
+      {
+         if ( !File.directoryExists( cfaDir ) )
+            File.createDirectory( cfaDir, true );
+         // The reference too, or the targets would be matched against a mosaic.
+         var pre = todo.slice();
+         if ( ref.cfa )
+            pre.push( ref );
+         for ( t = 0; t < pre.length; ++t )
+         {
+            var cf = pre[ t ];
+            if ( !cf.cfa || srcOf[ cf.path ] )
+               continue;
+            var cw = null;
+            try { cw = openFrameWindow( cf.path ); } catch ( e ) { cw = null; }
+            if ( cw == null )
+               continue;
+            var dw = maybeDebayer( cw, cf, cfg );
+            if ( dw.mainView.image.isColor )
+            {
+               var dp = cfaDir + "/" + File.extractName( cf.path ) + ".xisf";
+               try
+               {
+                  dw.saveAs( dp, false, false, false, false );
+                  srcOf[ cf.path ] = dp;
+               }
+               catch ( e )
+               {
+                  console.warningln( "could not stage " + cf.name + " for registration: " +
+                                     ( e.message || e ) );
+               }
+            }
+            dw.forceClose();
+         }
+         console.noteln( tr( "run.debayered", Object.keys( srcOf ).length ) );
+      }
+
       // One pass per output directory: everything with a unique base name shares
       // the flat one, and each homonym gets its own so they cannot overwrite.
-      var groups = {}, t;
+      var groups = {};
       for ( t = 0; t < todo.length; ++t )
       {
          var gd = dirFor( todo[ t ] );
@@ -3178,7 +3224,7 @@ Engine.prototype.registerFrames = function()
          if ( !File.directoryExists( gdir ) )
             File.createDirectory( gdir, true );
          var SA = new StarAlignment;
-         SA.referenceImage        = ref.path;
+         SA.referenceImage        = srcOf[ ref.path ] || ref.path;
          SA.referenceIsFile       = true;                       // path is a file, not a view id
          // mode defaults to RegisterMatch (0); the enum constant isn't reliably
          // resolvable here, and setting it is unnecessary.
@@ -3194,7 +3240,8 @@ Engine.prototype.registerFrames = function()
          SA.outputPostfix         = "_r";
          var tlist = [];
          for ( t = 0; t < groups[ gdir ].length; ++t )
-            tlist.push( [ true, true, groups[ gdir ][ t ].path ] );
+            tlist.push( [ true, true,
+                          srcOf[ groups[ gdir ][ t ].path ] || groups[ gdir ][ t ].path ] );
          SA.targets = tlist;
          var ok = false;
          try { ok = SA.executeGlobal(); }
@@ -3202,6 +3249,11 @@ Engine.prototype.registerFrames = function()
          if ( !ok )
             console.warningln( "StarAlignment reported errors; using whatever registered outputs exist." );
       }
+      // The staged copies exist only for this pass; the registered outputs are
+      // the cache. Keeping them would double what a session leaves under TEMP.
+      for ( var sp in srcOf )
+         try { File.remove( srcOf[ sp ] ); } catch ( e ) {}
+      try { if ( File.directoryExists( cfaDir ) ) File.removeDirectory( cfaDir ); } catch ( e ) {}
    }
    else
       console.noteln( tr( "run.regCached" ) );
