@@ -22,9 +22,20 @@ jobs:
       - name: Publish release + assets
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
         run: |
+          # The title the site will display, taken from the manifest rather than
+          # rebuilt by slicing the zip file name — which drops the last dash-segment
+          # and turns SessionCinema-1.2.0-rc1.zip into "SessionCinema-1.2.0".
+          title="$(jq -r .title dist/update-package.json)"
+          # A dash-suffixed version is a pre-release and must not be served as Latest.
+          case "$VERSION" in
+            *-*) prerelease=--prerelease ;;
+            *)   prerelease= ;;
+          esac
           gh release create "$GITHUB_REF_NAME" \
-            --title "$(ls dist/*.zip | xargs -n1 basename | sed 's/-[^-]*\.zip$//') $GITHUB_REF_NAME" \
+            --title "$title" \
             --generate-notes \
+            $prerelease \
             dist/*.zip \
             dist/update-package.json

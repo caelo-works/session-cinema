@@ -5,7 +5,8 @@
 # Produces the standardized DISTRIBUTION ARTIFACT that the CaeloWorks showcase site
 # (caelo-works/pixinsight-scripts, served at https://pixinsight-scripts.caelo.works/update/)
 # ingests to build the shared, signed updates.xri. This repo does NOT generate or host the
-# final updates.xri — it only emits, per release, two files under dist/:
+# final updates.xri — it only emits, per release, two files under dist/ (or under
+# $OUT_DIR when set):
 #
 #   dist/<NAME>-<version>.zip     the package, tree RELATIVE TO PixInsight's install dir
 #                                   src/scripts/CaeloWorks/<NAME>/<NAME>.js
@@ -29,10 +30,21 @@ PI_VERSION_RANGE="1.9.4:1.9.99"
 VERSION="${1:?usage: build-update-package.sh <version> [releaseDate YYYYMMDD]}"
 RELEASE_DATE="${2:-$(date +%Y%m%d)}"
 
+# Both inputs travel unescaped into a sed replacement, a file name and a JSON value,
+# so they are validated here rather than at the far end of the chain. The optional
+# pre-release suffix keeps the synthetic 0.0.0-ci / 0.0.0-test versions valid.
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || {
+  echo "error: bad version '$VERSION' (expected MAJOR.MINOR.PATCH[-suffix])" >&2; exit 1; }
+# PixInsight reads releaseDate as the YYYYMMDD attribute of the <package> element.
+[[ "$RELEASE_DATE" =~ ^[0-9]{8}$ ]] || {
+  echo "error: bad releaseDate '$RELEASE_DATE' (expected YYYYMMDD)" >&2; exit 1; }
+
 REPO="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 VENDORDIR="CaeloWorks/$NAME"
 ZIPNAME="$NAME-${VERSION}.zip"
-OUT="$REPO/dist"
+# Overridable so a test battery can build into scratch space instead of replacing
+# the delivery tree. The release path and CI leave it unset and get dist/.
+OUT="${OUT_DIR:-$REPO/dist}"
 STAGE="$( mktemp -d )"
 trap 'rm -rf "$STAGE"' EXIT
 
@@ -124,8 +136,8 @@ cat > "$OUT/update-package.json" <<JSON
 }
 JSON
 
-echo "dist/$ZIPNAME  ($(du -h "$OUT/$ZIPNAME" | cut -f1), sha1 $SHA1)"
-echo "dist/update-package.json"
+echo "$OUT/$ZIPNAME  ($(du -h "$OUT/$ZIPNAME" | cut -f1), sha1 $SHA1)"
+echo "$OUT/update-package.json"
 if [ "$SIGNED" = 1 ]; then
   echo "  code signature: $NAME.xsgn INCLUDED (signed; zip not reproducible — sha1 is per-signing)"
 else
