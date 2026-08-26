@@ -38,3 +38,24 @@ assert.strictEqual( M.tr( "btn.generate" ), "Generate" );
 M.setLanguage( "en" );
 
 console.log( "i18n.test.js OK" );
+
+// --- the label column is measured on the labels it actually holds ------------
+//
+// It used to be sized on one hard-coded English string, so the column stayed
+// straight only while every label fitted inside it. In French one does not.
+{
+   assert.ok( M.LABEL_COLUMN_KEYS.length >= 20 );
+   for ( const lang of [ "en", "fr" ] )
+      for ( const k of M.LABEL_COLUMN_KEYS )
+         assert.ok( typeof M.STRINGS[ lang ][ k ] === "string" && M.STRINGS[ lang ][ k ].length,
+            `${lang}.${k} is in the label column list but not in the string table` );
+
+   // The one that overflowed, and the reference it overflowed: French really is
+   // the longer of the two here, which is the whole reason the column has to be
+   // measured rather than assumed.
+   assert.ok( M.STRINGS.fr[ "video.holdFirst" ].length >
+              M.STRINGS.en[ "video.holdFirst" ].length,
+      "the French label is the long one — measuring is not optional" );
+}
+
+console.log( "i18n.test.js OK (label column)" );

@@ -67,6 +67,7 @@ module.exports = {
    PALETTE_ORDER: PALETTE_ORDER,
    CH_NONE: CH_NONE,
    STRINGS: STRINGS,
+   LABEL_COLUMN_KEYS: LABEL_COLUMN_KEYS,
    FRAME_EXT: FRAME_EXT,
    tr: tr,
    versionLabel: versionLabel,
