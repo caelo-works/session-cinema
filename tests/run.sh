@@ -15,7 +15,9 @@
 #      does not need the PixInsight runtime).
 #
 # The GUI and image I/O layers are exercised in PixInsight, including the
-# SESSIONCINEMA_AUTORUN headless hook (see PJSR-NOTES.md §4 and §8).
+# SESSIONCINEMA_AUTORUN headless hook — see docs/pjsr-validation.md, which
+# also records what the PixInsight APIs actually do where that differs from
+# what their naming suggests.
 #
 # Usage: tests/run.sh
 # ============================================================================
@@ -64,6 +66,7 @@ module.exports = {
    OUTPUT_FORMATS: OUTPUT_FORMATS,
    CRF_CHOICES: CRF_CHOICES,
    DEFAULT_CONFIG: DEFAULT_CONFIG,
+   PERSONAL_KEYS: PERSONAL_KEYS,
    PALETTE_ORDER: PALETTE_ORDER,
    CH_NONE: CH_NONE,
    STRINGS: STRINGS,

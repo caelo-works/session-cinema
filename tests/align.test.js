@@ -16,8 +16,16 @@ const placementMatrix = M.placementMatrix;
    const c = Math.sqrt( 3 )/2;
    assert.ok( Math.abs( m[ 0 ][ 0 ] - 2*c ) < 1e-12 && Math.abs( m[ 1 ][ 0 ] - 1 ) < 1e-12,
               "R(+30deg): x-axis image rotates by +30deg (y down)" );
+   // Element by element, not deepStrictEqual: that distinguishes 0 from -0, and
+   // the -0s here come out of -scale*fy*Math.sin(0) and carry no geometric
+   // meaning. Pulling the flip factor out of the product — a rewrite with no
+   // behaviour change — used to turn this red.
    const f = placementMatrix( 1, 0, true, false );
-   assert.deepStrictEqual( f, [ [ -1, -0 ], [ -0, 1 ] ], "flipH negates x only" );
+   const want = [ [ -1, 0 ], [ 0, 1 ] ];
+   for ( let r = 0; r < 2; ++r )
+      for ( let c = 0; c < 2; ++c )
+         assert.ok( Math.abs( f[ r ][ c ] - want[ r ][ c ] ) < 1e-12,
+            `flipH negates x only: [${r}][${c}] is ${f[ r ][ c ]}` );
 }
 
 // Build the 3x3 StarAlignment-style matrix (background px -> reveal px) for
@@ -117,8 +125,22 @@ for ( const p of CASES )
 
 // Quality gate: the synthetic-fit shape passes, degenerate consensus fails
 {
-   const good = [ "out.xisf", "", 63, 0.984, 1, 0.91, 0.92, 0.38, 0.19, 0.60 ];
+   // Twenty columns, because that is what the production path needs: the next
+   // thing it does with an accepted row is saMatrixToAlignment( row.slice(11,20) ).
+   // A ten-column row used to pass this gate and then return null there, so the
+   // fixture validated a shape the code traverses without ever arriving.
+   //
+   // Layout, from a StarAlignment.outputData row captured on PixInsight:
+   //   0 path  1 drizzle  2 pairs  3 inlier ratio  4 ?  5 ?  6 ?  7 rms
+   //   8 ?  9 ?  10 ?  11..19 the 3x3 as a,b,tx, c,d,ty, 0,0,1
+   const good = [ "out.xisf", "", 63, 0.984, 1, 0.91, 0.92, 0.38, 0.19, 0.60,
+                  0, 1, 0, 0, 0, 1, 0, 0, 0, 1 ];
    assert.ok( M.saQualityOk( good ) );
+   // The point of the twenty: an accepted row really does yield a placement.
+   assert.ok( M.saMatrixToAlignment( good.slice( 11, 20 ), 512, 340 ) != null,
+      "a row this gate accepts must produce a matrix, not null three lines later" );
+   assert.ok( !M.saQualityOk( good.slice( 0, 10 ) ),
+      "and a row too short to produce one must be refused here, not there" );
    assert.ok( !M.saQualityOk( good.slice( 0, 2 ).concat( [ 8 ], good.slice( 3 ) ) ), "too few pairs" );
    assert.ok( !M.saQualityOk( good.slice( 0, 3 ).concat( [ 0.3 ], good.slice( 4 ) ) ), "low inlier ratio" );
    assert.ok( !M.saQualityOk( good.slice( 0, 7 ).concat( [ 6.5 ], good.slice( 8 ) ) ), "rms too high" );

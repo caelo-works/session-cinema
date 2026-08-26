@@ -750,19 +750,52 @@ function computeAutoStretch( median, mad )
 
 // FITS DATE-OBS parser -> epoch seconds (UTC) or null. Accepts "YYYY-MM-DD",
 // "YYYY-MM-DDTHH:MM:SS", fractional seconds, and a space instead of the T.
+// FITS DATE-OBS -> epoch seconds. The expression was unanchored at the end and
+// validated nothing, so two shapes got through and were then drawn as measured
+// universal time:
+//
+//   "2026-07-03T22:47:13+02:00"  became 22:47:13 UTC. The overlay printed
+//                                "UT 22:47:13" when UT was 20:47:13 — two hours
+//                                of error presented as a fact.
+//   "2026-13-45T99:99:99"        became a date Date.UTC quietly rolled over.
+//
+// A trailing "Z" is UTC and is accepted; a numeric offset is honoured by
+// subtracting it, which is what the keyword means; anything else after the
+// seconds is a DATE-OBS we do not understand, and null says so rather than
+// guessing. Fields are range-checked before they reach Date.UTC.
 function parseDateObs( s )
 {
    if ( !s )
       return null;
    var t = String( s ).trim();
-   var re = new RegExp( "^(\\d{4})-(\\d{2})-(\\d{2})(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}(?:\\.\\d+)?))?)?" );
+   var re = new RegExp( "^(\\d{4})-(\\d{2})-(\\d{2})" +
+                        "(?:[T ](\\d{2}):(\\d{2})(?::(\\d{2}(?:\\.\\d+)?))?" +
+                        "(?:Z|([+-])(\\d{2}):?(\\d{2}))?)?\\s*$" );
    var m = re.exec( t );
    if ( !m )
       return null;
+   var year = parseInt( m[ 1 ], 10 ), mon = parseInt( m[ 2 ], 10 ), day = parseInt( m[ 3 ], 10 );
+   var hh = m[ 4 ] ? parseInt( m[ 4 ], 10 ) : 0;
+   var mm = m[ 5 ] ? parseInt( m[ 5 ], 10 ) : 0;
    var sec = m[ 6 ] ? parseFloat( m[ 6 ] ) : 0;
-   var ms = Date.UTC( parseInt( m[ 1 ], 10 ), parseInt( m[ 2 ], 10 ) - 1, parseInt( m[ 3 ], 10 ),
-                      m[ 4 ] ? parseInt( m[ 4 ], 10 ) : 0, m[ 5 ] ? parseInt( m[ 5 ], 10 ) : 0, 0 );
-   return ms/1000 + sec;
+   if ( mon < 1 || mon > 12 || day < 1 || day > 31 || hh > 23 || mm > 59 || sec >= 61 )
+      return null;
+   // Days per month, leap years included: 2026-02-30 is not a date.
+   var dim = [ 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 ];
+   if ( mon == 2 && ( ( year % 4 == 0 && year % 100 != 0 ) || year % 400 == 0 ) )
+      dim[ 1 ] = 29;
+   if ( day > dim[ mon - 1 ] )
+      return null;
+   var ms = Date.UTC( year, mon - 1, day, hh, mm, 0 );
+   var epoch = ms/1000 + sec;
+   if ( m[ 7 ] )
+   {
+      var offMin = parseInt( m[ 8 ], 10 )*60 + parseInt( m[ 9 ], 10 );
+      if ( parseInt( m[ 8 ], 10 ) > 23 || parseInt( m[ 9 ], 10 ) > 59 )
+         return null;
+      epoch += ( m[ 7 ] == "+" ) ? -offMin*60 : offMin*60;
+   }
+   return epoch;
 }
 
 // Strip FITS string-value quoting: "'M 42     '" -> "M 42".
@@ -1457,16 +1490,6 @@ function smootherstep01( t )
    return t*t*t*( t*( t*6 - 15 ) + 10 );
 }
 
-// Cubic ease-OUT: fast from the start, decelerating to a stop. Used for the
-// zoom so the wide opening (and its horizon) is left behind quickly rather than
-// lingering during the roll.
-function easeOut01( t )
-{
-   if ( t <= 0 ) return 0;
-   if ( t >= 1 ) return 1;
-   var u = 1 - t;
-   return 1 - u*u*u;
-}
 
 // Great-circle separation between two sky points, in degrees.
 function angularSepDeg( ra1, dec1, ra2, dec2 )
@@ -2317,10 +2340,21 @@ function saveConfig( cfg )
 // Process-instance parameters — let the New Instance triangle save the current
 // settings as a draggable process icon, like any PixInsight script.
 
+// Keys that describe the RECIPIENT, not the work. An icon carries a recipe for a
+// video; it has no business carrying the interface language of whoever made it —
+// dropping a French user's icon flipped an English interface to French, and
+// because persistableConfig() is written to the Settings on close AND on the
+// first Generate, deleting the icon did not put it back.
+var PERSONAL_KEYS = { language: true, lastMsPerFrame: true };
+
 function exportParameters( cfg )
 {
    for ( var k in DEFAULT_CONFIG )
+   {
+      if ( PERSONAL_KEYS[ k ] )
+         continue;
       try { Parameters.set( k, cfg[ k ] ); } catch ( e ) {}
+   }
 }
 
 // Overlay any parameters carried by a launched process icon onto cfg.
@@ -2328,6 +2362,9 @@ function importParameters( cfg )
 {
    for ( var k in DEFAULT_CONFIG )
    {
+      // Belt and braces: an icon written by an older build still carries it.
+      if ( PERSONAL_KEYS[ k ] )
+         continue;
       try
       {
          if ( !Parameters.has( k ) )
@@ -4625,6 +4662,7 @@ Engine.prototype.runZoom = function()
    }
 
    var tot = Math.max( 1, Date.now() - tLoop0 );
+   if ( outIndex > 0 )
    console.noteln( "PERF zoom (" + outIndex + " frames, " + tot + " ms; per-frame avg): " +
       "alloc " + ( PERF.alloc/outIndex ).toFixed( 1 ) + " | sky " + ( PERF.sky/outIndex ).toFixed( 1 ) +
       " | survey " + ( PERF.survey/outIndex ).toFixed( 1 ) + " | labels " + ( PERF.labels/outIndex ).toFixed( 1 ) +
@@ -5157,9 +5195,13 @@ function offsetAlignment( al, dx, dy )
 // Post-fit acceptance on a StarAlignment outputData row: enough matched
 // pairs, a decent inlier ratio and a subpixel-grade rms error — this is what
 // rejects the degenerate consensus a wrong-scale attempt can return.
+// >= 20, not > 9: the very next thing the production path does with an accepted
+// row is saMatrixToAlignment( row.slice( 11, 20 ) ), which needs twenty columns.
+// A shorter row was accepted here and returned null there, so the refusal simply
+// moves upstream — and the harness can no longer call a ten-column row "good".
 function saQualityOk( row )
 {
-   return !!row && row.length > 9 && row[ 2 ] >= 12 && row[ 3 ] >= 0.5 &&
+   return !!row && row.length >= 20 && row[ 2 ] >= 12 && row[ 3 ] >= 0.5 &&
           row[ 7 ] <= 2.5;
 }
 
@@ -6091,9 +6133,11 @@ class SessionCinemaDialog extends Dialog
       this.seqOptionsGroup.sizer.add( this.stackRevealGroup );
 
       // ---- overlay group ----
-      this.titleLabel = new Label( this );
-      this.titleLabel.text = tr( "overlay.videoTitle" );
-      this.titleLabel.minWidth = labelWidth;
+      // Not titleLabel: that name already belongs to the header's product name,
+      // built a few hundred lines above. One of the two was unreachable.
+      this.videoTitleLabel = new Label( this );
+      this.videoTitleLabel.text = tr( "overlay.videoTitle" );
+      this.videoTitleLabel.minWidth = labelWidth;
       this.titleEdit = new Edit( this );
       this.titleEdit.text = cfg.ovTitle;
       try { this.titleEdit.placeholderText = tr( "overlay.videoTitle.hint" ); } catch ( e ) {}
@@ -6106,7 +6150,7 @@ class SessionCinemaDialog extends Dialog
       };
       this.titleSizer = new HorizontalSizer;
       this.titleSizer.spacing = 6;
-      this.titleSizer.add( this.titleLabel );
+      this.titleSizer.add( this.videoTitleLabel );
       this.titleSizer.add( this.titleEdit, 100 );
 
       this.counterCheck = new CheckBox( this );
@@ -7263,7 +7307,9 @@ class SessionCinemaDialog extends Dialog
          this.cfg.ffmpegPath = path;
          this.ffmpegEdit.text = path;
          this.ffmpegStatus.text = tr( "out.installDone", path );
-         this.setFfmpegSection( "ok", false );
+         // false collapsed the section the user had just opened to watch this
+         // finish, hiding the path it had found.
+         this.setFfmpegSection( "ok", true );
       }
       else
       {
@@ -7507,11 +7553,15 @@ class SessionCinemaDialog extends Dialog
          self.progressBar.repaint();
          processEvents();
          // Pause blocks the engine here, between steps, until resumed/cancelled.
+         // A bare processEvents() loop spins as fast as the CPU allows: pausing a
+         // render pinned a core for as long as it stayed paused. Nothing here has
+         // to run more than a few times a second.
          while ( self._paused && !self._cancel )
          {
             self.progressStatus.text = tr( "prog.paused" );
             self.progressBar.repaint();
             processEvents();
+            try { msleep( 60 ); } catch ( e ) {}
          }
       };
 
@@ -7927,7 +7977,8 @@ class AlignDialog extends Dialog
 // ============================================================================
 // HEADLESS HOOK — SESSIONCINEMA_AUTORUN=/path/to/config.json runs the engine
 // without a dialog and writes <outputDir>/sessioncinema-result.json. This is
-// the automation entry used by the two-gate validation runs (PJSR-NOTES §8).
+// the automation entry used by the two-gate validation runs; see
+// docs/pjsr-validation.md.
 // ============================================================================
 
 function runHeadless( cfgPath )

@@ -1,0 +1,13 @@
+# The harness dies before its first instruction on a CRLF checkout: both
+# tests/run.sh and tests/packaging.sh exit on "set: pipefail: invalid option
+# name". The committed blobs are LF and this repository sets core.autocrlf=input
+# locally, but nothing protected another workstation or another runner —
+# including the Windows/WSL bench this product is validated on.
+* text=auto
+*.sh  text eol=lf
+*.js  text eol=lf
+*.json text eol=lf
+# NOT optional: this file goes into the published zip, and a CRLF checkout of it
+# would change the package sha1 on a Windows build — breaking the reproducibility
+# the update site authenticates against.
+*.svg text eol=lf
