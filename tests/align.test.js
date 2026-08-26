@@ -239,3 +239,35 @@ assert.strictEqual( M.saMatrixToAlignment( [ 1, 0, 0, 0, 1, 0, 0, 0, 1e-15 ], RW
 }
 
 console.log( "align.test.js OK" );
+
+// --- one definition of "aligned" ---------------------------------------------
+//
+// It used to be a scale sentinel on one side, nothing at all on the other, and a
+// partial application of the first inside the engine.
+{
+   const stackOnly = { stackRevealAligned: true, stackRevealScale: 1.4,
+                       zoomRevealAligned: false, zoomRevealScale: 1.0 };
+   assert.strictEqual( M.revealAligned( stackOnly, "stack" ), true );
+   assert.strictEqual( M.revealAligned( stackOnly, "zoom" ), false,
+      "zoomRevealScale defaults to 1.0 — a scale is not evidence of an alignment" );
+
+   // The flag alone is not enough either: a cleared placement has scale 0.
+   assert.strictEqual(
+      M.revealAligned( { stackRevealAligned: true, stackRevealScale: 0 }, "stack" ), false );
+   // Nor is a scale alone.
+   assert.strictEqual(
+      M.revealAligned( { stackRevealAligned: false, stackRevealScale: 2 }, "stack" ), false );
+
+   // The neutral placement the engine falls back to: centred, contain-fit, no
+   // rotation, no mirror. It used to inherit the previous image's orientation.
+   const stackW = 4000, stackH = 3000, rw = 2000, rh = 1000;
+   const neutral = M.revealPlacement( stackW/2, stackH/2, stackW/rw, 0, false, false, rw/2, rh/2 );
+   const close = ( a, b, what ) => assert.ok( Math.abs( a - b ) < 1e-9,
+      `${what}: ${a} vs ${b}` );
+   close( neutral.c.x, stackW/2, "neutral centre x" );
+   close( neutral.c.y, stackH/2, "neutral centre y" );
+   close( neutral.ex.y, neutral.c.y, "no rotation: the x axis stays horizontal" );
+   assert.ok( neutral.ex.x > neutral.c.x, "and it is not mirrored" );
+}
+
+console.log( "align.test.js OK (one aligned)" );
