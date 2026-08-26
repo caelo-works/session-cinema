@@ -67,6 +67,15 @@ assert meta["releaseDate"] == "20000101"
 blob = open(os.path.join(out, meta["fileName"]), "rb").read()
 assert meta["sha1"] == hashlib.sha1(blob).hexdigest(), \
     "sha1 in update-package.json does not match the zip it names"
+# descriptionHtml is the fourth documentation surface — the one users read on the
+# update site — and nothing looked at it. It cannot promise a format the script
+# does not write, and it has to name both styles.
+d = meta["descriptionHtml"]
+assert "<p>" in d and "</p>" in d, "descriptionHtml must be HTML"
+assert "PNG" not in d, "descriptionHtml promises PNG; the script writes BMP"
+for term in ("progressive", "Zoom Odyssey", "ffmpeg"):
+    assert term.lower() in d.lower(), "descriptionHtml does not mention " + term
+assert len(d) > 300, "descriptionHtml is too short to describe the product"
 PY
 
 echo "--- __BUILD__ stamped in the packaged entry script"

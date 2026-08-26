@@ -286,6 +286,7 @@ set and its validation evidence).
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.1.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.1.1
 [1.1.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.1.0
 [1.0.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.0.0
 [0.1.0]: https://github.com/caelo-works/session-cinema/releases/tag/v0.1.0
