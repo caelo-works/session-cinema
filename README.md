@@ -87,7 +87,9 @@ beside the script. Then in PixInsight use **Script → Feature Scripts…**, cli
 **Add** and select that folder. Alternatively, run it once via
 **Script → Execute Script File…**.
 
-> **Requires PixInsight 1.9.4 or newer** — Windows, macOS and Linux.
+> **Requires PixInsight 1.9.4 to 1.9.99** — Windows, macOS and Linux. That upper
+> bound is what the published package declares to the updater; the script itself
+> only enforces the lower one.
 > Constellation figures, borders and labels are read from the **AnnotateImage**
 > script's data files, which ship with PixInsight. Without them the Zoom Odyssey
 > still runs, with named stars but no figures, and says so.
@@ -113,10 +115,15 @@ beside the script. Then in PixInsight use **Script → Feature Scripts…**, cli
 
 ## Documentation
 
-- **[Support knowledge base](docs/support-kb.md)** — the complete reference: every
-  control of the dialog (in both languages), every error message, the
-  troubleshooting table, and what is genuinely broken today. Written for a support
+- **[Support knowledge base](docs/support-kb.md)** — written for a support agent
+  to quote: the controls and messages a user is most likely to name, in both
+  languages; every message that stops a run and every one that does not; what is
+  genuinely broken today, and what was fixed in the version before. It is not an
+  exhaustive dump of the string table, and does not try to be. Written for a support
   agent, useful to anyone who wants the whole picture.
+- **[Validation on PixInsight](docs/pjsr-validation.md)** — what is checked
+  against a real PixInsight and how to replay it, plus what the PJSR APIs
+  actually do where that differs from what their naming suggests.
 - **[Reveal alignment](docs/reveal-alignment.md)** — how **Auto** places your
   finished image on the frame behind it, when it gives up, and what to do then.
 - **[ffmpeg mirror](docs/ffmpeg-mirror.md)** — the hosting contract behind the
@@ -152,9 +159,11 @@ walked through:
 
 - new or renamed **controls** and **messages** → the reference and the EN/FR
   lookup table;
-- bugs **fixed** → strike them from §7 *Known bugs* and from the §8
-  troubleshooting table, or support will keep apologising for something that
-  works;
+- bugs **fixed** → move them under a *Fixed in X.Y.Z* heading, with the answer
+  for users still on the previous version. Do **not** delete them: someone who
+  has not updated still hits them, and support still has to recognise what they
+  describe. An entry leaves the KB when the version it belongs to is two
+  releases behind;
 - bugs **found** → add them, with the answer support should give today;
 - the **`Applies to`** line and the facts card → the new version.
 

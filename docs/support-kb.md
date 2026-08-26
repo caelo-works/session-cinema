@@ -37,12 +37,12 @@ down to the user's image.
 |---|---|
 | Version | 1.1.1 |
 | Licence | GPL-3.0 — free and open source |
-| Requires | **PixInsight 1.9.4 or newer** — Windows, macOS, Linux |
+| Requires | **PixInsight 1.9.4 to 1.9.99** — Windows, macOS, Linux |
 | Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
 | Where it appears | **Script → CaeloWorks → Session Cinema** |
 | Video encoding | ffmpeg — detected, installed in one click, or done afterwards by a generated script |
 
-### What leaves the machine, and what the video reveals
+### Privacy: what leaves the machine, and what the video reveals about the site
 
 Three channels, and a user who posts a process icon or publishes a video should
 know about them.
@@ -65,7 +65,7 @@ target's right ascension, declination and field of view are sent to a public CDS
 service, twice per generation. It is the only unsolicited outbound traffic in the
 product; untick the bridge and there is none.
 
-### What is in the video that does not come from the user
+### Credits: the sky survey imagery in the video, and how to acknowledge it
 
 Session Cinema redistributes no third-party data — the star and constellation
 catalogues are read from the user's own PixInsight at run time — but the Zoom
@@ -173,6 +173,18 @@ words on the left are the **exact** strings the dialog shows.
 - **Detect** = **Détecter**
 - **Install ffmpeg…** = **Installer ffmpeg…**
 - **Generate** = **Générer**
+- **Colour composite — map filters to R / G / B** = **Composite couleur — associer les filtres à R / V / B**
+- **Screen stretch:** = **Étirement d'affichage :**
+- **Overlay:** = **Superposition :**
+- **Flip H** = **Miroir H**
+- **Flip V** = **Miroir V**
+- **Fit** = **Ajuster**
+- **Register subs (corrects dithering + meridian flip)** = **Recaler les brutes (corrige le dithering et le retournement au méridien)**
+- **Debayer CFA frames (auto-detected via BAYERPAT)** = **Dématriçage des brutes CFA (détection via BAYERPAT)**
+- **Keep the BMP frame sequence** = **Conserver la séquence BMP**
+- **Different crop from the solved image** = **Cadrage différent de l'image résolue**
+- **Simulate shoot location** = **Simuler le lieu de prise de vue**
+- **Real-sky survey bridge** = **Pont vers le relevé réel du ciel**
 
 ### Tab 1 — Zoom Odyssey
 
@@ -261,7 +273,7 @@ using the **`FILTER`** header value:
 - **Align…** places it on the stack.
 - **Reveal duration (s)** — from 0.3 to 10, default **2.0**.
 
-### Overlay, Video and Output — shared by both tabs
+### Overlay — shared by both tabs
 
 **Overlay** (*« Habillage »*) — this is the honest part of the product:
 
@@ -274,6 +286,8 @@ using the **`FILTER`** header value:
   known-bugs section. When the measurement itself fails, 1.1.1 writes `SNR —`
   rather than dropping the figure.
 - **Subtitle**, **Distance**, **Signature** — free text.
+
+### Video and Output — shared by both tabs
 
 **Video** (*« Vidéo »*):
 
@@ -311,6 +325,8 @@ does not make the video less honest — it removes a figure rather than inventin
 one.
 - **ffmpeg** — see the ffmpeg section.
 
+### Progress, disk and the New Instance icon
+
 **Progress** (*« Progression »*) — a live preview, a bar, **Pause** and **Cancel**.
 Cancelling keeps the frames already rendered and reports how many.
 
@@ -327,6 +343,8 @@ frame behind it — the plate-solved image (Zoom Odyssey) or the growing stack
 (Progressive stack). The **Align…** button (*« Aligner… »*) opens a window showing
 both images, with the finished one draggable on top and an opacity slider to check
 the fit.
+
+### The alignment window
 
 **Auto** star-matches the finished image against the background automatically. It
 handles deep crops, and it handles **mirrored** images. It will refuse a fit it is
@@ -353,6 +371,8 @@ fades it in and out so the fit can be checked.
 ## ffmpeg and video encoding
 
 The script encodes the video with **ffmpeg**. It does not ship one.
+
+### ffmpeg: where it is looked for, and what happens without it
 
 **It looks for ffmpeg** in the system `PATH`, then in a previous auto-install, then
 in the usual package managers — winget, Chocolatey and Scoop on Windows; Homebrew
@@ -428,7 +448,28 @@ exported JPEG or a hand-processed TIFF is not. The fix is in the message.
 
 **"Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF)."** /
 *« Impossible de charger l'image à révéler… »*
-The finished image is unreadable or in an unsupported format.
+The finished image is unreadable or in an unsupported format. This one is raised
+**before the render starts**. Do not confuse it with the next entry, which looks
+like it and comes from a different place.
+
+**"Could not load the solved or reveal image for alignment."** / *« Impossible de
+charger l'image résolue ou l'image à révéler pour l'alignement. »*
+Raised by the **Align…** button, not by Generate — so the user was setting the
+placement up, not rendering. Either of the two images failed to open. Same causes
+as above; ask which button they pressed to tell the two apart.
+
+**"Generation failed: …"** / *« Échec de la génération : … »*
+The catch-all. It carries a JavaScript exception message after the colon, which is
+the only useful part — **always ask for the whole line**, and for the console
+output with it. Anything else that stops a run has its own message above; if this
+one appears, it is not a case anybody anticipated. Collect and escalate.
+
+**"No network: the sky survey bridge is switched off for this run. The video
+renders from the star catalogue instead."** / *« Pas de réseau : le pont vers le
+relevé du ciel est coupé pour ce rendu… »*
+Not an error. The machine could not resolve or reach the survey service, so the
+run stops asking rather than spending two minutes on timeouts. The video is
+produced from the bright-star catalogue.
 
 ### Messages that do NOT stop the run
 
@@ -506,7 +547,10 @@ the video; the overlay shows only the frame count and the cumulative exposure.
 
 **On 1.1.0:** real bug. The figure was never drawn on a **colour** composite, which
 is the default, and nothing said so. Mono renders were fine. Confirm it and tell
-them to update; there is no other workaround than rendering in mono.
+them to update; there is no other workaround than rendering in mono — which means
+unticking **Colour composite — map filters to R / G / B** (*« Composite couleur —
+associer les filtres à R / V / B »*) in the **Colour (multi-filter)** group. The
+subs are then integrated as a single monochrome stack.
 
 **On 1.1.1:** it is measured in colour too, and if it ever cannot be measured the
 overlay says **`SNR —`** instead of dropping the term. So a *missing* dB figure now
@@ -565,6 +609,8 @@ noise improvement shown in the video is real.
 Integrated masters usually drop the `SITELAT` and `SITELONG` headers. Use the
 **"From a sub…"** button and point it at a **raw** sub; it fills Lat, Lon and UTC.
 
+### Troubleshooting — frames, colour and the SNR figure
+
 **"Some of my frames are missing from the video."**
 They were unreadable, or their geometry did not match the others. The PixInsight
 console lists exactly which ones. Frames of different dimensions in the same set
@@ -580,6 +626,8 @@ Ask for the version. **1.1.0:** known bug, never drawn on a colour composite, wh
 is the default — confirm it and tell them to update. **1.1.1:** the box is
 unticked. If it shows **`SNR —`**, the measurement failed: escalate with the
 console output.
+
+### Troubleshooting — the reveal, the video and the encode
 
 **"My revealed image is rotated wrong since the update."**
 Alignments saved before 1.1.0 are read with the opposite rotation, on every
