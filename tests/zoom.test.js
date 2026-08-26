@@ -672,3 +672,33 @@ console.log( "zoom.test.js OK (cropped reveal)" );
 }
 
 console.log( "zoom.test.js OK (opening field)" );
+
+// --- the imagery in the video is credited ------------------------------------
+{
+   const c = M.surveyCredit( "CDS/P/DSS2/color" );
+   assert.ok( c.indexOf( "DSS2" ) >= 0, c );
+   assert.ok( c.indexOf( "STScI" ) >= 0, "DSS is STScI's, and they ask to be named" );
+   assert.ok( c.indexOf( "CDS" ) >= 0, "the service is CDS hips2fits" );
+
+   // Another survey: still credited, and not credited to STScI.
+   const p = M.surveyCredit( "CDS/P/PanSTARRS/DR1/color-z-zg-g" );
+   assert.ok( p.indexOf( "PanSTARRS" ) >= 0, p );
+   assert.ok( p.indexOf( "STScI" ) < 0, "do not credit a survey to the wrong institute" );
+   assert.ok( p.indexOf( "CDS" ) >= 0 );
+
+   assert.strictEqual( M.surveyCredit( "" ), "", "no survey, no claim" );
+
+   // The two acknowledgements are quoted, not reworded, and live where a user
+   // publishing a video will find them.
+   const fs = require( "fs" ), path = require( "path" );
+   for ( const f of [ "README.md", "docs/support-kb.md" ] )
+   {
+      const t = fs.readFileSync( path.join( __dirname, "..", f ), "utf8" );
+      assert.ok( t.indexOf( "hips2fits, a service provided by CDS" ) >= 0,
+         `${f} must carry the CDS acknowledgement verbatim` );
+      assert.ok( t.indexOf( "U.S. Government grant NAG W-2166" ) >= 0,
+         `${f} must carry the STScI acknowledgement verbatim` );
+   }
+}
+
+console.log( "zoom.test.js OK (survey credit)" );

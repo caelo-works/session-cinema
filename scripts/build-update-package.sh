@@ -11,6 +11,7 @@
 #   dist/<NAME>-<version>.zip     the package, tree RELATIVE TO PixInsight's install dir
 #                                   src/scripts/CaeloWorks/<NAME>/<NAME>.js
 #                                   src/scripts/CaeloWorks/<NAME>/<NAME>.svg
+#                                   src/scripts/CaeloWorks/<NAME>/LICENSE
 #                                   rsc/icons/script/<NAME>/<NAME>.svg
 #   dist/update-package.json      metadata the site needs to emit the <package> element
 #
@@ -89,6 +90,10 @@ sed -e "s/__BUILD__/${VERSION}/g" "$REPO/pjsr/$NAME.js" > "$DST/$NAME.js"
 #    tree can find.
 cp "$REPO/pjsr/assets/$NAME.svg" "$STAGE/rsc/icons/script/$NAME/$NAME.svg"
 cp "$REPO/pjsr/assets/$NAME.svg" "$DST/$NAME.svg"
+
+# 3c) the licence travels with the work. GPL-3 §4 asks for a copy to accompany what
+#     is distributed; a URL in a source header is tolerated practice, not the letter.
+cp "$REPO/LICENSE" "$DST/LICENSE"
 
 # 3b) OPTIONAL code signature — DISABLED by default. Enabled only when XSSK_PATH points
 #     to the CaeloWorks signing keys (.xssk) and PI_EXE to a PixInsight executable.

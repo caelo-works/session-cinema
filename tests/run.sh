@@ -153,6 +153,7 @@ module.exports = {
    constellationLabelAlpha: constellationLabelAlpha,
    fadeBand: fadeBand,
    makeSurveyWcs: makeSurveyWcs,
+   surveyCredit: surveyCredit,
    decomposeAffine: decomposeAffine,
    revealSagitta: revealSagitta,
    revealTileCount: revealTileCount,

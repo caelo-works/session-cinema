@@ -418,6 +418,7 @@ var STRINGS = {
       "result.aborted":    "Aborted. %1 frame(s) were rendered.",
       "result.nothing":    "Nothing was rendered.",
       "zoom.noLocation":   "\"Simulate the shoot location\" is on, but no usable latitude, longitude and date were found — the headers carry none and none was typed in. The opening falls back to the equatorial sky.",
+      "zoom.noConstellations": "Constellation data not found (%1). These files belong to the AnnotateImage script, which ships with PixInsight — the zoom runs without them, with named stars but no figures, borders or labels.",
       "zoom.aspectDiffers": "The image to reveal has a different aspect ratio from the solved image. It is treated as a centred crop at the same pixel scale. If its framing is not centred, tick \"Different crop from the solved image\" and align it.",
       "zoom.errCropNotAligned": "\"Different crop from the solved image\" is ticked but the reveal has not been aligned. Open Align… and place it, or untick the box.",
       "zoom.errOpen":      "PixInsight could not open %1. Check the file is a readable FITS/XISF/TIFF and not in use elsewhere.",
@@ -655,6 +656,7 @@ var STRINGS = {
       "result.aborted":    "Interrompu. %1 image(s) rendues.",
       "result.nothing":    "Rien n'a été rendu.",
       "zoom.noLocation":   "« Simuler le lieu de prise de vue » est actif, mais aucune latitude, longitude et date exploitables n'ont été trouvées — les en-têtes n'en portent pas et rien n'a été saisi. L'ouverture retombe sur le ciel équatorial.",
+      "zoom.noConstellations": "Données de constellations introuvables (%1). Ces fichiers appartiennent au script AnnotateImage, livré avec PixInsight — le zoom fonctionne sans, avec les étoiles nommées mais sans figures, frontières ni libellés.",
       "zoom.aspectDiffers": "L'image à révéler n'a pas le même rapport d'aspect que l'image résolue. Elle est traitée comme un recadrage centré à la même échelle. Si son cadrage n'est pas centré, cochez « Cadrage différent de l'image résolue » et alignez-la.",
       "zoom.errCropNotAligned": "« Cadrage différent de l'image résolue » est coché mais l'image à révéler n'a pas été alignée. Ouvrez Aligner… pour la placer, ou décochez la case.",
       "zoom.errOpen":      "PixInsight n'a pas pu ouvrir %1. Vérifiez que le fichier est un FITS/XISF/TIFF lisible et qu'il n'est pas ouvert ailleurs.",
@@ -2729,16 +2731,28 @@ function loadZoomCatalogs()
    if ( root.length )
    {
       cat.stars = parseStarCatalog( readTextFileSafe( root + "/include/pjsr/astrometry/NamedStars.csv" ), 7.0, 7 );
+      // NamedStars.csv ships with the PixInsight core. The three constellation
+      // files belong to the AnnotateImage script — an undeclared dependency whose
+      // absence used to be silent: named stars appeared, constellations did not,
+      // and nothing was printed because one flag covered all four.
+      var missing = [];
       var linesText = readTextFileSafe( root + "/src/scripts/AnnotateImage/ConstellationLines.json" );
       if ( linesText.length )
          try { cat.polys = parseConstellationLines( linesText ); } catch ( e ) {}
+      if ( !cat.polys.length ) missing.push( "ConstellationLines.json" );
       var bordersText = readTextFileSafe( root + "/src/scripts/AnnotateImage/ConstellationBorders.json" );
       if ( bordersText.length )
          try { cat.centroids = constellationCentroids( bordersText ); } catch ( e ) {}
+      if ( !bordersText.length ) missing.push( "ConstellationBorders.json" );
       var labelsText = readTextFileSafe( root + "/src/scripts/AnnotateImage/ConstellationLabels.json" );
       if ( labelsText.length )
          try { cat.labels = JSON.parse( labelsText ); } catch ( e ) {}
+      if ( !labelsText.length ) missing.push( "ConstellationLabels.json" );
       cat.ok = cat.stars.length > 0;
+      cat.constOk = cat.polys.length > 0;
+      cat.missing = missing;
+      if ( missing.length )
+         console.warningln( tr( "zoom.noConstellations", missing.join( ", " ) ) );
    }
 
    // Precompute the fixed 3D unit vector of every star and constellation vertex
@@ -2773,6 +2787,26 @@ function loadZoomCatalogs()
 }
 
 // hips2fits URL for a square TAN cutout centered on (ra,dec).
+// Third-party imagery is painted into the video and the only text in that corner
+// was whatever the user typed as a signature. The short line drawn on screen names
+// the survey and both providers; the acknowledgements they actually publish are
+// quoted in full in README.md and docs/support-kb.md, and are not ours to reword:
+//
+//   CDS   "This research made use of hips2fits, a service provided by CDS."
+//   STScI "The Digitized Sky Surveys were produced at the Space Telescope Science
+//          Institute under U.S. Government grant NAG W-2166. The images of these
+//          surveys are based on photographic data obtained using the Oschin
+//          Schmidt Telescope on Palomar Mountain and the UK Schmidt Telescope."
+function surveyCredit( hipsId )
+{
+   var id = String( hipsId || "" );
+   if ( !id.length )
+      return "";
+   var parts = id.split( "/" );
+   var name = ( parts.length > 2 ) ? parts.slice( 2 ).join( "/" ) : id;
+   return name + ( /DSS/i.test( id ) ? "  ·  STScI" : "" ) + "  ·  CDS/hips2fits";
+}
+
 function hips2fitsUrl( hips, ra, dec, fovDeg, nPx )
 {
    return "https://alasky.cds.unistra.fr/hips-image-services/hips2fits?" +
@@ -4313,6 +4347,8 @@ Engine.prototype.runZoom = function()
    console.noteln( tr( "zoom.solved", formatAngle( framing.fovDeg ),
                        framing.centerRA.toFixed( 3 ), framing.centerDec.toFixed( 3 ) ) );
 
+   var surveyCreditText = ( cfg.hipsEnabled && ( nearBmp || wideBmp ) )
+                          ? surveyCredit( cfg.hipsSurvey ) : "";
    var cat = loadZoomCatalogs();
    if ( !cat.ok )
       console.warningln( tr( "zoom.noCatalogs" ) );
@@ -4504,6 +4540,18 @@ Engine.prototype.runZoom = function()
             drawZoomReveal( g, cam, wideWcs, WIDE_PX, WIDE_PX, wideBmp, wa );
          if ( na > 0 )
             drawZoomReveal( g, cam, nearWcs, NEAR_PX, NEAR_PX, nearBmp, na );
+         // The credit rides with the imagery: visible exactly while it is, at the
+         // alpha it is drawn with, and independent of the user's signature.
+         var creditA = Math.max( wa, na );
+         if ( creditA > 0 && surveyCreditText.length )
+         {
+            g.opacity = clamp01( creditA )*0.75;
+            g.font = zoomFont( 14*unit, false );
+            g.pen = new Pen( 0xFFEAF2FF );
+            g.drawText( Math.round( 40*unit ), Math.round( 40*unit ) + Math.round( 14*unit ),
+                        surveyCreditText );
+            g.opacity = 1;
+         }
          PERF.survey += Date.now() - _t0;
 
          _t0 = Date.now();
