@@ -136,6 +136,7 @@ module.exports = {
    saMatrixToAlignment: saMatrixToAlignment,
    rotationNeedsCheck: rotationNeedsCheck,
    rotationsNeedingCheck: rotationsNeedingCheck,
+   revealAligned: revealAligned,
    stampConfig: stampConfig,
    orderMirrorCandidatesByArch: orderMirrorCandidatesByArch,
    alignTileGrid: alignTileGrid,
