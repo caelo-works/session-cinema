@@ -135,6 +135,9 @@ var DEFAULT_CONFIG = {
    stackRevealRot:  0,           //  … rotation (deg)
    stackRevealFlipH: false,      //  … horizontal flip
    stackRevealFlipV: false,      //  … vertical flip
+   stackRevealAligned: false,    // the placement above was actually aligned (see
+                                 //   revealAligned) — NOT inferred from a scale
+   stackRevealFor:  "",          // key of the reference sub it was aligned against
    stackRevealSec:  2.0,         // reveal cross-fade + zoom-to-fill duration (s)
    // Zoom Odyssey
    zoomImagePath:   "",          // plate-solved image (provides the WCS)
@@ -147,6 +150,7 @@ var DEFAULT_CONFIG = {
    zoomRevealRot:   0,           //  … rotation (deg)
    zoomRevealFlipH: false,       //  … horizontal flip
    zoomRevealFlipV: false,       //  … vertical flip
+   zoomRevealAligned: false,     // the placement above was actually aligned
    zoomStartFov:    180,         // whole-sky field of view (deg) at t=0
    ovShowScale:     true,        // angular scale bar
    ovSubtitle:      "",          // free subtitle, e.g. the constellation name
@@ -260,6 +264,7 @@ var STRINGS = {
       "align.opening":     "Opening…",
       "align.loading":     "Loading images for alignment…",
       "align.loadFailed":  "Could not load the solved or reveal image for alignment.",
+      "align.placementStale": "⚠ The presentation image was aligned on a different set of subs. Its placement has been reset — open Align… again.",
       "align.rotStale":    "⚠ This alignment (rotation %1°) was saved by an earlier version, which stored rotations the other way round. Check it, or redo it with Align… — one click on Auto is enough.",
       "align.rotStaleLog": "WARNING: a saved reveal alignment carries a non-zero rotation with no version stamp. Versions up to 1.0.0 stored the opposite sign, so it may render at twice the angle away from the sky. Redo the alignment once (Align… → Auto) to settle it.",
       "btn.ok":            "OK",
@@ -399,6 +404,7 @@ var STRINGS = {
       "result.skipped":    "%1 input(s) were skipped (unreadable or geometry mismatch).",
       "result.aborted":    "Aborted. %1 frame(s) were rendered.",
       "result.nothing":    "Nothing was rendered.",
+      "zoom.errCropNotAligned": "\"Different crop from the solved image\" is ticked but the reveal has not been aligned. Open Align… and place it, or untick the box.",
       "zoom.errOpen":      "PixInsight could not open %1. Check the file is a readable FITS/XISF/TIFF and not in use elsewhere.",
       "result.openVideo":  "Open video",
       "result.openFolder": "Open folder"
@@ -482,6 +488,7 @@ var STRINGS = {
       "align.opening":     "Ouverture…",
       "align.loading":     "Chargement des images pour l'alignement…",
       "align.loadFailed":  "Impossible de charger l'image résolue ou l'image à révéler pour l'alignement.",
+      "align.placementStale": "⚠ L'image de présentation a été alignée sur d'autres brutes. Son placement a été réinitialisé — rouvrez Aligner…",
       "align.rotStale":    "⚠ Cet alignement (rotation %1°) a été enregistré par une version antérieure, qui stockait les rotations dans l'autre sens. Vérifiez-le, ou refaites-le avec Aligner… — un clic sur Auto suffit.",
       "align.rotStaleLog": "AVERTISSEMENT : un alignement enregistré porte une rotation non nulle sans marque de version. Les versions jusqu'à 1.0.0 stockaient le signe opposé : le rendu peut être décalé du double de l'angle par rapport au ciel. Refaites l'alignement une fois (Aligner… → Auto) pour lever le doute.",
       "btn.ok":            "OK",
@@ -621,6 +628,7 @@ var STRINGS = {
       "result.skipped":    "%1 entrée(s) ignorée(s) (illisibles ou géométrie différente).",
       "result.aborted":    "Interrompu. %1 image(s) rendues.",
       "result.nothing":    "Rien n'a été rendu.",
+      "zoom.errCropNotAligned": "« Cadrage différent de l'image résolue » est coché mais l'image à révéler n'a pas été alignée. Ouvrez Aligner… pour la placer, ou décochez la case.",
       "zoom.errOpen":      "PixInsight n'a pas pu ouvrir %1. Vérifiez que le fichier est un FITS/XISF/TIFF lisible et qu'il n'est pas ouvert ailleurs.",
       "result.openVideo":  "Ouvrir la vidéo",
       "result.openFolder": "Ouvrir le dossier"
@@ -2029,10 +2037,30 @@ function rotationNeedsCheck( cfgVersion, rotDeg )
 }
 
 // Both persisted alignments, checked at once: { zoom, stack, any }.
+// THE definition of "this reveal placement was actually aligned". There used to
+// be three answers to that question: a scale sentinel on the stacking side, none
+// at all on the zoom side (zoomRevealScale defaults to 1.0 and nothing reset it),
+// and a partial application of the stacking one inside the engine, which put the
+// centre and the scale behind the flag but passed the rotation and the mirrors
+// through unconditionally. Everything that reads a placement goes through here.
+function revealAligned( cfg, which )
+{
+   if ( which == "zoom" )
+      return !!cfg.zoomRevealAligned && cfg.zoomRevealScale > 0;
+   return !!cfg.stackRevealAligned && cfg.stackRevealScale > 0;
+}
+
+// A rotation only needs checking where it is actually applied. Warning about one
+// that nothing reads, with no way to dismiss it, teaches people to ignore
+// warnings — and the stamp that would clear it is withheld until every pending
+// rotation is checked, so the notice could never go away on its own.
 function rotationsNeedingCheck( cfg )
 {
-   var zoom = rotationNeedsCheck( cfg.cfgVersion, cfg.zoomRevealRot );
-   var stack = rotationNeedsCheck( cfg.cfgVersion, cfg.stackRevealRot );
+   var zoomUsed = !!cfg.zoomRevealCropped && revealAligned( cfg, "zoom" );
+   var stackUsed = !!( cfg.stackRevealPath && cfg.stackRevealPath.length ) &&
+                   revealAligned( cfg, "stack" );
+   var zoom = zoomUsed && rotationNeedsCheck( cfg.cfgVersion, cfg.zoomRevealRot );
+   var stack = stackUsed && rotationNeedsCheck( cfg.cfgVersion, cfg.stackRevealRot );
    return { zoom: zoom, stack: stack, any: zoom || stack };
 }
 
@@ -2063,6 +2091,13 @@ function loadConfig()
       if ( Settings.lastReadOK && s && s.length )
       {
          var saved = JSON.parse( s );
+         // Written before the aligned flag existed: the old sentinels are the only
+         // evidence there was, so honour them rather than silently discarding a
+         // placement the user really did make.
+         if ( !saved.hasOwnProperty( "stackRevealAligned" ) )
+            saved.stackRevealAligned = saved.stackRevealScale > 0;
+         if ( !saved.hasOwnProperty( "zoomRevealAligned" ) )
+            saved.zoomRevealAligned = !!saved.zoomRevealCropped && saved.zoomRevealScale > 0;
          for ( var k2 in DEFAULT_CONFIG )
             if ( saved.hasOwnProperty( k2 ) && typeof saved[ k2 ] == typeof DEFAULT_CONFIG[ k2 ] )
                cfg[ k2 ] = saved[ k2 ];
@@ -3714,11 +3749,17 @@ Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, out
 
    // Reveal placement in stack px (shared with the align popup preview so what
    // was aligned is what renders), mapped to screen.
-   var aligned = cfg.stackRevealScale > 0;
+   // Rotation and mirrors used to be passed through whatever the flag said, so a
+   // freshly chosen, correctly oriented image was rendered with the PREVIOUS
+   // image's 180 degrees and horizontal flip. The not-aligned branch is a neutral
+   // placement now: centred, contain-fit, no rotation, no mirror.
+   var aligned = revealAligned( cfg, "stack" );
    var pl = revealPlacement( aligned ? cfg.stackRevealOffX : stackW/2,
                              aligned ? cfg.stackRevealOffY : stackH/2,
                              aligned ? cfg.stackRevealScale : ( stackW/rw ),
-                             cfg.stackRevealRot, cfg.stackRevealFlipH, cfg.stackRevealFlipV,
+                             aligned ? cfg.stackRevealRot : 0,
+                             aligned && cfg.stackRevealFlipH,
+                             aligned && cfg.stackRevealFlipV,
                              rw/2, rh/2 );
    var cA  = toScreen( pl.c.x,  pl.c.y );
    var exA = toScreen( pl.ex.x, pl.ex.y );
@@ -3838,7 +3879,16 @@ Engine.prototype.runZoom = function()
       }
       revealW = revealBmp.width;
       revealH = revealBmp.height;
-      revealWcs = ( cfg.zoomRevealCropped && cfg.zoomRevealScale > 0 )
+      if ( cfg.zoomRevealCropped && !revealAligned( cfg, "zoom" ) )
+      {
+         // zoomRevealScale defaults to 1.0 and nothing ever reset it, so ticking
+         // the box and pressing Generate put the reveal centre on pixel (0,0) of
+         // the solved image at 1 px = 1 px — a zoom ending a full degree off
+         // target, self-consistent and therefore invisible.
+         this.fail( "zoom.errCropNotAligned" );
+         return;
+      }
+      revealWcs = ( cfg.zoomRevealCropped && revealAligned( cfg, "zoom" ) )
                   ? cropWcsCentered( wcs, cfg.zoomRevealOffX, cfg.zoomRevealOffY, cfg.zoomRevealScale,
                                      cfg.zoomRevealRot, cfg.zoomRevealFlipH, cfg.zoomRevealFlipV, revealW, revealH )
                   : scaleWcsToDims( wcs, imgW, imgH, revealW, revealH );
@@ -5119,7 +5169,11 @@ class SessionCinemaDialog extends Dialog
       this.zoomImageLabel.minWidth = labelWidth;
       this.zoomImageEdit = new Edit( this );
       this.zoomImageEdit.text = cfg.zoomImagePath;
-      this.zoomImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomImagePath = t; self.updateAlignEnabled(); };
+      this.zoomImageEdit.onTextUpdated = ( t ) =>
+      {
+         if ( t != self.cfg.zoomImagePath ) self.clearZoomPlacement();
+         self.cfg.zoomImagePath = t; self.updateAlignEnabled();
+      };
       this.zoomImageBrowse = new PushButton( this );
       this.zoomImageBrowse.text = tr( "out.browse" );
       this.zoomImageBrowse.onClick = () =>
@@ -5131,6 +5185,7 @@ class SessionCinemaDialog extends Dialog
          if ( d.execute() && d.fileNames.length )
          {
             self.cfg.zoomImagePath = d.fileNames[ 0 ];
+            self.clearZoomPlacement();
             self.zoomImageEdit.text = d.fileNames[ 0 ];
             self.autofillLocationFromImage( d.fileNames[ 0 ] );
             self.updateAlignEnabled();
@@ -5153,7 +5208,11 @@ class SessionCinemaDialog extends Dialog
       this.revealImageLabel.minWidth = labelWidth;
       this.revealImageEdit = new Edit( this );
       this.revealImageEdit.text = cfg.zoomRevealPath;
-      this.revealImageEdit.onTextUpdated = ( t ) => { self.cfg.zoomRevealPath = t; self.updateAlignEnabled(); };
+      this.revealImageEdit.onTextUpdated = ( t ) =>
+      {
+         if ( t != self.cfg.zoomRevealPath ) self.clearZoomPlacement();
+         self.cfg.zoomRevealPath = t; self.updateAlignEnabled();
+      };
       this.revealImageBrowse = new PushButton( this );
       this.revealImageBrowse.text = tr( "out.browse" );
       this.revealImageBrowse.onClick = () =>
@@ -5165,6 +5224,7 @@ class SessionCinemaDialog extends Dialog
          if ( d.execute() && d.fileNames.length )
          {
             self.cfg.zoomRevealPath = d.fileNames[ 0 ];
+            self.clearZoomPlacement();
             self.revealImageEdit.text = d.fileNames[ 0 ];
             self.updateAlignEnabled();
          }
@@ -5174,6 +5234,7 @@ class SessionCinemaDialog extends Dialog
       this.revealClearButton.onClick = () =>
       {
          self.cfg.zoomRevealPath = "";
+         self.clearZoomPlacement();
          self.revealImageEdit.text = "";
          self.updateAlignEnabled();
       };
@@ -5341,7 +5402,15 @@ class SessionCinemaDialog extends Dialog
       this.stackRevealLabel.minWidth = labelWidth;
       this.stackRevealEdit = new Edit( this );
       this.stackRevealEdit.text = cfg.stackRevealPath;
-      this.stackRevealEdit.onTextUpdated = ( t ) => { self.cfg.stackRevealPath = t; self.updateStackRevealEnabled(); };
+      // Typing a path is not aligning it: the placement on screen belongs to the
+      // image that was there before.
+      this.stackRevealEdit.onTextUpdated = ( t ) =>
+      {
+         if ( t != self.cfg.stackRevealPath )
+            self.clearStackPlacement();
+         self.cfg.stackRevealPath = t;
+         self.updateStackRevealEnabled();
+      };
       this.stackRevealBrowse = new PushButton( this );
       this.stackRevealBrowse.text = tr( "frames.addFiles" );
       this.stackRevealBrowse.onClick = () =>
@@ -5354,7 +5423,7 @@ class SessionCinemaDialog extends Dialog
          {
             self.cfg.stackRevealPath = d.fileNames[ 0 ];
             self.stackRevealEdit.text = d.fileNames[ 0 ];
-            self.cfg.stackRevealScale = 0;   // force a fresh alignment for a new image
+            self.clearStackPlacement();
             self.updateStackRevealEnabled();
          }
       };
@@ -5363,7 +5432,7 @@ class SessionCinemaDialog extends Dialog
       this.stackRevealClearBtn.onClick = () =>
       {
          self.cfg.stackRevealPath = "";
-         self.cfg.stackRevealScale = 0;
+         self.clearStackPlacement();
          self.stackRevealEdit.text = "";
          self.updateStackRevealEnabled();
       };
@@ -5961,7 +6030,10 @@ class SessionCinemaDialog extends Dialog
       this.newInstanceButton.onMousePress = () =>
       {
          self.newInstanceButton.hasFocus = true;
-         exportParameters( self.cfg );
+         // persistableConfig(), not the live cfg: an auto-derived title is not a
+         // choice, and a process icon carrying it relabels every later session
+         // dragged onto it — including the output file names.
+         exportParameters( self.persistableConfig() );
          self.newInstanceButton.pushed = false;
          self.newInstance();
       };
@@ -6147,7 +6219,27 @@ class SessionCinemaDialog extends Dialog
          : tr( "frames.summary.none" );
       this.updateEstimate();
       this.refreshFilterMapping();
+      this.checkStackPlacementStillApplies();
       this.updateStackRevealEnabled();
+   }
+
+   // A placement made on one night applied silently to another: the sub list can
+   // be swapped wholesale while the stackReveal* keys sit there, and the reveal
+   // then lands on a stack it was never aligned to. The reference the alignment
+   // was made against is stored with it and compared here.
+   checkStackPlacementStillApplies()
+   {
+      if ( !revealAligned( this.cfg, "stack" ) || !this.cfg.stackRevealFor.length )
+         return;
+      var now = this.revealReferenceKey();
+      if ( !now.length || now == this.cfg.stackRevealFor )
+      {
+         this.placementStale = false;
+         return;
+      }
+      this.clearStackPlacement();
+      this.placementStale = true;
+      console.warningln( tr( "align.placementStale" ) );
    }
 
    // Repopulate the filter→channel combos from the filters present in the loaded
@@ -6412,8 +6504,10 @@ class SessionCinemaDialog extends Dialog
       var stack = gRotPending.stack && this.cfg.stackRevealPath.length > 0;
       this.rotWarnZoom.text = zoom ? tr( "align.rotStale", deg( this.cfg.zoomRevealRot ) ) : "";
       this.rotWarnZoom.visible = zoom;
-      this.rotWarnStack.text = stack ? tr( "align.rotStale", deg( this.cfg.stackRevealRot ) ) : "";
-      this.rotWarnStack.visible = stack;
+      var stackText = stack ? tr( "align.rotStale", deg( this.cfg.stackRevealRot ) )
+                            : ( this.placementStale ? tr( "align.placementStale" ) : "" );
+      this.rotWarnStack.text = stackText;
+      this.rotWarnStack.visible = stackText.length > 0;
    }
 
    onAddFiles()
@@ -6579,7 +6673,7 @@ class SessionCinemaDialog extends Dialog
          return;
       }
       var c = this.cfg;
-      var dlg = new AlignDialog( solvedBmp, revealBmp, alignInit( !c.zoomRevealCropped,
+      var dlg = new AlignDialog( solvedBmp, revealBmp, alignInit( !revealAligned( c, "zoom" ),
          c.zoomRevealOffX, c.zoomRevealOffY, c.zoomRevealScale, c.zoomRevealRot, c.zoomRevealFlipH, c.zoomRevealFlipV ) );
       if ( dlg.execute() && dlg.accepted )
       {
@@ -6589,10 +6683,42 @@ class SessionCinemaDialog extends Dialog
          this.cfg.zoomRevealRot = dlg.rotDeg;
          this.cfg.zoomRevealFlipH = dlg.flipH;
          this.cfg.zoomRevealFlipV = dlg.flipV;
+         this.cfg.zoomRevealAligned = true;
          this.cfg.zoomRevealCropped = true;
          this.croppedCheck.checked = true;
          this.rotChecked( "zoom" );
       }
+   }
+
+   // The sub list a stack placement belongs to. The alignment is made against the
+   // registration reference, so the reference identifies the target: swap the subs
+   // for another night and the saved placement is describing a different image.
+   // A placement belongs to the image it was made on. Changing that image — typed,
+   // browsed or cleared — discards it rather than applying it to the next one.
+   clearStackPlacement()
+   {
+      var c = this.cfg;
+      c.stackRevealAligned = false; c.stackRevealFor = "";
+      c.stackRevealScale = 0; c.stackRevealOffX = 0; c.stackRevealOffY = 0;
+      c.stackRevealRot = 0; c.stackRevealFlipH = false; c.stackRevealFlipV = false;
+      this.updateRotWarnings();
+   }
+
+   clearZoomPlacement()
+   {
+      var c = this.cfg;
+      c.zoomRevealAligned = false;
+      c.zoomRevealScale = 0; c.zoomRevealOffX = 0; c.zoomRevealOffY = 0;
+      c.zoomRevealRot = 0; c.zoomRevealFlipH = false; c.zoomRevealFlipV = false;
+      this.updateRotWarnings();
+   }
+
+   revealReferenceKey()
+   {
+      if ( !this.frames.length )
+         return "";
+      var ref = pickReference( sortFrames( this.frames ) );
+      return ref ? pathKey( ref.path ) : "";
    }
 
    // Open the alignment popup for the progressive-stack presentation image,
@@ -6631,7 +6757,7 @@ class SessionCinemaDialog extends Dialog
          return;
       }
       var c = this.cfg;
-      var dlg = new AlignDialog( bgBmp, revealBmp, alignInit( !( c.stackRevealScale > 0 ),
+      var dlg = new AlignDialog( bgBmp, revealBmp, alignInit( !revealAligned( c, "stack" ),
          c.stackRevealOffX, c.stackRevealOffY, c.stackRevealScale, c.stackRevealRot, c.stackRevealFlipH, c.stackRevealFlipV ) );
       if ( dlg.execute() && dlg.accepted )
       {
@@ -6641,6 +6767,8 @@ class SessionCinemaDialog extends Dialog
          this.cfg.stackRevealRot = dlg.rotDeg;
          this.cfg.stackRevealFlipH = dlg.flipH;
          this.cfg.stackRevealFlipV = dlg.flipV;
+         this.cfg.stackRevealAligned = true;
+         this.cfg.stackRevealFor = this.revealReferenceKey();
          this.stackRevealEdit.text = this.cfg.stackRevealPath;
          this.rotChecked( "stack" );
       }
