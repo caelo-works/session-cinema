@@ -48,6 +48,23 @@ OUT="${OUT_DIR:-$REPO/dist}"
 STAGE="$( mktemp -d )"
 trap 'rm -rf "$STAGE"' EXIT
 
+# The version sold on the package and the version the script displays must be the
+# same number. Nothing else ties them: SC_VERSION is a source constant the build
+# never rewrites, so a forgotten bump would ship a 1.2.0 package whose dialog reads
+# 1.1.1. Checked here rather than in the workflow so manual builds are covered too.
+# The synthetic 0.0.0-* versions are deliberately unrelated to the source constant.
+case "$VERSION" in
+  0.0.0-*) ;;
+  *)
+    SRC_VERSION="$( sed -n 's/^#define[[:space:]]\{1,\}SC_VERSION[[:space:]]\{1,\}"\([^"]*\)".*/\1/p' "$REPO/pjsr/$NAME.js" | head -1 )"
+    [ -n "$SRC_VERSION" ] || { echo "error: no #define SC_VERSION found in pjsr/$NAME.js" >&2; exit 1; }
+    [ "$SRC_VERSION" = "$VERSION" ] || {
+      echo "error: building version '$VERSION' but pjsr/$NAME.js declares SC_VERSION \"$SRC_VERSION\"" >&2
+      echo "       bump the source constant, or tag the version it already declares." >&2
+      exit 1; }
+    ;;
+esac
+
 DST="$STAGE/src/scripts/$VENDORDIR"
 mkdir -p "$DST" "$STAGE/rsc/icons/script/$NAME"
 rm -rf "$OUT"; mkdir -p "$OUT"
