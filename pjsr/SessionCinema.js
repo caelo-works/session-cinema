@@ -1369,6 +1369,27 @@ function projectToScreen( cam, ra, dec )
    };
 }
 
+// Undo projectToScreen: the sky direction a screen pixel looks at, as a unit
+// vector in the same frame the camera basis is built in. The stereographic
+// projection is invertible over the whole sphere but its antipode, so this is
+// exact rather than an approximation — tests/announced.test.js round-trips it
+// against the forward projection before resting anything on it.
+function screenToVec( cam, x, y )
+{
+   var rEdge = 2*Math.tan( deg2rad( cam.fovDeg/2 )/2 );
+   var s = ( cam.W/2 )/rEdge;
+   var rx = ( cam.W/2 - x )/s, ry = ( cam.H/2 - y )/s;
+   var cr = Math.cos( deg2rad( cam.rollDeg ) ), sr = Math.sin( deg2rad( cam.rollDeg ) );
+   var xp = rx*cr + ry*sr, yp = -rx*sr + ry*cr;
+   var rho = Math.sqrt( xp*xp + yp*yp );
+   var theta = 2*Math.atan( rho/2 );             // stereographic: rho = 2 tan(theta/2)
+   var sn = Math.sin( theta ), z = Math.cos( theta );
+   var ux = rho > 0 ? xp/rho : 0, uy = rho > 0 ? yp/rho : 0;
+   return [ sn*ux*cam.r[ 0 ] + sn*uy*cam.u[ 0 ] + z*cam.f[ 0 ],
+            sn*ux*cam.r[ 1 ] + sn*uy*cam.u[ 1 ] + z*cam.f[ 1 ],
+            sn*ux*cam.r[ 2 ] + sn*uy*cam.u[ 2 ] + z*cam.f[ 2 ] ];
+}
+
 // Frame-constant projector: all the camera-only terms computed ONCE, plus a
 // cull threshold on z = vec·forward (no on-screen point can have a smaller z,
 // so a star below it is safely skipped before any projection math). Hot loops
@@ -1758,10 +1779,40 @@ function formatAngle( deg )
 }
 
 // A scale bar spanning about a quarter of the frame for the current FOV.
-function scaleBar( fovDeg, W )
+// The bar must span the angle it states AT THE PLACE IT IS DRAWN. The renderer
+// is stereographic, so pixels per degree grow with distance from the frame
+// centre: sizing the bar on the frame-wide average W/fovDeg is right at exactly
+// one radius and wrong everywhere else — and most wrong in the corners, which is
+// where drawZoomOverlay puts it. On a 16:9 opening the average understates the
+// corner by 40%; on a 9:16 export, where the bar sits far below the horizontal
+// half-width, by nearly a factor of three.
+//
+// x1,y is the bar's RIGHT end in screen pixels. The length is solved, not
+// computed: the angle a segment spans grows monotonically with its length, so
+// bisection lands on the length that spans the stated angle exactly. The target
+// is still a quarter of the frame's width, read as sky at that same place.
+function scaleBar( cam, x1, y )
 {
-   var ang = niceAngle( fovDeg*0.25 );
-   return { label: formatAngle( ang ), lengthPx: ang*( W/fovDeg ) };
+   var right = screenToVec( cam, x1, y );
+   function spanOf( len )
+   {
+      var v = screenToVec( cam, x1 - len, y );
+      var d = vdot( right, v );
+      return rad2deg( Math.acos( d < -1 ? -1 : ( d > 1 ? 1 : d ) ) );
+   }
+   var ang = niceAngle( spanOf( cam.W*0.25 ) );
+   // Searching past a quarter width costs nothing and keeps the bar honest in
+   // the degenerate case where even the smallest label needs more room.
+   var lo = 0, hi = cam.W*0.9;
+   for ( var i = 0; i < 60; ++i )
+   {
+      var mid = ( lo + hi )/2;
+      if ( spanOf( mid ) < ang )
+         lo = mid;
+      else
+         hi = mid;
+   }
+   return { label: formatAngle( ang ), lengthPx: ( lo + hi )/2 };
 }
 
 // NamedStars.csv / Messier.csv share "id,alpha(deg),delta(deg),magnitude,..."
@@ -4545,8 +4596,9 @@ function drawZoomOverlay( g, cam, cfg, title, t )
    }
    if ( cfg.ovShowScale )
    {
-      var sb = scaleBar( cam.fovDeg, W );
-      var bx1 = W - margin, bx0 = bx1 - sb.lengthPx, by = H - margin;
+      var bx1 = W - margin, by = H - margin;
+      var sb = scaleBar( cam, bx1, by );
+      var bx0 = bx1 - sb.lengthPx;
       var tick = Math.round( 6*u );
       g.pen = new Pen( 0xCCFFFFFF, Math.max( 1, 2*u ) );
       g.drawLine( bx0, by, bx1, by );

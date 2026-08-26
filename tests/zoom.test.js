@@ -313,11 +313,9 @@ assert.strictEqual( M.formatAngle( 15/60 ), "15′" );
 assert.strictEqual( M.formatAngle( 0.5/60 ), "30″" );
 assert.strictEqual( M.niceAngle( 40 ), 30 );
 assert.strictEqual( M.niceAngle( 0.9 ), 0.5 );
-{
-   const b = M.scaleBar( 60, 1920 );
-   assert.strictEqual( b.label, "15°" );        // niceAngle(15) for target 15
-   near( b.lengthPx, 15*(1920/60), 1e-6, "bar length" );
-}
+// scaleBar itself is checked in tests/announced.test.js, against the sky its bar
+// actually covers rather than against its own formula. Asserting here that it
+// computes what it computes is what let a bar labelled 30 degrees span 10.
 
 // --- angular separation ---
 near( M.angularSepDeg( 100, 20, 100, 20 ), 0, 1e-9 );
