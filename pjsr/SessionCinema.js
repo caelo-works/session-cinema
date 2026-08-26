@@ -3031,6 +3031,24 @@ Engine.prototype.makeAccumulator = function( id )
 // what decides whether to encode at all, and what the run reports. A full disk
 // then produced a video short of the frames it claimed, and the sequence was
 // deleted afterwards because ffmpeg had returned 0.
+// Every frame_*.bmp of this target. The sequence directory is derived from the
+// title, the palette and the style — no timestamp — so two runs of the same
+// target land in the same place, and ffmpeg's image2 demuxer reads the contiguous
+// run from 1 up to the first gap. A cancelled 500-frame render followed by a
+// 180-frame one therefore encoded 500 frames, 320 of them from last time.
+Engine.prototype.clearFrames = function()
+{
+   var dir = this.framesDir();
+   var toRemove = [];
+   var ff = new FileFind;
+   if ( ff.begin( dir + "/frame_*" + FRAME_EXT ) )
+      do { if ( ff.isFile ) toRemove.push( dir + "/" + ff.name ); }
+      while ( ff.next() );
+   for ( var i = 0; i < toRemove.length; ++i )
+      try { File.remove( toRemove[ i ] ); } catch ( e ) {}
+   return toRemove.length;
+};
+
 Engine.prototype.saveFrame = function( bmp, index )
 {
    var path = this.framesDir() + "/" + frameFileName( index );
@@ -3059,9 +3077,30 @@ Engine.prototype.saveFrame = function( bmp, index )
 // Cache dir for a given reference file — under TEMP, namespaced by the
 // reference so a different input set (hence a different reference) never
 // reuses stale alignments.
+// A short stable digest of a path. Not cryptographic — it only has to make two
+// different absolute paths land on two different names. FNV-1a, twice, for 64
+// bits of hex.
+function pathKey( p )
+{
+   var s = String( p ), h1 = 0x811c9dc5, h2 = 0x1000193, i, c;
+   for ( i = 0; i < s.length; ++i )
+   {
+      c = s.charCodeAt( i );
+      h1 = ( ( h1 ^ c ) * 0x01000193 ) >>> 0;
+      h2 = ( ( h2 ^ c ) * 0x85ebca6b ) >>> 0;
+   }
+   return ( "0000000" + h1.toString( 16 ) ).slice( -8 ) +
+          ( "0000000" + h2.toString( 16 ) ).slice( -8 );
+}
+
+// Cache dir for a given reference file, under TEMP. Keyed on the reference's
+// FULL path, not its base name: two nights that both start with Light_0001.fit
+// used to share this directory, and existence alone is taken as proof an entry
+// is valid — so the second night silently reused the first night's alignments.
 Engine.prototype.regCacheDir = function( refPath )
 {
-   return File.systemTempDirectory + "/sc-reg/" + File.extractName( refPath );
+   return File.systemTempDirectory + "/sc-reg/" +
+          File.extractName( refPath ) + "-" + pathKey( refPath );
 };
 
 // Alignment reference: the first sub (shoot order) of the most-populated
@@ -3094,12 +3133,30 @@ Engine.prototype.registerFrames = function()
       File.createDirectory( cacheDir, true );
    console.noteln( tr( "run.regRef", ref.name ) );
 
-   function outFor( fr ) { return cacheDir + "/" + File.extractName( fr.path ) + "_r.xisf"; }
+   // StarAlignment names its output <basename>_r.xisf in one output directory, so
+   // two subs sharing a base name overwrite each other and the list below ends up
+   // with two entries pointing at one file. Those get a directory of their own,
+   // keyed on the full path. Unique names stay flat, and stay in one batch.
+   var baseCount = {}, i, b;
+   for ( i = 0; i < this.frames.length; ++i )
+   {
+      b = File.extractName( this.frames[ i ].path );
+      baseCount[ b ] = ( baseCount[ b ] || 0 ) + 1;
+   }
+   function dirFor( fr )
+   {
+      var bn = File.extractName( fr.path );
+      return ( baseCount[ bn ] > 1 ) ? ( cacheDir + "/" + pathKey( fr.path ) ) : cacheDir;
+   }
+   function outFor( fr )
+   {
+      return dirFor( fr ) + "/" + File.extractName( fr.path ) + "_r.xisf";
+   }
 
    // Only (re)register subs whose registered output is missing (immutable
    // captures ⇒ existence is a sufficient cache key).
    var todo = [];
-   for ( var i = 0; i < this.frames.length; ++i )
+   for ( i = 0; i < this.frames.length; ++i )
       if ( !File.exists( outFor( this.frames[ i ] ) ) )
          todo.push( this.frames[ i ] );
 
@@ -3107,30 +3164,44 @@ Engine.prototype.registerFrames = function()
    {
       console.noteln( tr( "run.registering", todo.length ) );
       this.progress( 0, todo.length, tr( "run.registering", todo.length ) );
-      var SA = new StarAlignment;
-      SA.referenceImage        = ref.path;
-      SA.referenceIsFile       = true;                          // path is a file, not a view id
-      // mode defaults to RegisterMatch (0); the enum constant isn't reliably
-      // resolvable here, and setting it is unnecessary.
-      SA.restrictToPreviews    = false;
-      SA.generateDrizzleData   = false;
-      SA.generateMasks         = false;
-      SA.generateDistortionMaps = false;
-      SA.distortionCorrection  = false;                         // similarity: translation + rotation
-      SA.noGUIMessages         = true;
-      SA.overwriteExistingFiles = true;
-      SA.outputDirectory       = cacheDir;
-      SA.outputExtension       = ".xisf";
-      SA.outputPostfix         = "_r";
-      var tlist = [];
-      for ( var t = 0; t < todo.length; ++t )
-         tlist.push( [ true, true, todo[ t ].path ] );
-      SA.targets = tlist;
-      var ok = false;
-      try { ok = SA.executeGlobal(); }
-      catch ( e ) { console.criticalln( "StarAlignment failed: " + ( e.message || e ) ); }
-      if ( !ok )
-         console.warningln( "StarAlignment reported errors; using whatever registered outputs exist." );
+      // One pass per output directory: everything with a unique base name shares
+      // the flat one, and each homonym gets its own so they cannot overwrite.
+      var groups = {}, t;
+      for ( t = 0; t < todo.length; ++t )
+      {
+         var gd = dirFor( todo[ t ] );
+         if ( !groups[ gd ] ) groups[ gd ] = [];
+         groups[ gd ].push( todo[ t ] );
+      }
+      for ( var gdir in groups )
+      {
+         if ( !File.directoryExists( gdir ) )
+            File.createDirectory( gdir, true );
+         var SA = new StarAlignment;
+         SA.referenceImage        = ref.path;
+         SA.referenceIsFile       = true;                       // path is a file, not a view id
+         // mode defaults to RegisterMatch (0); the enum constant isn't reliably
+         // resolvable here, and setting it is unnecessary.
+         SA.restrictToPreviews    = false;
+         SA.generateDrizzleData   = false;
+         SA.generateMasks         = false;
+         SA.generateDistortionMaps = false;
+         SA.distortionCorrection  = false;                      // similarity: translation + rotation
+         SA.noGUIMessages         = true;
+         SA.overwriteExistingFiles = true;
+         SA.outputDirectory       = gdir;
+         SA.outputExtension       = ".xisf";
+         SA.outputPostfix         = "_r";
+         var tlist = [];
+         for ( t = 0; t < groups[ gdir ].length; ++t )
+            tlist.push( [ true, true, groups[ gdir ][ t ].path ] );
+         SA.targets = tlist;
+         var ok = false;
+         try { ok = SA.executeGlobal(); }
+         catch ( e ) { console.criticalln( "StarAlignment failed: " + ( e.message || e ) ); }
+         if ( !ok )
+            console.warningln( "StarAlignment reported errors; using whatever registered outputs exist." );
+      }
    }
    else
       console.noteln( tr( "run.regCached" ) );
@@ -3659,6 +3730,7 @@ Engine.prototype.runZoom = function()
    }
    if ( !File.directoryExists( this.framesDir() ) )
       File.createDirectory( this.framesDir(), true );
+   this.clearFrames();
 
    // Revealed image. Two sources are supported: the solved image itself
    // (auto-stretched), or a separate finished image (JPEG/PNG/TIFF/…) inserted
@@ -3966,20 +4038,10 @@ Engine.prototype.encode = function()
       console.noteln( tr( "run.encodeOk", this.videoPath() ) );
       // A lost frame means the sequence is short of what was counted; deleting it
       // would remove the only evidence and the only way to re-encode by hand.
+      // A lost frame means the sequence is short of what was counted; deleting it
+      // would remove the only evidence and the only way to re-encode by hand.
       if ( !cfg.keepFrames && !this.lostFrames )
-      {
-         var toRemove = [];
-         var ff = new FileFind;
-         if ( ff.begin( this.framesDir() + "/frame_*" + FRAME_EXT ) )
-            do
-            {
-               if ( ff.isFile )
-                  toRemove.push( this.framesDir() + "/" + ff.name );
-            }
-            while ( ff.next() );
-         for ( var i = 0; i < toRemove.length; ++i )
-            try { File.remove( toRemove[ i ] ); } catch ( e ) {}
-      }
+         this.clearFrames();
       return { encoded: true, scriptPath: scriptPath, videoPath: this.videoPath() };
    }
    // Three ways to get here that used to collapse into one exit code.
@@ -4041,6 +4103,10 @@ Engine.prototype.run = function()
    // inside runZoom, so it creates its own directory there.
    if ( cfg.style != STYLE_ZOOM && !File.directoryExists( this.framesDir() ) )
       File.createDirectory( this.framesDir(), true );
+   // Unconditional, and at the start: "Keep the frame sequence" means keep THIS
+   // run's frames after encoding, never let the previous run's through.
+   if ( cfg.style != STYLE_ZOOM )
+      this.clearFrames();
 
    // Progressive stack: register to a common reference first (dithering + flip).
    if ( cfg.style == STYLE_STACKING )
