@@ -1,17 +1,47 @@
 name: Release
 
-# Push a semver tag (e.g. `v1.0.0`) to cut a release: this builds the distribution
-# artifact and publishes it as release assets for the CaeloWorks update site to ingest.
+# Push a semver tag (e.g. `v1.0.0`) to cut a release: this runs the full test
+# suite against the tagged commit, builds the distribution artifact and publishes
+# it as a DRAFT release. Promoting the draft is the deliberate gesture that lets
+# the CaeloWorks update site ingest it.
 on:
   push:
     tags: ['v*']
 
+# Read-only by default: only the publishing job is given a write token.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  tests:
+    name: Gate — the tag must be releasable
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # merge-base needs the history, not just the tagged commit.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Tag must point at a commit on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "::error::$GITHUB_REF_NAME points at a commit that is not on main"
+            exit 1
+          }
+      - name: Pure-logic tests (node)
+        run: bash tests/run.sh
+      - name: Packaging battery
+        run: bash tests/packaging.sh
+
+  release:
+    name: Build and publish
+    needs: tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Version from tag
@@ -35,6 +65,7 @@ jobs:
           esac
           gh release create "$GITHUB_REF_NAME" \
             --title "$title" \
+            --draft \
             --generate-notes \
             $prerelease \
             dist/*.zip \
