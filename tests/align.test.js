@@ -271,3 +271,54 @@ console.log( "align.test.js OK" );
 }
 
 console.log( "align.test.js OK (one aligned)" );
+
+// --- a stamp is a certificate only if we recognise it ------------------------
+//
+// The convention changed in 1.1.0 and was stamped from 1.1.1 on. The old test was
+// a presence test: any truthy value of any type vouched for the rotation, so a
+// hand-written headless config saying "1.0.0" — a version that wrote the OTHER
+// convention — silenced exactly the warning it should have raised.
+{
+   assert.strictEqual( M.rotationNeedsCheck( "1.0.0", 90 ), true,
+      "1.0.0 wrote the other convention: it certifies nothing" );
+   assert.strictEqual( M.rotationNeedsCheck( "1.1.0", 90 ), true,
+      "1.1.0 changed the convention but did not stamp" );
+   assert.strictEqual( M.rotationNeedsCheck( "1.1.1", 90 ), false );
+   assert.strictEqual( M.rotationNeedsCheck( "1.2.0", 90 ), false );
+   assert.strictEqual( M.rotationNeedsCheck( "2.0.0", 90 ), false );
+   assert.strictEqual( M.rotationNeedsCheck( "yes", 90 ), true, "not a version" );
+   assert.strictEqual( M.rotationNeedsCheck( 1, 90 ), true, "not a version either" );
+   assert.strictEqual( M.rotationNeedsCheck( "", 90 ), true );
+   // A rotation of zero is the same angle in both conventions, whatever the stamp.
+   assert.strictEqual( M.rotationNeedsCheck( "1.0.0", 0 ), false );
+}
+
+// --- one type filter, for both ways a config comes in ------------------------
+{
+   const D = M.DEFAULT_CONFIG;
+   // The headless path had no filter at all: a non-empty string is truthy.
+   const r = M.sanitizeConfig( { colorEnabled: "false", debayer: "no", fps: 30 } );
+   assert.strictEqual( r.cfg.colorEnabled, D.colorEnabled, "a string is not a boolean" );
+   assert.strictEqual( r.cfg.debayer, D.debayer );
+   assert.strictEqual( r.cfg.fps, 30, "a valid value still gets through" );
+   assert.strictEqual( r.rejected.length, 2 );
+
+   // An index out of range is not a type error and is just as fatal.
+   const idx = M.sanitizeConfig( { formatIndex: 4, crfIndex: 9 } );
+   assert.strictEqual( idx.cfg.formatIndex, D.formatIndex, "formatIndex 4 threw on fmtDef.w" );
+   assert.strictEqual( idx.cfg.crfIndex, D.crfIndex, "crfIndex 9 went undefined into ffmpeg" );
+   assert.strictEqual( idx.rejected.length, 2 );
+   assert.ok( M.sanitizeConfig( { formatIndex: 3 } ).rejected.length === 0, "3 is valid" );
+   assert.ok( M.sanitizeConfig( { formatIndex: 1.5 } ).rejected.length === 1, "and 1.5 is not" );
+
+   // The two numbers the engine divides by.
+   assert.strictEqual( M.sanitizeConfig( { fps: 0 } ).cfg.fps, D.fps );
+   assert.strictEqual( M.sanitizeConfig( { targetDuration: 0 } ).cfg.targetDuration,
+                       D.targetDuration );
+
+   // Nothing at all is a fresh install, not a rejection.
+   assert.deepStrictEqual( M.sanitizeConfig( null ).rejected, [] );
+   assert.strictEqual( M.sanitizeConfig( null ).cfg.fps, D.fps );
+}
+
+console.log( "align.test.js OK (stamp, config filter)" );

@@ -391,6 +391,10 @@ var STRINGS = {
       "run.framesKept":    "Frame sequence: %1",
       "run.done":          "Done. %1 frame(s) rendered in %2.",
       "run.error":         "Generation failed: %1",
+      "cfg.unreadable":    "Saved settings could not be read (%1). Defaults are in use — nothing has been overwritten yet.",
+      "cfg.rejected":      "Ignored in the configuration: %1",
+      "cfg.unreadableHint": "Session Cinema is running on default settings because the saved ones could not be read. Set what you need and generate once, and they will be saved again.",
+      "cfg.notOverwritten": "The unreadable settings were left in place, not overwritten.",
       "run.frameLost":     "A frame could not be written: %1. Check free space and folder permissions.",
       "run.framesLost":    "%1 frame(s) could not be written — the video would be short. Nothing was deleted.",
       "run.encodeSaid":    "ffmpeg said: %1",
@@ -616,6 +620,10 @@ var STRINGS = {
       "run.framesKept":    "Séquence d'images : %1",
       "run.done":          "Terminé. %1 image(s) rendues en %2.",
       "run.error":         "Échec de la génération : %1",
+      "cfg.unreadable":    "Les réglages enregistrés n'ont pas pu être lus (%1). Les valeurs par défaut sont utilisées — rien n'a encore été écrasé.",
+      "cfg.rejected":      "Ignoré dans la configuration : %1",
+      "cfg.unreadableHint": "Session Cinema tourne sur les réglages par défaut, faute d'avoir pu lire ceux enregistrés. Réglez ce dont vous avez besoin et générez une fois, ils seront réenregistrés.",
+      "cfg.notOverwritten": "Les réglages illisibles ont été laissés en place, pas écrasés.",
       "run.frameLost":     "Une image n'a pas pu être écrite : %1. Vérifiez l'espace disque et les droits du dossier.",
       "run.framesLost":    "%1 image(s) n'ont pas pu être écrites — la vidéo serait incomplète. Rien n'a été supprimé.",
       "run.encodeSaid":    "ffmpeg a répondu : %1",
@@ -2070,11 +2078,32 @@ function parseConstellationLines( jsonText )
 // announces itself is a nuisance, a wrong render that does not is a broken promise.
 //
 // 0° is the same angle in both conventions, which is why most users never saw this.
+// The rotation convention changed in 1.1.0 and was stamped from 1.1.1 on, so a
+// stamp is a certificate only if it names 1.1.1 or later. It used to be a presence
+// test: any truthy value of any type vouched for the rotation, and a hand-written
+// headless config saying "1.0.0" — a version that wrote the OTHER convention —
+// silenced exactly the warning it should have raised.
+var ROT_CONVENTION_SINCE = [ 1, 1, 1 ];
+
+function parseSemver( v )
+{
+   var m = /^(\d+)\.(\d+)\.(\d+)/.exec( String( v || "" ) );
+   return m ? [ parseInt( m[ 1 ], 10 ), parseInt( m[ 2 ], 10 ), parseInt( m[ 3 ], 10 ) ] : null;
+}
+
 function rotationNeedsCheck( cfgVersion, rotDeg )
 {
    if ( !( Math.abs( rotDeg ) > 0 ) )
       return false;
-   return !( cfgVersion && String( cfgVersion ).length );
+   var v = parseSemver( cfgVersion );
+   if ( v == null )
+      return true;
+   for ( var i = 0; i < 3; ++i )
+   {
+      if ( v[ i ] > ROT_CONVENTION_SINCE[ i ] ) return false;
+      if ( v[ i ] < ROT_CONVENTION_SINCE[ i ] ) return true;
+   }
+   return false;
 }
 
 // Both persisted alignments, checked at once: { zoom, stack, any }.
@@ -2121,33 +2150,87 @@ function stampConfig( cfg, pending )
    return cfg;
 }
 
+// The one filter. The Settings path checked types and the headless path did not,
+// so "colorEnabled": "false" — a non-empty string, therefore truthy — rendered in
+// colour and ended ok:true, and "formatIndex": 4 threw a TypeError on fmtDef.w
+// three frames in. Types AND ranges, because an index out of range is not a type
+// error and is just as fatal.
+function sanitizeConfig( raw )
+{
+   var cfg = {}, k;
+   for ( k in DEFAULT_CONFIG )
+      cfg[ k ] = DEFAULT_CONFIG[ k ];
+   if ( !raw )
+      return { cfg: cfg, rejected: [] };
+   var rejected = [];
+   for ( k in DEFAULT_CONFIG )
+   {
+      if ( !raw.hasOwnProperty( k ) )
+         continue;
+      if ( typeof raw[ k ] != typeof DEFAULT_CONFIG[ k ] )
+      {
+         rejected.push( k + " (expected " + ( typeof DEFAULT_CONFIG[ k ] ) +
+                        ", got " + ( typeof raw[ k ] ) + ")" );
+         continue;
+      }
+      cfg[ k ] = raw[ k ];
+   }
+   // Indices into a fixed table, and the two spins the engine divides by.
+   function clampIndex( key, n )
+   {
+      var v = cfg[ key ];
+      if ( !( v >= 0 && v < n && v == Math.floor( v ) ) )
+      {
+         rejected.push( key + " (out of range 0.." + ( n - 1 ) + ": " + v + ")" );
+         cfg[ key ] = DEFAULT_CONFIG[ key ];
+      }
+   }
+   clampIndex( "formatIndex", OUTPUT_FORMATS.length );
+   clampIndex( "crfIndex", CRF_CHOICES.length );
+   if ( !( cfg.fps >= 1 ) )
+   {
+      rejected.push( "fps (must be at least 1: " + cfg.fps + ")" );
+      cfg.fps = DEFAULT_CONFIG.fps;
+   }
+   if ( !( cfg.targetDuration > 0 ) )
+   {
+      rejected.push( "targetDuration (must be positive: " + cfg.targetDuration + ")" );
+      cfg.targetDuration = DEFAULT_CONFIG.targetDuration;
+   }
+   return { cfg: cfg, rejected: rejected };
+}
+
+// gSettingsUnreadable: the saved blob existed and could not be parsed. The empty
+// catch used to return a config full of defaults, indistinguishable from a fresh
+// install — every setting silently lost, and then overwritten on close, so the
+// evidence went too. The dialog says so and holds the save back until the user
+// has had a chance to see it.
+var gSettingsUnreadable = false;
+
 function loadConfig()
 {
-   var cfg = {};
-   for ( var k in DEFAULT_CONFIG )
-      cfg[ k ] = DEFAULT_CONFIG[ k ];
+   var raw = null;
    try
    {
       var s = Settings.read( SETTINGS_KEY, DataType.UCString );
       if ( Settings.lastReadOK && s && s.length )
       {
-         var saved = JSON.parse( s );
+         raw = JSON.parse( s );
          // Written before the aligned flag existed: the old sentinels are the only
          // evidence there was, so honour them rather than silently discarding a
          // placement the user really did make.
-         if ( !saved.hasOwnProperty( "stackRevealAligned" ) )
-            saved.stackRevealAligned = saved.stackRevealScale > 0;
-         if ( !saved.hasOwnProperty( "zoomRevealAligned" ) )
-            saved.zoomRevealAligned = !!saved.zoomRevealCropped && saved.zoomRevealScale > 0;
-         for ( var k2 in DEFAULT_CONFIG )
-            if ( saved.hasOwnProperty( k2 ) && typeof saved[ k2 ] == typeof DEFAULT_CONFIG[ k2 ] )
-               cfg[ k2 ] = saved[ k2 ];
+         if ( !raw.hasOwnProperty( "stackRevealAligned" ) )
+            raw.stackRevealAligned = raw.stackRevealScale > 0;
+         if ( !raw.hasOwnProperty( "zoomRevealAligned" ) )
+            raw.zoomRevealAligned = !!raw.zoomRevealCropped && raw.zoomRevealScale > 0;
       }
    }
    catch ( e )
    {
+      gSettingsUnreadable = true;
+      console.criticalln( tr( "cfg.unreadable", e.message || e ) );
    }
-   return cfg;
+   return sanitizeConfig( raw ).cfg;
 }
 
 function saveConfig( cfg )
@@ -6172,7 +6255,12 @@ class SessionCinemaDialog extends Dialog
       this.sizer.add( this.columnsSizer, 100 );
       this.sizer.add( this.bottomSizer );
 
-      this.updateRotWarnings();   // before adjustToContents: the notice takes room
+      if ( gSettingsUnreadable )
+      console.warningln( tr( "cfg.unreadableHint" ) );
+   this.touchedAnything = false;   // see the close path: an unreadable settings
+                                   // blob must not be overwritten by a session
+                                   // that did nothing.
+   this.updateRotWarnings();   // before adjustToContents: the notice takes room
       this.adjustToContents();
       this.autofillTitle();   // frames may already be loaded (e.g. language reload)
       this.refreshTree();
@@ -6850,6 +6938,7 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.validate( true ) )
          return;
+      this.touchedAnything = true;
       saveConfig( this.persistableConfig() );
 
       var self = this;
@@ -7322,9 +7411,13 @@ function runHeadless( cfgPath )
    {
       var raw = File.readTextFile( cfgPath );
       var user = JSON.parse( raw );
-      var cfg = {};
-      for ( var k in DEFAULT_CONFIG )
-         cfg[ k ] = user.hasOwnProperty( k ) ? user[ k ] : DEFAULT_CONFIG[ k ];
+      var clean = sanitizeConfig( user );
+      var cfg = clean.cfg;
+      for ( var ri = 0; ri < clean.rejected.length; ++ri )
+      {
+         console.warningln( tr( "cfg.rejected", clean.rejected[ ri ] ) );
+         result.warnings.push( tr( "cfg.rejected", clean.rejected[ ri ] ) );
+      }
       gLanguage = cfg.language || "en";
       // No dialog to carry the notice here, so an unstamped rotation is reported
       // in the console AND in the result file — automation reads the file.
@@ -7430,7 +7523,14 @@ function main()
          continue;
       }
       cfg = dialog.cfg;
-      saveConfig( dialog.persistableConfig() );
+      // An unreadable settings blob left every value at its default, and saving
+      // on close then overwrote the original — the evidence went with the
+      // settings. Nothing is written back unless the user did something with the
+      // session, so a bad blob survives long enough to be looked at.
+      if ( !gSettingsUnreadable || dialog.touchedAnything )
+         saveConfig( dialog.persistableConfig() );
+      else
+         console.warningln( tr( "cfg.notOverwritten" ) );
       return;
    }
 }

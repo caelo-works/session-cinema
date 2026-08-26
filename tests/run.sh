@@ -136,6 +136,8 @@ module.exports = {
    placementMatrix: placementMatrix,
    saMatrixToAlignment: saMatrixToAlignment,
    rotationNeedsCheck: rotationNeedsCheck,
+   sanitizeConfig: sanitizeConfig,
+   parseSemver: parseSemver,
    rotationsNeedingCheck: rotationsNeedingCheck,
    revealAligned: revealAligned,
    stampConfig: stampConfig,
