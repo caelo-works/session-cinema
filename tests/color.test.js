@@ -82,3 +82,38 @@ console.log( "OK color.test.js (" + n + " assertions)" );
 }
 
 console.log( "color.test.js OK (channel none)" );
+
+// --- one filter, however it is spelled ---------------------------------------
+{
+   const frames = [];
+   for ( let i = 0; i < 60; ++i ) frames.push( { filter: "Ha" } );
+   for ( let i = 0; i < 60; ++i ) frames.push( { filter: "HA" } );
+   for ( let i = 0; i < 120; ++i ) frames.push( { filter: "OIII" } );
+
+   const filters = M.detectFilters( frames );
+   assert.strictEqual( filters.length, 2, "two spellings of Ha are one filter" );
+   assert.strictEqual( filters[ 0 ].filter, "Ha", "the first spelling seen is the label" );
+   assert.strictEqual( filters[ 0 ].count, 120, "and it carries every sub" );
+
+   const map = M.resolveChannelMap( { palette: "HOO", chR: "", chG: "", chB: "" }, filters );
+   for ( const spelling of [ "Ha", "HA", "H", "H_alpha" ] )
+      assert.deepStrictEqual( M.channelsFedBy( spelling, map ), [ "R" ],
+         `${spelling} must feed the same channel as Ha` );
+
+   // Every sub reaches a channel — none silently dropped.
+   let fed = 0;
+   for ( const f of frames ) if ( M.channelsFedBy( f.filter, map ).length ) ++fed;
+   assert.strictEqual( fed, frames.length );
+}
+
+// --- LRGB is not offered, and an old config still renders the same -----------
+{
+   assert.ok( M.PALETTE_ORDER.indexOf( "LRGB" ) < 0, "LRGB must not be offered" );
+   const filters = [ { filter: "R", count: 5 }, { filter: "G", count: 5 },
+                     { filter: "B", count: 5 }, { filter: "L", count: 5 } ];
+   const asRgb  = M.resolveChannelMap( { palette: "RGB",  chR: "", chG: "", chB: "" }, filters );
+   const asLrgb = M.resolveChannelMap( { palette: "LRGB", chR: "", chG: "", chB: "" }, filters );
+   assert.deepStrictEqual( asLrgb, asRgb, "a config saved with LRGB renders as RGB" );
+}
+
+console.log( "color.test.js OK (filter spellings, LRGB)" );
