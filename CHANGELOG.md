@@ -4,6 +4,58 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+The chain between a fixed bug and a user who receives the fix. None of it touches
+render logic.
+
+### Changed
+- A tag no longer publishes on its own. The release workflow now runs both test
+  batteries against the tagged commit and refuses a tag that does not point at a
+  commit on `main`; the write token belongs to the publishing job only. The
+  release is created as a **draft** — promoting it is the gesture that exposes it
+  to the update site.
+- The build refuses to produce a package whose version `#define SC_VERSION` does
+  not declare, naming both numbers. A forgotten bump used to ship a package sold
+  as the new version whose window, header badge and startup line all read the
+  previous one, and pinned the support knowledge base to a version no longer in
+  the field. The synthetic `0.0.0-*` versions used by CI stay exempt.
+- Package entries are stored rather than deflated. The reproducibility the script
+  header promised held only on one machine: the deflate stream depends on the
+  local zlib's level, `memLevel` and strategy, none of which the format pins.
+  The archive goes from ~80 KB to ~272 KB, and can now be rebuilt and compared
+  byte for byte anywhere.
+- The build script writes into `$OUT_DIR` when set, defaulting to `dist/`.
+
+### Added
+- The build stamp reaches the interface. The header badge and the startup console
+  line read `1.1.1 (dev)` for a checkout that was never packaged and `1.1.1` for a
+  real package — enough to tell a package from a file hand-copied into a stale
+  Feature Scripts entry, which support could not check before.
+- Releases carry `SessionCinema.js` and `SessionCinema.svg` as loose assets,
+  extracted from the zip just built. The manual install documented in the README
+  and the knowledge base pointed at a `.js` no release had ever carried; both now
+  name the icon as well, and say why the two belong in the same folder.
+
+### Fixed
+- A pre-release tag published as **Latest**, under a title mangled by slicing the
+  zip file name: `v1.2.0-rc1` became "SessionCinema-1.2.0 v1.2.0-rc1". The title
+  comes from the manifest, and a dash-suffixed version publishes as a pre-release.
+- The version and the release date reached a `sed` replacement, a file name and a
+  JSON value with no validation. `1.2&0` produced a package whose build stamp read
+  `1.2__BUILD__0`; a date written `2026-08-17` shipped where PixInsight expects
+  `YYYYMMDD`. Both are checked before anything is produced.
+- Running the packaging battery replaced `dist/` with a `0.0.0-test` build. It
+  builds into scratch space and leaves the delivery tree alone.
+- The packaging battery checked that the `sha1` field was forty characters long,
+  not that it matched the archive it names — and that field is what the site, and
+  then PixInsight, authenticate the package by.
+
+### Security
+- Both workflows pin their actions by commit SHA, the publishing checkout no
+  longer persists its credentials in `.git/config`, and a concurrency group keeps
+  two tags pushed back to back from racing for the same release.
+
 ## [1.1.1] - 2026-08-17
 
 Three bugs, all of them cases where the script did something other than what it

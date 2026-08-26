@@ -46,6 +46,12 @@ ZIPNAME="$NAME-${VERSION}.zip"
 # Overridable so a test battery can build into scratch space instead of replacing
 # the delivery tree. The release path and CI leave it unset and get dist/.
 OUT="${OUT_DIR:-$REPO/dist}"
+# This directory is wiped below. A caller-supplied path makes that worth checking.
+case "$OUT" in
+  /|/*/..*|"") echo "error: refusing to build into '$OUT'" >&2; exit 1 ;;
+  /*) ;;
+  *)  echo "error: OUT_DIR must be an absolute path, got '$OUT'" >&2; exit 1 ;;
+esac
 STAGE="$( mktemp -d )"
 trap 'rm -rf "$STAGE"' EXIT
 
