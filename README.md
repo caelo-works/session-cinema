@@ -88,6 +88,9 @@ beside the script. Then in PixInsight use **Script → Feature Scripts…**, cli
 **Script → Execute Script File…**.
 
 > **Requires PixInsight 1.9.4 or newer** — Windows, macOS and Linux.
+> Constellation figures, borders and labels are read from the **AnnotateImage**
+> script's data files, which ship with PixInsight. Without them the Zoom Odyssey
+> still runs, with named stars but no figures, and says so.
 > Video encoding uses [ffmpeg](https://ffmpeg.org/) when available.
 
 ## Getting started
@@ -192,6 +195,22 @@ This produces two files under `dist/`:
   version, `fileName`, `sha1`, type, `releaseDate`, `piVersionRange`, title
   and `descriptionHtml`.
 
-## License
+## License and credits
 
-[GPL-3.0](LICENSE) © CaeloWorks
+[GPL-3.0](LICENSE) © CaeloWorks. The licence text travels inside the published
+package, next to the script.
+
+Session Cinema redistributes no third-party data: the star and constellation
+catalogues are read from your own PixInsight installation at run time. It does
+paint real-sky imagery into the video when the survey bridge is on, fetched from
+the CDS. A short credit is drawn on screen while that imagery is visible, and the
+acknowledgements the providers publish are these — quoted, not reworded:
+
+> This research made use of hips2fits, a service provided by CDS.
+
+> The Digitized Sky Surveys were produced at the Space Telescope Science Institute
+> under U.S. Government grant NAG W-2166. The images of these surveys are based on
+> photographic data obtained using the Oschin Schmidt Telescope on Palomar Mountain
+> and the UK Schmidt Telescope.
+
+If you publish a video that shows survey imagery, reproduce them.

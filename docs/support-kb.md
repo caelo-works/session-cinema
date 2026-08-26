@@ -38,8 +38,34 @@ down to the user's image.
 | Version | 1.1.1 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 or newer** — Windows, macOS, Linux |
+| Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
 | Where it appears | **Script → CaeloWorks → Session Cinema** |
 | Video encoding | ffmpeg — detected, installed in one click, or done afterwards by a generated script |
+
+### What is in the video that does not come from the user
+
+Session Cinema redistributes no third-party data — the star and constellation
+catalogues are read from the user's own PixInsight at run time — but the Zoom
+Odyssey **paints real-sky imagery into the video** when the survey bridge is on.
+A short credit is drawn on screen while that imagery is visible, naming the
+survey, STScI and CDS. It is not the signature field and cannot be edited.
+
+If a user asks what to write when they publish, give them these two, verbatim.
+They are the providers' own wording and must not be reworded:
+
+- *This research made use of hips2fits, a service provided by CDS.*
+- *The Digitized Sky Surveys were produced at the Space Telescope Science
+  Institute under U.S. Government grant NAG W-2166. The images of these surveys
+  are based on photographic data obtained using the Oschin Schmidt Telescope on
+  Palomar Mountain and the UK Schmidt Telescope.*
+
+If they untick the survey bridge, the video contains no third-party imagery and
+neither line applies.
+
+**"Where are the constellations?"** — the figures, borders and labels come from
+the **AnnotateImage** script's data files. Those ship with PixInsight; if they
+cannot be found the run says so by name in the console and continues with named
+stars only.
 
 **Two styles, one window.** The window opens on the **Zoom Odyssey** tab; the
 second tab is **Progressive stack** (*« Empilement progressif »*). The right-hand
