@@ -181,3 +181,38 @@ assert.strictEqual( M.slugify( "___" ), "session" );
 }
 
 console.log( "overlay.test.js OK" );
+
+// --- DATE-OBS: a header we do not understand is not a measurement ------------
+//
+// The expression was unanchored and validated nothing, so a time-zone suffix was
+// read as if it were UTC — "2026-07-03T22:47:13+02:00" became 22:47:13 UTC and
+// the overlay drew "UT 22:47:13" when UT was 20:47:13. Two hours, as a fact.
+{
+   const U = ( y, mo, d, h, mi, s ) => Date.UTC( y, mo - 1, d, h || 0, mi || 0, s || 0 )/1000;
+
+   assert.strictEqual( M.parseDateObs( "2026-07-03T22:47:13" ), U( 2026, 7, 3, 22, 47, 13 ) );
+   assert.strictEqual( M.parseDateObs( "2026-07-03T22:47:13Z" ), U( 2026, 7, 3, 22, 47, 13 ),
+      "a trailing Z is UTC" );
+   assert.strictEqual( M.parseDateObs( "2026-07-03T22:47:13+02:00" ), U( 2026, 7, 3, 20, 47, 13 ),
+      "an offset is honoured, not ignored" );
+   assert.strictEqual( M.parseDateObs( "2026-07-03T22:47:13-05:00" ), U( 2026, 7, 4, 3, 47, 13 ) );
+   assert.strictEqual( M.parseDateObs( "2026-07-03T2247" ), null, "not a shape we know" );
+   assert.strictEqual( M.parseDateObs( "2026-07-03" ), U( 2026, 7, 3 ) );
+
+   // Out of range is not a date, however plausible Date.UTC makes it look.
+   assert.strictEqual( M.parseDateObs( "2026-13-01" ), null );
+   assert.strictEqual( M.parseDateObs( "2026-02-30" ), null );
+   assert.strictEqual( M.parseDateObs( "2026-07-03T24:00:00" ), null );
+   assert.strictEqual( M.parseDateObs( "2026-07-03T22:60:00" ), null );
+   assert.strictEqual( M.parseDateObs( "2024-02-29" ), U( 2024, 2, 29 ), "leap years are real" );
+   assert.strictEqual( M.parseDateObs( "2026-02-29" ), null, "2026 is not one" );
+   assert.strictEqual( M.parseDateObs( "2026-07-03T22:47:60" ), U( 2026, 7, 3, 22, 48, 0 ),
+      "a leap second is a real DATE-OBS" );
+
+   // Anything trailing is a header we do not understand: say null, do not guess.
+   assert.strictEqual( M.parseDateObs( "2026-07-03T22:47:13 rubbish" ), null );
+   assert.strictEqual( M.parseDateObs( "" ), null );
+   assert.strictEqual( M.parseDateObs( null ), null );
+}
+
+console.log( "overlay.test.js OK (DATE-OBS)" );

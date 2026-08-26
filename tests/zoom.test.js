@@ -702,3 +702,43 @@ console.log( "zoom.test.js OK (opening field)" );
 }
 
 console.log( "zoom.test.js OK (survey credit)" );
+
+// --- a camera roll that is not zero ------------------------------------------
+//
+// Every camera in this harness used to have rollDeg = 0, except one used only
+// inside an equivalence block where a roll error applies to both sides and
+// cancels. Nothing would have noticed a sign flip in the roll — and getting that
+// sign wrong is exactly what made surveys turn the wrong way against the stars.
+{
+   const W = 1920, H = 1080, ra0 = 83.8, dec0 = -5.4;
+   for ( const roll of [ 0, 30, -30, 90 ] )
+   {
+      const cam = M.makeCamera( ra0, dec0, 20, roll, W, H );
+      const c = M.projectToScreen( cam, ra0, dec0 );
+      near( c.x, W/2, 1e-6, `roll ${roll}: centre x` );
+      near( c.y, H/2, 1e-6, `roll ${roll}: centre y` );
+
+      // A point one degree north of centre. At roll 0 it is straight up; the roll
+      // turns it by exactly that angle, and the direction is the renderer's.
+      const p = M.projectToScreen( cam, ra0, dec0 + 1 );
+      const dx = p.x - c.x, dy = p.y - c.y;
+      // Screen y grows downward, so "up" is -y; measure clockwise from up.
+      // Measured, not assumed: rollDeg turns celestial north CLOCKWISE on screen
+      // by exactly that angle. Getting this sign wrong is what once made surveys
+      // rotate opposite to the stars drawn over them, visible only while rolling.
+      let ang = Math.atan2( dx, -dy )*180/Math.PI;
+      while ( ang <= -180 ) ang += 360;
+      while ( ang > 180 ) ang -= 360;
+      let want = roll;
+      while ( want <= -180 ) want += 360;
+      while ( want > 180 ) want -= 360;
+      near( ang, want, 1e-6, `roll ${roll}: north sits at the rolled angle` );
+      // And the distance from centre does not depend on the roll.
+      near( Math.hypot( dx, dy ),
+            Math.hypot( M.projectToScreen( M.makeCamera( ra0, dec0, 20, 0, W, H ), ra0, dec0 + 1 ).x - W/2,
+                        M.projectToScreen( M.makeCamera( ra0, dec0, 20, 0, W, H ), ra0, dec0 + 1 ).y - H/2 ),
+            1e-6, `roll ${roll}: a roll turns the frame, it does not scale it` );
+   }
+}
+
+console.log( "zoom.test.js OK (camera roll)" );
