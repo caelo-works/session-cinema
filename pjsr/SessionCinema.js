@@ -3132,9 +3132,10 @@ Engine.prototype.runStacking = function()
    var meanExposure = 0;
    var outIndex = 0;
    var totalRenders = indices.length;
+   var lastOv = null, geomW = 0, geomH = 0;
 
    acc.mainView.beginProcess( UndoFlag.NoSwapFile );
-   this.accumulate( acc, function( n, frameIndex, accImg )
+   var nTotal = this.accumulate( acc, function( n, frameIndex, accImg )
    {
       var frame = self.frames[ frameIndex ];
       cumExposure += frame.exposure;
@@ -3173,6 +3174,8 @@ Engine.prototype.runStacking = function()
          sigmaCurrent: sigma,
          title: self.title
       } );
+      lastOv = ov;
+      if ( !geomW ) { geomW = accImg.width; geomH = accImg.height; }
       var bmp = renderOutputBitmap( mean.mainView, cfg, ov );
       mean.forceClose();
       self.saveFrame( bmp, ++outIndex );
@@ -3181,6 +3184,28 @@ Engine.prototype.runStacking = function()
       console.writeln( tr( "run.render", outIndex, totalRenders, frame.name ) );
    } );
    acc.mainView.endProcess();
+
+   // End reveal, the same tail the colour path renders. It had exactly one call
+   // site, inside runStackingColor, so every mono session — OSC, DSLR, a single
+   // filter, or Colour composite unticked — offered the presentation image, let
+   // it be aligned, and then ignored it.
+   //
+   // Built from the complete integration rather than from the last rendered
+   // frame: accumulate() only counts subs it could actually add, so a skipped sub
+   // means the loop never reaches n == N and keying the reveal on that would drop
+   // it again. The two differ only by the subs that were skipped.
+   if ( !this.aborted && nTotal > 0 && geomW && revealTailFrames( cfg ) > 0 )
+   {
+      var fin = meanOf( acc.mainView.image, nTotal, "__sc_meanR" );
+      var sR = ( stretch != null ) ? stretch
+                                   : computeStretchForImage( fin.mainView.image, cfg.stretchLinked );
+      fin.mainView.beginProcess( UndoFlag.NoSwapFile );
+      applyStretchToView( fin.mainView, sR );
+      fin.mainView.endProcess();
+      var revealBase = renderOutputBitmap( fin.mainView, cfg, null );
+      fin.forceClose();
+      outIndex = this.renderStackReveal( revealBase, geomW, geomH, lastOv, outIndex, totalRenders );
+   }
    acc.forceClose();
    gc();
 };
