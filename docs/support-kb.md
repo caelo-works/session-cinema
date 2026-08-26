@@ -240,6 +240,22 @@ using the **`FILTER`** header value:
 - **Keep the BMP frame sequence** — off by default. A kept sequence is large:
   each 1920x1080 frame is about 6 MB, so a 900-frame render leaves roughly
   5.5 GB next to the video.
+
+**Disk.** Every run ends with a line saying what Session Cinema is holding: the
+registered subs and the survey cutouts, both under the system temp directory, plus
+the frame sequence if it was kept. On a season that reaches tens of GB. Nothing is
+deleted automatically — the registration cache is what makes a re-run fast — so
+the line names the directory and the user decides. The same figures are in the
+result window and in the headless result file, under `disk`.
+
+**"Why did my render take so long?"** The console prints a per-phase breakdown at
+the end of every run (`PERF stack mono`, `PERF stack colour`, `PERF zoom`),
+in milliseconds per rendered frame. In practice the answer is almost always the
+**measured SNR** overlay: it costs a noise estimation per channel per rendered
+frame, and on a large sensor that is most of the render. Measured on six
+3000x3000 subs: 13 465 ms of noise against 599 ms of compositing. Unticking it
+does not make the video less honest — it removes a figure rather than inventing
+one.
 - **ffmpeg** — see the ffmpeg section.
 
 **Progress** (*« Progression »*) — a live preview, a bar, **Pause** and **Cancel**.

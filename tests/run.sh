@@ -93,6 +93,7 @@ module.exports = {
    colorPlanFor: colorPlanFor,
    computeCoverRect: computeCoverRect,
    formatDuration: formatDuration,
+   formatBytes: formatBytes,
    formatSnrGainDb: formatSnrGainDb,
    SNR_UNAVAILABLE: SNR_UNAVAILABLE,
    compositeSnrSigmas: compositeSnrSigmas,
