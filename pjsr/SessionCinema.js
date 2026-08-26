@@ -393,6 +393,7 @@ var STRINGS = {
       "result.skipped":    "%1 input(s) were skipped (unreadable or geometry mismatch).",
       "result.aborted":    "Aborted. %1 frame(s) were rendered.",
       "result.nothing":    "Nothing was rendered.",
+      "zoom.errOpen":      "PixInsight could not open %1. Check the file is a readable FITS/XISF/TIFF and not in use elsewhere.",
       "result.openVideo":  "Open video",
       "result.openFolder": "Open folder"
    },
@@ -608,6 +609,7 @@ var STRINGS = {
       "result.skipped":    "%1 entrée(s) ignorée(s) (illisibles ou géométrie différente).",
       "result.aborted":    "Interrompu. %1 image(s) rendues.",
       "result.nothing":    "Rien n'a été rendu.",
+      "zoom.errOpen":      "PixInsight n'a pas pu ouvrir %1. Vérifiez que le fichier est un FITS/XISF/TIFF lisible et qu'il n'est pas ouvert ailleurs.",
       "result.openVideo":  "Ouvrir la vidéo",
       "result.openFolder": "Ouvrir le dossier"
    }
@@ -2865,6 +2867,11 @@ function Engine( cfg, frames )
    this.paletteTag = "";     // palette id woven into the output name when colour is active
    this.rendered = 0;
    this.aborted = false;
+   // Why a run stopped. errorKey is stable for automation, errorText is the
+   // sentence a human reads — the console had it, the modal did not, so support
+   // was quoting a message the user never saw.
+   this.errorKey = "";
+   this.errorText = "";
    this.onProgress = null;   // optional (done, total, message, previewBmp?)
    this.shouldAbort = null;  // optional () -> true to cancel
 }
@@ -3574,7 +3581,6 @@ Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, out
 Engine.prototype.runZoom = function()
 {
    var cfg = this.cfg;
-   this.zoomError = "";
 
    var meta = scanFrameHeader( cfg.zoomImagePath );
    this.title = ( cfg.ovTitle && String( cfg.ovTitle ).trim().length )
@@ -3584,7 +3590,7 @@ Engine.prototype.runZoom = function()
    try { win = openFrameWindow( cfg.zoomImagePath ); } catch ( e ) { win = null; }
    if ( win == null )
    {
-      this.zoomError = "open";
+      this.fail( "zoom.errOpen", meta.name );
       this.skipped.push( meta.name );
       return;
    }
@@ -3595,7 +3601,7 @@ Engine.prototype.runZoom = function()
    if ( wcs == null )
    {
       win.forceClose();
-      this.zoomError = "unsolved";
+      this.fail( "zoom.errUnsolved" );
       return;
    }
    if ( !File.directoryExists( this.framesDir() ) )
@@ -3613,7 +3619,7 @@ Engine.prototype.runZoom = function()
       revealBmp = loadFinishedBitmap( cfg.zoomRevealPath );
       if ( revealBmp == null )
       {
-         this.zoomError = "reveal";
+         this.fail( "zoom.errReveal" );
          return;
       }
       revealW = revealBmp.width;
@@ -3925,6 +3931,15 @@ Engine.prototype.encode = function()
    return { encoded: false, scriptPath: scriptPath };
 };
 
+// Record why the run stops. The key is what automation matches on; the text is
+// what the modal shows, so the dialog and the console can no longer say two
+// different things about the same failure.
+Engine.prototype.fail = function( key, arg )
+{
+   this.errorKey = key;
+   this.errorText = ( arg === undefined ) ? tr( key ) : tr( key, arg );
+};
+
 Engine.prototype.run = function()
 {
    var t0 = Date.now();
@@ -3967,16 +3982,12 @@ Engine.prototype.run = function()
    this.skipped = this.regDropped.concat( this.skipped );
    var result = { ok: false, rendered: this.rendered, skipped: this.skipped.slice(),
                   aborted: this.aborted, videoPath: "", scriptPath: "",
-                  framesDir: this.framesDir() };
+                  framesDir: this.framesDir(),
+                  errorKey: this.errorKey, error: this.errorText };
 
-   if ( this.zoomError == "unsolved" )
+   if ( this.errorKey.length )
    {
-      console.criticalln( tr( "zoom.errUnsolved" ) );
-      return result;
-   }
-   if ( this.zoomError == "reveal" )
-   {
-      console.criticalln( tr( "zoom.errReveal" ) );
+      console.criticalln( this.errorText );
       return result;
    }
    if ( this.skipped.length )
@@ -3984,10 +3995,16 @@ Engine.prototype.run = function()
    if ( this.aborted )
    {
       console.warningln( tr( "run.aborted", this.rendered ) );
+      result.errorKey = "run.aborted";
+      result.error = tr( "run.aborted", this.rendered );
       return result;
    }
    if ( this.rendered == 0 )
+   {
+      result.errorKey = "result.nothing";
+      result.error = tr( "result.nothing" );
       return result;
+   }
 
    var enc = this.encode();
    result.ok = true;
@@ -6470,7 +6487,9 @@ class SessionCinemaDialog extends Dialog
       this.progressBar.__indet = false;
       this.progressBar.__frac = ( result && result.ok ) ? 1 : 0;
       this.progressBar.repaint();
-      this.progressStatus.text = self._cancel ? tr( "prog.cancelled" ) : tr( "prog.done" );
+      this.progressStatus.text = self._cancel ? tr( "prog.cancelled" )
+                              : ( result && result.rendered > 0 ) ? tr( "prog.done" )
+                              : ( result && result.error ) ? result.error : tr( "result.nothing" );
 
       if ( error.length )
       {
@@ -6499,7 +6518,12 @@ class SessionCinemaResultDialog extends Dialog
       if ( result.aborted )
          lines.push( tr( "result.aborted", result.rendered ) );
       else if ( !result.ok || result.rendered == 0 )
-         lines.push( tr( "result.nothing" ) );
+      {
+         lines.push( ( result.error && result.error.length ) ? result.error
+                                                            : tr( "result.nothing" ) );
+         if ( result.skipped && result.skipped.length )
+            lines.push( tr( "result.skipped", result.skipped.length ) );
+      }
       else
       {
          lines.push( tr( "result.rendered", result.rendered ) );
@@ -6860,7 +6884,7 @@ class AlignDialog extends Dialog
 function runHeadless( cfgPath )
 {
    var result = { ok: false, rendered: 0, skipped: [], videoPath: "", framesDir: "",
-                  warnings: [], error: "" };
+                  warnings: [], errorKey: "", error: "" };
    var marker = "";
    try
    {
@@ -6890,6 +6914,9 @@ function runHeadless( cfgPath )
       result.skipped = r.skipped;
       result.videoPath = r.videoPath;
       result.framesDir = r.framesDir;
+      result.errorKey = r.errorKey;
+      if ( r.error && r.error.length )
+         result.error = r.error;
       if ( engine.perf )
          result.perf = engine.perf;
    }
@@ -6897,8 +6924,21 @@ function runHeadless( cfgPath )
    {
       result.error = e.message || String( e );
    }
+   // The result file is the ONLY channel automation has. It was written into a
+   // directory nothing had created yet, so a run that failed early wrote nothing
+   // at all — the one case a harness most needs to read.
    if ( marker.length )
-      try { File.writeTextFile( marker, JSON.stringify( result ) ); } catch ( e2 ) {}
+      try
+      {
+         var dir = File.extractDrive( marker ) + File.extractDirectory( marker );
+         if ( dir.length && !File.directoryExists( dir ) )
+            File.createDirectory( dir, true );
+         File.writeTextFile( marker, JSON.stringify( result ) );
+      }
+      catch ( e2 )
+      {
+         console.criticalln( "could not write " + marker + ": " + ( e2.message || e2 ) );
+      }
 }
 
 // ============================================================================
