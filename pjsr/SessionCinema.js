@@ -210,7 +210,6 @@ var STRINGS = {
       "frames.summary.none": "No frames loaded.",
       "frames.scanning":   "Reading headers… %1 / %2",
 
-      "style.title":       "Style",
       "tab.sequence":      "Progressive stack",
       "tab.zoom":          "Zoom Odyssey",
       "tagline.stacking":  "Watch your stack build itself, from 1 to N subs.",
@@ -231,10 +230,8 @@ var STRINGS = {
       "seq.reveal":        "Presentation image:",
       "seq.revealHint":    "Your finished, processed image — cross-faded in and held at the end. Align it onto the stack so the switch is seamless.",
       "seq.revealDur":     "Reveal duration (s):",
-      "style.stacking":    "Progressive stack — watch the integration build from 1 to N subs",
       "style.stackNote":   "Raw subs are registered automatically (dithering + meridian flip). " +
                            "With several filters, map them to R/G/B for a colour composite.",
-      "style.zoom":        "Zoom Odyssey — \"you are here\": whole sky → constellation → your image reveals itself",
       "style.zoomNote":    "Needs one plate-solved image (a WBPP master is already solved). " +
                            "Its embedded WCS drives the zoom; the sky is drawn from PixInsight's bundled catalogs.",
       "zoom.image":        "Solved image (WCS):",
@@ -454,14 +451,13 @@ var STRINGS = {
       "frames.summary.none": "Aucune brute chargée.",
       "frames.scanning":   "Lecture des en-têtes… %1 / %2",
 
-      "style.title":       "Style",
       "tab.sequence":      "Empilement progressif",
       "tab.zoom":          "Zoom Odyssey",
       "tagline.stacking":  "Regardez votre empilement se construire, de 1 à N brutes.",
       "tagline.zoom":      "Vous êtes ici — du ciel entier jusqu'à votre image.",
       "stretch.groupTitle": "Rendu",
       "seq.colorGroup":    "Couleur (multi-filtre)",
-      "seq.align":         "Recaler les brutes (corrige dithering + flip méridien)",
+      "seq.align":         "Recaler les brutes (corrige le dithering et le retournement au méridien)",
       "seq.color":         "Composite couleur — associer les filtres à R / V / B",
       "seq.removeGreen":   "Supprimer la dominante verte (SCNR)",
       "seq.palette":       "Palette :",
@@ -473,12 +469,10 @@ var STRINGS = {
       "seq.noFilters":     "Chargez des brutes pour détecter les filtres.",
       "seq.revealGroup":   "Image finale (révélée à la fin)",
       "seq.reveal":        "Image à présenter :",
-      "seq.revealHint":    "Votre image traitée finale — fondu enchaîné puis maintenue à la fin. Alignez-la sur le stack pour que le passage soit invisible.",
-      "seq.revealDur":     "Durée du reveal (s) :",
-      "style.stacking":    "Empilement progressif — l'intégration se construit de 1 à N brutes",
-      "style.stackNote":   "Les brutes sont recalées automatiquement (dithering + flip méridien). " +
+      "seq.revealHint":    "Votre image traitée finale — fondu enchaîné puis maintenue à la fin. Alignez-la sur l'empilement pour que le passage soit invisible.",
+      "seq.revealDur":     "Durée de la révélation (s) :",
+      "style.stackNote":   "Les brutes sont recalées automatiquement (dithering et retournement au méridien). " +
                            "Avec plusieurs filtres, associez-les à R/V/B pour un composite couleur.",
-      "style.zoom":        "Zoom Odyssey — « vous êtes ici » : ciel entier → constellation → votre image se révèle",
       "style.zoomNote":    "Nécessite une image résolue astrométriquement (un master WBPP l'est déjà). " +
                            "Son WCS embarqué pilote le zoom ; le ciel est tracé depuis les catalogues fournis avec PixInsight.",
       "zoom.image":        "Image résolue (WCS) :",
@@ -531,9 +525,9 @@ var STRINGS = {
       "prog.paused":       "⏸  En pause.",
       "prog.cancelled":    "Annulé.",
       "stretch.label":     "Étirement d'affichage :",
-      "stretch.final":     "Fixe, calculé sur le stack final (2 passes — progression du bruit honnête)",
+      "stretch.final":     "Fixe, calculé sur l'empilement final (2 passes — progression honnête du bruit)",
       "stretch.first":     "Fixe, calculé sur la première brute (1 passe, plus rapide)",
-      "stretch.each":      "Auto-stretch à chaque image rendue (la luminosité peut pomper)",
+      "stretch.each":      "Étirement automatique à chaque image rendue (la luminosité peut pomper)",
       "stretch.linked":    "Canaux RGB liés",
       "debayer.check":     "Dématriçage des brutes CFA (détection via BAYERPAT)",
 
@@ -551,9 +545,9 @@ var STRINGS = {
       "zoom.starNames":    "Noms des étoiles",
       "zoom.horizon":      "Horizon",
       "zoom.grid":         "Grille de coordonnées",
-      "zoom.hips":         "Pont imagerie réelle du ciel",
-      "zoom.location.opt": "Simuler le lieu du shoot",
-      "zoom.location.hint": "Ouvre sur le ciel réel vu depuis le site de prise (SITELAT/SITELONG/DATE-OBS), avec un vrai horizon et les points cardinaux.",
+      "zoom.hips":         "Pont vers le relevé réel du ciel",
+      "zoom.location.opt": "Simuler le lieu de prise de vue",
+      "zoom.location.hint": "Ouvre sur le ciel réel vu depuis le lieu de prise de vue (SITELAT/SITELONG/DATE-OBS), avec un vrai horizon et les points cardinaux.",
       "zoom.lat":          "Lat :",
       "zoom.lon":          "Lon :",
       "zoom.date":         "UTC :",
@@ -618,34 +612,34 @@ var STRINGS = {
       "run.start":         "Session Cinema %1 — %2 brutes, style : %3",
       "run.styleStacking": "empilement progressif",
       "run.styleZoom":     "zoom odyssey",
-      "zoom.solved":       "Solve astrométrique lu : champ %1, centre AD %2° Déc %3°.",
+      "zoom.solved":       "Résolution astrométrique lue : champ %1, centre AD %2° Déc %3°.",
       "zoom.location":     "Lieu du shoot : cible à %1° au-dessus de l'horizon %2, depuis lat %3° lon %4°.",
       "zoom.belowHorizon": "La cible était sous l'horizon au lieu/heure donnés — ouverture équatoriale utilisée.",
       "zoom.revealFrom":   "Image révélée : %1 (%2×%3).",
       "zoom.errReveal":    "Impossible de charger l'image à révéler. Vérifiez le fichier (JPEG/PNG/TIFF/FITS/XISF).",
       "zoom.fetching":     "Téléchargement de l'imagerie réelle du ciel (CDS/Aladin hips2fits)…",
-      "zoom.fetchedNear":  "Survey (gros plan) téléchargé.",
-      "zoom.fetchedWide":  "Survey (grand champ) téléchargé.",
-      "zoom.hipsRetry":    "Tentative de téléchargement du survey %1/%2 échouée (%3).",
-      "zoom.hipsFailed":   "Téléchargement du survey indisponible — champ d'étoiles catalogue uniquement.",
+      "zoom.fetchedNear":  "Relevé (gros plan) téléchargé.",
+      "zoom.fetchedWide":  "Relevé (grand champ) téléchargé.",
+      "zoom.hipsRetry":    "Tentative de téléchargement du relevé %1/%2 échouée (%3).",
+      "zoom.hipsFailed":   "Téléchargement du relevé indisponible — champ d'étoiles catalogue uniquement.",
       "zoom.noCatalogs":   "Catalogues d'étoiles/constellations introuvables dans l'install PixInsight — le ciel sera clairsemé.",
       "zoom.errUnsolved":  "Cette image n'a pas de solution astrométrique. Résolvez-la d'abord (Script > Image Analysis > ImageSolver), puis relancez Session Cinema.",
       "run.pass1":         "Passe 1 sur 2 — intégration des %1 brutes pour calculer l'étirement de référence…",
       "run.pass1Cached":   "Réutilisation de l'étirement mesuré sur exactement ces brutes — passe 1 sautée.",
-      "run.pass1Done":     "Étirement de référence calculé sur le stack final.",
-      "run.registering":   "Recalage de %1 brute(s) (StarAlignment : dithering + flip méridien)…",
+      "run.pass1Done":     "Étirement de référence calculé sur l'empilement final.",
+      "run.registering":   "Recalage de %1 brute(s) (StarAlignment : dithering et retournement au méridien)…",
       "run.regCached":     "Recalage réutilisé depuis le cache.",
       "run.regRef":        "Référence d'alignement : %1",
       "run.debayered":     "%1 brute(s) CFA dématricées avant recalage.",
       "run.render":        "Rendu %1 / %2 (%3)",
       "run.skipped":       "Ignorées (illisibles ou géométrie différente) : %1",
-      "run.aborted":       "Interrompu par l'utilisateur. %1 image(s) rendues.",
+      "run.aborted":       "Interrompu par l'utilisateur. %1 image(s) rendue(s).",
       "run.encoding":      "Encodage de la vidéo avec ffmpeg…",
       "run.encodeOk":      "Vidéo écrite : %1",
       "run.encodeFail":    "Échec ffmpeg (code %1). La séquence BMP et %2 restent disponibles pour un encodage manuel.",
       "run.encodeScript":  "ffmpeg indisponible — séquence BMP conservée, lancez %1 pour encoder.",
       "run.framesKept":    "Séquence d'images : %1",
-      "run.done":          "Terminé. %1 image(s) rendues en %2.",
+      "run.done":          "Terminé. %1 image(s) rendue(s) en %2.",
       "run.diskUsed":      "Sur le disque : %1 (brutes recalées %2, découpes de relevé %3, cette séquence d'images %4). Les caches sont dans %5 et peuvent être supprimés ; les garder est ce qui rend un nouveau rendu rapide.",
       "run.error":         "Échec de la génération : %1",
       "cfg.unreadable":    "Les réglages enregistrés n'ont pas pu être lus (%1). Les valeurs par défaut sont utilisées — rien n'a encore été écrasé.",
@@ -660,11 +654,11 @@ var STRINGS = {
       "run.encodeTimeout": "ffmpeg tournait encore après %1 s et a été arrêté. La séquence BMP et %2 restent disponibles pour un encodage manuel.",
 
       "result.title":      "Session Cinema — terminé",
-      "result.rendered":   "%1 image(s) rendues.",
+      "result.rendered":   "%1 image(s) rendue(s).",
       "result.video":      "Vidéo : %1",
       "result.script":     "ffmpeg introuvable — séquence BMP conservée. Lancez le script d'encodage : %1",
-      "result.skipped":    "%1 entrée(s) ignorée(s) (illisibles ou géométrie différente).",
-      "result.aborted":    "Interrompu. %1 image(s) rendues.",
+      "result.skipped":    "%1 entrée(s) ignorée(s) (illisible(s) ou géométrie différente).",
+      "result.aborted":    "Interrompu. %1 image(s) rendue(s).",
       "result.nothing":    "Rien n'a été rendu.",
       "zoom.noLocation":   "« Simuler le lieu de prise de vue » est actif, mais aucune latitude, longitude et date exploitables n'ont été trouvées — les en-têtes n'en portent pas et rien n'a été saisi. L'ouverture retombe sur le ciel équatorial.",
       "zoom.noConstellations": "Données de constellations introuvables (%1). Ces fichiers appartiennent au script AnnotateImage, livré avec PixInsight — le zoom fonctionne sans, avec les étoiles nommées mais sans figures, frontières ni libellés.",
@@ -1377,6 +1371,44 @@ var PALETTES = {
    LRGB: { R: "R",   G: "G",    B: "B",    label: "RGB" }
 };
 var PALETTE_ORDER = [ "SHO", "HOO", "HOS", "RGB" ];
+
+// What a style IS, in one place. Every capability the two modes differ on used to
+// be re-derived by comparing against one of the two constants — sixteen sites,
+// from baseName() to validate() — with nothing anywhere saying what either mode
+// means. Adding the Making-Of mode already on the backlog would have meant finding
+// all sixteen and deciding which side it falls on, and it falls on both at once:
+// it replays a processing history, so it takes frames like the stack and opens on
+// the sky like the zoom. That a two-valued flag cannot express it is the sign the
+// flag was never the right shape.
+//
+// Dispatching on the style is still dispatch and stays a comparison. What lives
+// here is everything that is a QUESTION about a style rather than a branch.
+var STYLE_CAPS = {};
+STYLE_CAPS[ STYLE_STACKING ] = {
+   tag: "stack",
+   usesFrames: true,        // a sub list is the input
+   usesSolvedImage: false,  // a single plate-solved image is the input
+   registers: true,         // subs are registered before rendering
+   colour: true,            // multi-filter composite applies
+   endReveal: true,         // the presentation image is cross-faded at the end
+   perSubOverlay: true,     // counter, exposure, UT clock, SNR
+   skyOverlay: false        // scale bar, constellation and star names, horizon
+};
+STYLE_CAPS[ STYLE_ZOOM ] = {
+   tag: "zoom",
+   usesFrames: false,
+   usesSolvedImage: true,
+   registers: false,
+   colour: false,
+   endReveal: false,
+   perSubOverlay: false,
+   skyOverlay: true
+};
+
+function styleCaps( style )
+{
+   return STYLE_CAPS[ style ] || STYLE_CAPS[ STYLE_STACKING ];
+}
 
 // Distinct FILTER values present, in first-appearance (shoot) order, with counts.
 // Grouped on the CANONICAL filter, not the raw string: a night written half "Ha"
@@ -3364,7 +3396,7 @@ Engine.prototype.progress = function( done, total, message, previewBmp )
 Engine.prototype.baseName = function()
 {
    var slug = slugify( this.title || "session" );
-   var style = ( this.cfg.style == STYLE_ZOOM ) ? "zoom" : "stack";
+   var style = styleCaps( this.cfg.style ).tag;
    var tag = ( this.colorActive && this.paletteTag ) ? ( this.paletteTag.toLowerCase() + "-" ) : "";
    return slug + "-" + tag + style;
 };
@@ -4773,7 +4805,7 @@ Engine.prototype.run = function()
    try { console.abortEnabled = true; } catch ( e ) {}
    var styleLabel = ( cfg.style == STYLE_ZOOM ) ? tr( "run.styleZoom" )
                                                 : tr( "run.styleStacking" );
-   var inputCount = ( cfg.style == STYLE_ZOOM ) ? 1 : this.frames.length;
+   var inputCount = styleCaps( cfg.style ).usesFrames ? this.frames.length : 1;
    console.noteln( tr( "run.start", versionLabel(), inputCount, styleLabel ) );
    // Repeated here, next to the render it is about: a user can reach Generate
    // without ever looking at the notice in the window.
@@ -4791,11 +4823,11 @@ Engine.prototype.run = function()
 
    // Zoom resolves its title (hence its output dir) from the image header
    // inside runZoom, so it creates its own directory there.
-   if ( cfg.style != STYLE_ZOOM && !File.directoryExists( this.framesDir() ) )
+   if ( !styleCaps( cfg.style ).usesSolvedImage && !File.directoryExists( this.framesDir() ) )
       File.createDirectory( this.framesDir(), true );
    // Unconditional, and at the start: "Keep the frame sequence" means keep THIS
    // run's frames after encoding, never let the previous run's through.
-   if ( cfg.style != STYLE_ZOOM )
+   if ( !styleCaps( cfg.style ).usesSolvedImage )
       this.clearFrames();
 
    // Every working window this run opens is named __sc_*, so whatever happens the
@@ -4805,7 +4837,7 @@ Engine.prototype.run = function()
    try
    {
       // Progressive stack: register to a common reference first (dithering + flip).
-      if ( cfg.style == STYLE_STACKING )
+      if ( styleCaps( cfg.style ).registers )
       {
          var _pr = Date.now();
          this.perfStart();
@@ -6965,7 +6997,7 @@ class SessionCinemaDialog extends Dialog
    {
       if ( !this.colorGroup )
          return;
-      var on = !!this.cfg.colorEnabled && this.cfg.style != STYLE_ZOOM;
+      var on = !!this.cfg.colorEnabled && styleCaps( this.cfg.style ).colour;
       var ctrls = [ this.paletteLabel, this.paletteCombo,
                     this.chR.label, this.chR.combo, this.chG.label, this.chG.combo,
                     this.chB.label, this.chB.combo, this.removeGreenCheck ];
@@ -7018,8 +7050,8 @@ class SessionCinemaDialog extends Dialog
 
    updateStyleDependents()
    {
-      var isStack = ( this.cfg.style == STYLE_STACKING );
-      var isZoom = ( this.cfg.style == STYLE_ZOOM );
+      var caps = styleCaps( this.cfg.style );
+      var isStack = caps.usesFrames, isZoom = caps.usesSolvedImage;
       this.helpLabel.text = tr( isZoom ? "help.zoom" : "help.stack" );
       // Same reason: in zoom mode there are no frames, the OBJECT is read from
       // the solved image.
@@ -7076,7 +7108,7 @@ class SessionCinemaDialog extends Dialog
 
    updateLocationEnabled()
    {
-      var on = this.cfg.locationEnabled && ( this.cfg.style == STYLE_ZOOM );
+      var on = this.cfg.locationEnabled && styleCaps( this.cfg.style ).skyOverlay;
       this.latLabel.enabled = on; this.latEdit.enabled = on;
       this.lonLabel.enabled = on; this.lonEdit.enabled = on;
       this.dateLabel.enabled = on; this.dateEdit.enabled = on;
@@ -7353,53 +7385,6 @@ class SessionCinemaDialog extends Dialog
       withBusyButton( this.alignButton, tr( "align.opening" ), () => this.doAlign() );
    }
 
-   doAlign()
-   {
-      console.show();
-      console.writeln( tr( "align.loading" ) );
-      processEvents();
-      // Solved image, auto-stretched, as the alignment background.
-      var solvedBmp = null;
-      try
-      {
-         var w = openFrameWindow( this.cfg.zoomImagePath );
-         if ( w != null )
-         {
-            applyStretchToView( w.mainView, computeStretchForImage( w.mainView.image, this.cfg.stretchLinked ) );
-            solvedBmp = w.mainView.image.render();
-            w.forceClose();
-         }
-      }
-      catch ( e )
-      {
-      }
-      var revealBmp = loadFinishedBitmap( this.cfg.zoomRevealPath );
-      if ( solvedBmp == null || revealBmp == null )
-      {
-         ( new MessageBox( tr( "align.loadFailed" ), tr( "err.title" ), StdIcon.Error, StdButton.Ok ) ).execute();
-         return;
-      }
-      var c = this.cfg;
-      var dlg = new AlignDialog( solvedBmp, revealBmp, alignInit( !revealAligned( c, "zoom" ),
-         c.zoomRevealOffX, c.zoomRevealOffY, c.zoomRevealScale, c.zoomRevealRot, c.zoomRevealFlipH, c.zoomRevealFlipV ) );
-      if ( dlg.execute() && dlg.accepted )
-      {
-         this.cfg.zoomRevealOffX = dlg.cx;   // stored as the reveal centre in solved px
-         this.cfg.zoomRevealOffY = dlg.cy;
-         this.cfg.zoomRevealScale = dlg.scale;
-         this.cfg.zoomRevealRot = dlg.rotDeg;
-         this.cfg.zoomRevealFlipH = dlg.flipH;
-         this.cfg.zoomRevealFlipV = dlg.flipV;
-         this.cfg.zoomRevealAligned = true;
-         this.cfg.zoomRevealCropped = true;
-         this.croppedCheck.checked = true;
-         this.rotChecked( "zoom" );
-      }
-   }
-
-   // The sub list a stack placement belongs to. The alignment is made against the
-   // registration reference, so the reference identifies the target: swap the subs
-   // for another night and the saved placement is describing a different image.
    // A placement belongs to the image it was made on. Changing that image — typed,
    // browsed or cleared — discards it rather than applying it to the next one.
    clearStackPlacement()
@@ -7420,6 +7405,9 @@ class SessionCinemaDialog extends Dialog
       this.updateRotWarnings();
    }
 
+   // The sub list a stack placement belongs to. The alignment is made against the
+   // registration reference, so the reference identifies the target: swap the subs
+   // for another night and the saved placement is describing a different image.
    revealReferenceKey()
    {
       if ( !this.frames.length )
@@ -7428,58 +7416,90 @@ class SessionCinemaDialog extends Dialog
       return ref ? pathKey( ref.path ) : "";
    }
 
-   // Open the alignment popup for the progressive-stack presentation image,
-   // placed onto the registration reference sub (which shares the stack's
-   // orientation). Stores the placement in the stackReveal* config.
-   onAlignStack()
+   // One implementation for both. They were 42 and 40 lines doing the same six
+   // things in the same order over twelve config keys that differ only by prefix,
+   // and both leaked the open view when the stretch threw — the forceClose sat
+   // after applyStretchToView, so an exception skipped it and left an untitled
+   // window behind in a PixInsight that looked idle.
+   //
+   // which = "zoom" | "stack". The background is the solved image on one side and
+   // the registration reference on the other; everything after that is identical.
+   alignReveal( which )
    {
-      if ( !this.cfg.stackRevealPath.length || this.frames.length < 1 )
-         return;
-      withBusyButton( this.stackAlignButton, tr( "align.opening" ), () => this.doAlignStack() );
-   }
+      var isZoom = ( which == "zoom" );
+      var c = this.cfg;
+      var pfx = isZoom ? "zoomReveal" : "stackReveal";
+      var bgPath = "";
+      if ( isZoom )
+         bgPath = c.zoomImagePath;
+      else
+      {
+         var ref = pickReference( sortFrames( this.frames ) );
+         bgPath = ref ? ref.path : "";
+      }
 
-   doAlignStack()
-   {
       console.show();
       console.writeln( tr( "align.loading" ) );
       processEvents();
-      // Reference sub (dominant filter, first in shoot order), auto-stretched.
-      var ref = pickReference( sortFrames( this.frames ) );
-      var bgBmp = null;
+
+      var bgBmp = null, w = null;
       try
       {
-         var w = openFrameWindow( ref.path );
+         w = openFrameWindow( bgPath );
          if ( w != null )
          {
-            applyStretchToView( w.mainView, computeStretchForImage( w.mainView.image, this.cfg.stretchLinked ) );
+            applyStretchToView( w.mainView,
+                                computeStretchForImage( w.mainView.image, c.stretchLinked ) );
             bgBmp = w.mainView.image.render();
-            w.forceClose();
          }
       }
-      catch ( e ) {}
-      var revealBmp = loadFinishedBitmap( this.cfg.stackRevealPath );
+      catch ( e )
+      {
+      }
+      finally
+      {
+         if ( w != null )
+            try { w.forceClose(); } catch ( e2 ) {}
+      }
+
+      var revealBmp = loadFinishedBitmap( isZoom ? c.zoomRevealPath : c.stackRevealPath );
       if ( bgBmp == null || revealBmp == null )
       {
-         ( new MessageBox( tr( "align.loadFailed" ), tr( "err.title" ), StdIcon.Error, StdButton.Ok ) ).execute();
+         ( new MessageBox( tr( "align.loadFailed" ), tr( "err.title" ),
+                           StdIcon.Error, StdButton.Ok ) ).execute();
          return;
       }
-      var c = this.cfg;
-      var dlg = new AlignDialog( bgBmp, revealBmp, alignInit( !revealAligned( c, "stack" ),
-         c.stackRevealOffX, c.stackRevealOffY, c.stackRevealScale, c.stackRevealRot, c.stackRevealFlipH, c.stackRevealFlipV ) );
-      if ( dlg.execute() && dlg.accepted )
+
+      var dlg = new AlignDialog( bgBmp, revealBmp,
+         alignInit( !revealAligned( c, which ),
+                    c[ pfx + "OffX" ], c[ pfx + "OffY" ], c[ pfx + "Scale" ],
+                    c[ pfx + "Rot" ], c[ pfx + "FlipH" ], c[ pfx + "FlipV" ] ) );
+      if ( !( dlg.execute() && dlg.accepted ) )
+         return;
+
+      c[ pfx + "OffX" ] = dlg.cx;      // the reveal centre, in background pixels
+      c[ pfx + "OffY" ] = dlg.cy;
+      c[ pfx + "Scale" ] = dlg.scale;
+      c[ pfx + "Rot" ] = dlg.rotDeg;
+      c[ pfx + "FlipH" ] = dlg.flipH;
+      c[ pfx + "FlipV" ] = dlg.flipV;
+      c[ pfx + "Aligned" ] = true;
+      if ( isZoom )
       {
-         this.cfg.stackRevealOffX = dlg.cx;
-         this.cfg.stackRevealOffY = dlg.cy;
-         this.cfg.stackRevealScale = dlg.scale;
-         this.cfg.stackRevealRot = dlg.rotDeg;
-         this.cfg.stackRevealFlipH = dlg.flipH;
-         this.cfg.stackRevealFlipV = dlg.flipV;
-         this.cfg.stackRevealAligned = true;
-         this.cfg.stackRevealFor = this.revealReferenceKey();
-         this.stackRevealEdit.text = this.cfg.stackRevealPath;
-         this.rotChecked( "stack" );
+         c.zoomRevealCropped = true;
+         this.croppedCheck.checked = true;
       }
+      else
+      {
+         c.stackRevealFor = this.revealReferenceKey();
+         this.stackRevealEdit.text = c.stackRevealPath;
+      }
+      this.rotChecked( which );
    }
+
+   doAlign() { this.alignReveal( "zoom" ); }
+
+   doAlignStack() { this.alignReveal( "stack" ); }
 
    // Enable/disable the controls while a generation runs (the dialog stays open).
    setBusy( busy )

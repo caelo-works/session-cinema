@@ -437,7 +437,7 @@ Those frames are missing from the video. The console names them. Frames of
 different dimensions in the same set are the usual cause.
 
 **"Survey download unavailable — using the catalog star field only."** /
-*« Téléchargement du survey indisponible — champ d'étoiles catalogue uniquement. »*
+*« Téléchargement du relevé indisponible — champ d'étoiles catalogue uniquement. »*
 The DSS2 download failed (no internet, or the service is down). The video is still
 produced; it simply has no real-sky photograph in the transition.
 
