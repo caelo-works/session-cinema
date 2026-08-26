@@ -272,6 +272,8 @@ var STRINGS = {
       "prog.title":        "Progress",
       "prog.idle":         "Idle — press Generate to start.",
       "prog.done":         "Done.",
+      "prog.starting":     "Starting…",
+      "out.installingFor": "Downloading ffmpeg… %1 s",
       "prog.pause":        "Pause",
       "prog.resume":       "Resume",
       "prog.cancel":       "Cancel",
@@ -501,6 +503,8 @@ var STRINGS = {
       "prog.title":        "Progression",
       "prog.idle":         "En attente — cliquez sur Générer.",
       "prog.done":         "Terminé.",
+      "prog.starting":     "Démarrage…",
+      "out.installingFor": "Téléchargement de ffmpeg… %1 s",
       "prog.pause":        "Pause",
       "prog.resume":       "Reprendre",
       "prog.cancel":       "Annuler",
@@ -2378,6 +2382,24 @@ function findFramesInDirectory( dir )
 // IMAGE PIPELINE — open, debayer, stretch, render, overlay
 // ============================================================================
 
+// Force-close every working window this script owns. Their ids all start with
+// __sc_, which is the whole reason they are named that way.
+function closeWorkWindows()
+{
+   try
+   {
+      var ws = ImageWindow.windows;
+      for ( var i = 0; i < ws.length; ++i )
+      {
+         var id = "";
+         try { id = String( ws[ i ].mainView.id || "" ); } catch ( e ) { continue; }
+         if ( id.indexOf( "__sc_" ) === 0 )
+            try { ws[ i ].forceClose(); } catch ( e2 ) {}
+      }
+   }
+   catch ( e3 ) {}
+}
+
 function windowIdSet()
 {
    var ids = {};
@@ -3025,7 +3047,9 @@ function detectFfmpeg( userPath )
 // does not pass `ffmpeg -version` (wrong CPU architecture, truncated or
 // corrupt download) is removed and the next one is tried. Returns the
 // installed path, or "" on failure.
-function installFfmpegFromMirror()
+// onTick is called about every 250 ms while a transfer runs. It used to be left
+// out here, and with curl -s that meant 50-90 MB of silence.
+function installFfmpegFromMirror( onTick )
 {
    var kind = platformKind();
    var dir = ffmpegInstallDir( kind, getEnvironmentVariable );
@@ -3045,7 +3069,7 @@ function installFfmpegFromMirror()
    {
       // A static ffmpeg is tens of MB: anything small is an error body or a
       // truncated transfer, not worth the execution probe.
-      if ( !curlDownload( FFMPEG_MIRROR_BASE + names[ c ], dest, 900, 1000000 ) )
+      if ( !curlDownload( FFMPEG_MIRROR_BASE + names[ c ], dest, 900, 1000000, onTick ) )
          continue;
       if ( kind != "windows" )
          runExternal( "/bin/chmod", [ "+x", dest ], 5000, false );
@@ -3488,6 +3512,7 @@ Engine.prototype.runStacking = function()
    if ( cfg.stretchRef == STRETCH_REF_FINAL )
    {
       console.writeln( tr( "run.pass1", N ) );
+      this.progress( -1, 0, tr( "run.pass1", N ) );
       var acc1 = this.makeAccumulator( "__sc_acc1" );
       if ( acc1 == null )
          return;
@@ -3520,7 +3545,10 @@ Engine.prototype.runStacking = function()
    var lastOv = null, geomW = 0, geomH = 0;
 
    acc.mainView.beginProcess( UndoFlag.NoSwapFile );
-   var nTotal = this.accumulate( acc, function( n, frameIndex, accImg )
+   var nTotal = 0;
+   try
+   {
+   nTotal = this.accumulate( acc, function( n, frameIndex, accImg )
    {
       var frame = self.frames[ frameIndex ];
       cumExposure += frame.exposure;
@@ -3566,7 +3594,15 @@ Engine.prototype.runStacking = function()
                      ( ( outIndex & 3 ) == 0 ) ? bmp : null );
       console.writeln( tr( "run.render", outIndex, totalRenders, frame.name ) );
    } );
-   acc.mainView.endProcess();
+   }
+   finally
+   {
+      // A throw out of renderOutputBitmap or saveFrame used to skip every close
+      // below it: the accumulator stayed in an open process and __sc_* windows
+      // piled up in a PixInsight that looked idle. The result dialog never came
+      // either, so the user got a raw exception and no idea how far it had got.
+      try { acc.mainView.endProcess(); } catch ( e ) {}
+   }
 
    // End reveal, the same tail the colour path renders. It had exactly one call
    // site, inside runStackingColor, so every mono session — OSC, DSLR, a single
@@ -3703,6 +3739,7 @@ Engine.prototype.runStackingColor = function( map )
    var totalRenders = plan.totalRenders, lastRender = plan.lastRender;
 
    console.writeln( tr( "run.pass1", N ) );
+   this.progress( -1, 0, tr( "run.pass1", N ) );
    var stretches = this.channelStretches( map );
    console.writeln( tr( "run.pass1Done" ) );
 
@@ -4381,14 +4418,25 @@ Engine.prototype.run = function()
    if ( cfg.style != STYLE_ZOOM )
       this.clearFrames();
 
-   // Progressive stack: register to a common reference first (dithering + flip).
-   if ( cfg.style == STYLE_STACKING )
-      this.frames = this.registerFrames();
+   // Every working window this run opens is named __sc_*, so whatever happens the
+   // sweep below can find them. Before this, a throw anywhere in the render left
+   // them open in a PixInsight that looked idle, and the user had to hunt them
+   // down by hand.
+   try
+   {
+      // Progressive stack: register to a common reference first (dithering + flip).
+      if ( cfg.style == STYLE_STACKING )
+         this.frames = this.registerFrames();
 
-   if ( cfg.style == STYLE_ZOOM )
-      this.runZoom();
-   else
-      plan.active ? this.runStackingColor( plan.map ) : this.runStacking();
+      if ( cfg.style == STYLE_ZOOM )
+         this.runZoom();
+      else
+         plan.active ? this.runStackingColor( plan.map ) : this.runStacking();
+   }
+   finally
+   {
+      closeWorkWindows();
+   }
 
    // Registration drops survive the per-pass skip resets in the render modes.
    this.skipped = this.regDropped.concat( this.skipped );
@@ -6734,15 +6782,35 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegStatus.text = tr( "out.installing", FFMPEG_MIRROR_BASE );
       this.setFfmpegSection( "busy", true );
       this.ffmpegBody.enabled = false;   // one switch for every ffmpeg control
+      // Generate stayed clickable during the download, and the engine is not
+      // re-entrant: a second run would have shared this dialog's progress state
+      // and written into the same frame directory.
+      this.setBusy( true );
+      this.pauseButton.enabled = false;
+      this.cancelButton.enabled = false;
+      this.progressBar.__indet = true;
+      var self0 = this, ticks = 0;
+      this.progressStatus.text = tr( "out.installing", FFMPEG_MIRROR_BASE );
       processEvents();
       var path = "";
       try
       {
-         path = installFfmpegFromMirror();
+         path = installFfmpegFromMirror( function()
+         {
+            self0.progressBar.__phase += 14;
+            self0.progressStatus.text = tr( "out.installingFor",
+                                            Math.round( ( ++ticks )*0.25 ) );
+            self0.progressBar.repaint();
+            processEvents();
+         } );
       }
       finally
       {
          this.ffmpegBody.enabled = true;
+         this.setBusy( false );
+         this.progressBar.__indet = false;
+         this.progressBar.repaint();
+         this.progressStatus.text = tr( "prog.idle" );
       }
       if ( path.length )
       {
@@ -6924,6 +6992,12 @@ class SessionCinemaDialog extends Dialog
    // Enable/disable the controls while a generation runs (the dialog stays open).
    setBusy( busy )
    {
+      // The language selector reloads the whole dialog, which took Pause and
+      // Cancel with it and left the engine running with nothing driving it.
+      if ( this.langCombo )
+         this.langCombo.enabled = !busy;
+      if ( this.headerSizer )
+         this.headerSizer.enabled = !busy;
       this.generateButton.enabled = !busy;
       this.closeButton.enabled = !busy;
       this.tabBox.enabled = !busy;
@@ -6940,6 +7014,12 @@ class SessionCinemaDialog extends Dialog
          return;
       this.touchedAnything = true;
       saveConfig( this.persistableConfig() );
+      // The panel used to read "Idle — press Generate to start" through
+      // registration and pass 1, which on a real session is twenty minutes of a
+      // machine that is plainly busy saying it is not.
+      this.progressStatus.text = tr( "prog.starting" );
+      this.progressBar.__indet = true;
+      this.progressBar.repaint();
 
       var self = this;
       this._paused = false;
