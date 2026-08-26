@@ -48,7 +48,7 @@ fi
 
 echo "--- update-package.json: ingestion contract"
 python3 - "$VERSION" "$OUT_DIR" <<'PY'
-import json, sys, os
+import hashlib, json, sys, os
 version, out = sys.argv[1], sys.argv[2]
 with open(os.path.join(out, "update-package.json")) as f:
     meta = json.load(f)
@@ -61,7 +61,11 @@ assert meta["type"] == "script"
 assert meta["version"] == version
 assert meta["fileName"] == f"SessionCinema-{version}.zip"
 assert meta["releaseDate"] == "20000101"
-assert len(meta["sha1"]) == 40
+# The sha1 is what the site, and then PixInsight, authenticate the package by.
+# Checking its length would pass on forty random hex characters.
+blob = open(os.path.join(out, meta["fileName"]), "rb").read()
+assert meta["sha1"] == hashlib.sha1(blob).hexdigest(), \
+    "sha1 in update-package.json does not match the zip it names"
 PY
 
 echo "--- __BUILD__ stamped in the packaged entry script"

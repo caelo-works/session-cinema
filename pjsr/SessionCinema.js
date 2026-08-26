@@ -628,6 +628,28 @@ function tr( key )
 // PURE HELPERS (free of PixInsight APIs — exercised by tests/run.sh)
 // ============================================================================
 
+// The version as a human must be able to read it back to support: the source
+// constant, plus the build stamp the packaging step wrote into this very file.
+// Without the stamp, "I have 1.1.1" does not say whether the file came from the
+// update repository, from an older release's zip, or from a hand copy sitting in
+// a stale Feature Scripts entry — the three causes the support KB has to tell
+// apart. A checkout that was never packaged still carries the raw token; it
+// reads as "dev", which is the truth.
+//
+// The token is detected by substring rather than by comparing to its literal
+// spelling: the packaging step rewrites EVERY occurrence of it in this file, so
+// a literal here would be substituted too and the test would never fire.
+function versionLabel()
+{
+   var build = SESSIONCINEMA_BUILD;
+   if ( build.indexOf( "BUILD" ) >= 0 )
+      build = "dev";
+   // The build script refuses to package a version the source does not declare,
+   // so on a real package the two are equal and repeating the number would be
+   // noise. Anything else is worth showing.
+   return SC_VERSION + ( build == SC_VERSION ? "" : " (" + build + ")" );
+}
+
 function clamp01( x )
 {
    return x < 0 ? 0 : ( x > 1 ? 1 : x );
@@ -3739,7 +3761,7 @@ Engine.prototype.run = function()
    var styleLabel = ( cfg.style == STYLE_ZOOM ) ? tr( "run.styleZoom" )
                                                 : tr( "run.styleStacking" );
    var inputCount = ( cfg.style == STYLE_ZOOM ) ? 1 : this.frames.length;
-   console.noteln( tr( "run.start", SC_VERSION, inputCount, styleLabel ) );
+   console.noteln( tr( "run.start", versionLabel(), inputCount, styleLabel ) );
    // Repeated here, next to the render it is about: a user can reach Generate
    // without ever looking at the notice in the window.
    if ( ( cfg.style == STYLE_ZOOM ) ? gRotPending.zoom : gRotPending.stack )
@@ -4409,7 +4431,7 @@ class SessionCinemaDialog extends Dialog
       this.titleLabel.font = tf;
 
       this.buildLabel = new Label( this );
-      this.buildLabel.text = "v" + SC_VERSION;
+      this.buildLabel.text = "v" + versionLabel();
       this.buildLabel.textAlignment = TextAlign.Left | TextAlign.VertCenter;
 
       this.taglineLabel = new Label( this );

@@ -14,8 +14,9 @@
 #                                   rsc/icons/script/<NAME>/<NAME>.svg
 #   dist/update-package.json      metadata the site needs to emit the <package> element
 #
-# The zip is REPRODUCIBLE (sorted entries, fixed mtimes/permissions) so identical content
-# always yields the same SHA-1 — the site authenticates the package by that SHA-1.
+# The zip is REPRODUCIBLE (sorted entries, fixed mtimes/permissions, entries STORED rather
+# than deflated) so identical content always yields the same SHA-1, on any machine — the
+# site authenticates the package by that SHA-1.
 #
 set -euo pipefail
 
@@ -114,7 +115,12 @@ PJSR
 fi
 
 # 4) reproducible zip: sorted entries, fixed mtime (1980-01-01), fixed perms
-#    (0755 for bin/, 0644 otherwise). No OS/timestamp entropy -> stable SHA-1.
+#    (0755 for bin/, 0644 otherwise) and STORED entries. Deflate would reintroduce
+#    the entropy the rest of this removes: the compressed stream depends on the
+#    local zlib's level, memLevel and strategy, none of which the format pins, so
+#    the same content rebuilt against another zlib gives another SHA-1. Three text
+#    files cost ~275 KB stored against ~80 KB deflated, which buys a package
+#    anyone can rebuild and compare byte for byte.
 python3 - "$STAGE" "$OUT/$ZIPNAME" <<'PY'
 import os, sys, zipfile
 stage, out = sys.argv[1], sys.argv[2]
@@ -125,12 +131,12 @@ for root, _, names in os.walk(stage):
         arc = os.path.relpath(full, stage).replace(os.sep, "/")
         files.append((arc, full))
 files.sort(key=lambda x: x[0])
-with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:
     for arc, full in files:
         zi = zipfile.ZipInfo(arc, date_time=(1980, 1, 1, 0, 0, 0))
         perm = 0o755 if "/bin/" in ("/" + arc) else 0o644
         zi.external_attr = (perm & 0xFFFF) << 16
-        zi.compress_type = zipfile.ZIP_DEFLATED
+        zi.compress_type = zipfile.ZIP_STORED
         with open(full, "rb") as f:
             z.writestr(zi, f.read())
 PY
