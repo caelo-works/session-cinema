@@ -3,13 +3,15 @@
 **This is written for a support agent, not for a user.** Quote it, do not
 paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Applies to **1.1.1**. To check what the user is running: the version is printed
-under the script's name in the top-left of its window (`v1.1.1`).
+Applies to **1.2.0**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.2.0`). A version
+followed by `(dev)` — `v1.2.0 (dev)` — means the file did not come from a package:
+it was copied by hand. That is worth knowing before anything else.
 
-**Ask for that number early.** 1.1.1 fixed three bugs that 1.1.0 had, and the
-three of them are things a user reports rather than notices — see §*Known bugs*.
-On 1.1.0 you confirm the bug and tell them to update; on 1.1.1 the same symptom
-means something else entirely.
+**Ask for that number early.** 1.2.0 fixed seventy-two defects, many of which a
+user reports rather than notices, and several of which change what the same
+symptom means. On an earlier version you confirm the bug and tell them to update;
+on 1.2.0 the same description usually means something else.
 
 **The interface is bilingual — English and French — and the user will describe
 *their* window.** A French user says *« Habillage »*, not "Overlay"; *« Brutes »*,
@@ -35,7 +37,7 @@ down to the user's image.
 
 | | |
 |---|---|
-| Version | 1.1.1 |
+| Version | 1.2.0 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 to 1.9.99** — Windows, macOS, Linux |
 | Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
@@ -532,13 +534,55 @@ purpose. A rotation of exactly 0° never triggers it.
 
 ## Known bugs and limits — read before answering
 
-**No bug is open in 1.1.1.** The three that were open in 1.1.0 are fixed. They are
-kept here because users on 1.1.0 still hit them, and because the symptoms are
-distinctive enough to identify the version from the description alone.
+**No bug is open in 1.2.0.** Entries are kept for one version back, because users
+who have not updated still hit them and because the symptoms identify the version
+from the description alone. An entry leaves this list when its version is two
+releases behind.
 
-**So: get the version first.** On **1.1.0**, confirm the bug — it is ours, the
-user did nothing wrong — and tell them to update. On **1.1.1**, the same
-description means something else and belongs in escalation, not here.
+**So: get the version first.** On the version named in the heading, confirm the
+bug — it is ours, the user did nothing wrong — and tell them to update. On 1.2.0,
+the same description means something else and belongs in escalation, not here.
+
+### Fixed in 1.2.0 — the ones a user is most likely to describe
+
+These were all open up to and including 1.1.1. If the user is on 1.1.1 or earlier,
+any of these descriptions is confirmation, not a mystery — tell them to update.
+
+- **"My video has frames that are not from tonight."** / **"It says 180 frames and
+  the video is much longer."** Frames of an earlier render into the same folder
+  were encoded with the new ones.
+- **"I regenerated and got the old video."** Regenerating into a folder that
+  already held a render reported the previous file as the new one.
+- **"My colour camera came out grey."** / **"The video looks cross-hatched."** A
+  registered OSC or DSLR session lost its debayering and rendered as a raw Bayer
+  mosaic, end to end.
+- **"Two nights of mine got mixed up."** Subs whose file names matched across
+  folders shared a registration cache entry.
+- **"The presentation image never appears."** On any session that is not a
+  multi-filter composite — every OSC night, every single-filter night — the end
+  reveal was never rendered at all. And on a colour composite it was dropped
+  whenever the last sub of the night fed no channel, which an SHO night pulled in
+  HOO does every time.
+- **"Half my subs are missing from the count."** Two spellings of the same filter,
+  `Ha` and `HA`, counted as two filters and only one could feed a channel.
+- **"The counter and the exposure contradict each other."** The overlay printed
+  the sub's position in the list rather than the number actually composited:
+  `200 × 120 s` next to `4h00`.
+- **"The scale bar is wrong."** It was sized with a linear law under a
+  stereographic projection — on a 9:16 export a bar labelled 30° spanned 10°.
+- **"It said 200 frames and rendered 66."** The estimate ignored the colour
+  cadence, and counted the end reveal in neither mode.
+- **"The progress went over 100 %."** It read `Render 201 / 60 (reveal)` at 335 %.
+- **"It just says nothing was rendered."** Every engine failure collapsed into
+  those four words while the explanation went to the console behind the dialog.
+- **"Choosing (none) for a channel does nothing."** The palette refilled it.
+- **"My new final image is upside down."** A newly chosen presentation image
+  inherited the rotation and the mirrors of the previous one.
+- **"The zoom ends on the wrong bit of sky."** Ticking *Different crop from the
+  solved image* without opening **Align…** put the reveal a full degree off
+  target. That combination is refused now, with the reason.
+
+
 
 ### Fixed in 1.1.1 — "the SNR gain never appears"
 
