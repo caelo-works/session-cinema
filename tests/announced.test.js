@@ -176,6 +176,13 @@ near( M.gmstDeg( 2451545.0 ), 280.46061837, 1e-6, "GMST at J2000.0" );
          `${name}: overlay total ${plan.mappedFrames} is not the number of subs composited` );
       assert.strictEqual( lastIndex, plan.mappedFrames,
          `${name}: the last frame reads ${lastIndex}/${plan.mappedFrames}, not 100%` );
+      // #24: the end reveal is built from the last position that RENDERS. Keying
+      // it on the last sub in shoot order dropped it on every SHO night pulled in
+      // HOO, whose last sub is always SII.
+      assert.ok( plan.renderSet[ plan.lastRender ],
+         `${name}: lastRender ${plan.lastRender} is not a rendered position` );
+      assert.ok( M.channelsFedBy( frames[ plan.lastRender - 1 ].filter, map ).length > 0,
+         `${name}: the reveal would be built from a sub that feeds no channel` );
    }
 
    // The dialog counts the reveal tail, in both modes; it counted neither before.
