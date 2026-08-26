@@ -123,9 +123,9 @@ var DEFAULT_CONFIG = {
    alignEnabled:    true,        // register subs (StarAlignment): dithering + meridian flip
    colorEnabled:    true,        // combine filters into an RGB composite (else mono)
    palette:         "SHO",       // preset id resolving the filter→channel mapping
-   chR:             "",          // FILTER value feeding the Red channel   ("" = from palette)
-   chG:             "",          //  … Green
-   chB:             "",          //  … Blue
+   chR:             "",          // FILTER value feeding the Red channel ("" = from
+   chG:             "",          //  … Green                              palette,
+   chB:             "",          //  … Blue                               CH_NONE = leave empty)
    removeGreen:     false,       // SCNR: cap green at the R/B neutral (kills the green cast)
    // Presentation image revealed at the end of the stack (aligned onto the stack)
    stackRevealPath: "",          // finished image (JPEG/TIFF/…); "" = no reveal
@@ -1281,6 +1281,12 @@ function detectFilters( frames )
 // Resolve {R,G,B} → actual FILTER name (or "" for an unfed channel). Explicit
 // chR/chG/chB win; otherwise the palette's canonical roles are matched against
 // the detected filters. `filters` is the detectFilters() array.
+// "" means "take it from the palette", which is also what an unset channel is —
+// so choosing (none) in the dialog had no way to say so, and the palette refilled
+// the channel on the next refresh. A leading "!" cannot be a FILTER value read
+// from a header, so this sentinel cannot collide with one.
+var CH_NONE = "!none";
+
 function resolveChannelMap( cfg, filters )
 {
    var byCanon = {};
@@ -1295,6 +1301,7 @@ function resolveChannelMap( cfg, filters )
    function pick( override, role )
    {
       var o = String( override || "" ).trim();
+      if ( o == CH_NONE ) return "";                       // explicitly left empty
       if ( o.length && present[ o ] ) return o;            // explicit, and present
       if ( role && byCanon.hasOwnProperty( role ) ) return byCanon[ role ];
       return "";
@@ -5253,7 +5260,7 @@ class SessionCinemaDialog extends Dialog
          combo.onItemSelected = ( idx ) =>
          {
             var names = self.filterNames || [];
-            self.cfg[ chKey ] = ( idx <= 0 ) ? "" : names[ idx - 1 ];
+            self.cfg[ chKey ] = ( idx <= 0 ) ? CH_NONE : names[ idx - 1 ];
          };
          var sz = new HorizontalSizer;
          sz.spacing = 4;
@@ -6118,8 +6125,13 @@ class SessionCinemaDialog extends Dialog
       // Show the EFFECTIVE mapping (palette resolved against present filters,
       // honouring explicit overrides), and persist it so it is explicit.
       var eff = resolveChannelMap( this.cfg, filters );
-      this.cfg.chR = eff.R; this.cfg.chG = eff.G; this.cfg.chB = eff.B;
-      var slots = [ [ this.chR, eff.R ], [ this.chG, eff.G ], [ this.chB, eff.B ] ];
+      // An explicit (none) survives the refresh; anything else is replaced by the
+      // effective mapping so the saved config says what will actually render.
+      this.cfg.chR = ( this.cfg.chR == CH_NONE ) ? CH_NONE : eff.R;
+      this.cfg.chG = ( this.cfg.chG == CH_NONE ) ? CH_NONE : eff.G;
+      this.cfg.chB = ( this.cfg.chB == CH_NONE ) ? CH_NONE : eff.B;
+      var slots = [ [ this.chR, this.cfg.chR ], [ this.chG, this.cfg.chG ],
+                    [ this.chB, this.cfg.chB ] ];
       for ( var s = 0; s < slots.length; ++s )
       {
          var combo = slots[ s ][ 0 ].combo, cur = slots[ s ][ 1 ];
