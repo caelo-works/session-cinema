@@ -65,6 +65,7 @@ module.exports = {
    CRF_CHOICES: CRF_CHOICES,
    DEFAULT_CONFIG: DEFAULT_CONFIG,
    STRINGS: STRINGS,
+   FRAME_EXT: FRAME_EXT,
    tr: tr,
    versionLabel: versionLabel,
    setLanguage: function (lang) { gLanguage = lang; },

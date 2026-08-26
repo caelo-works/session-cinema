@@ -202,4 +202,34 @@ near( M.gmstDeg( 2451545.0 ), 280.46061837, 1e-6, "GMST at J2000.0" );
    assert.strictEqual( M.plannedFrameCount( [], cfg, null ).total, 0 );
 }
 
+// --- the frame format the messages name is the one that gets written ---------
+//
+// The dialog, five messages and the KB all promised a PNG sequence; the script
+// writes BMP, and has since the format was changed for speed. Nothing tied the
+// sentence to the extension.
+{
+   const ext = M.FRAME_EXT.replace( ".", "" ).toUpperCase();
+   const KEYS = [ "out.keepFrames", "out.ffmpegMissing", "run.encodeFail",
+                  "run.encodeScript", "result.script" ];
+   for ( const lang of [ "en", "fr" ] )
+      for ( const k of KEYS )
+      {
+         const v = M.STRINGS[ lang ][ k ];
+         assert.ok( v, `${lang}.${k} is missing` );
+         assert.ok( v.indexOf( ext ) >= 0,
+            `${lang}.${k} does not name ${ext}, the format the frames are written in` );
+         for ( const wrong of [ "PNG", "JPEG", "TIFF" ] )
+            if ( wrong !== ext )
+               assert.ok( v.indexOf( wrong ) < 0,
+                  `${lang}.${k} promises ${wrong} where the script writes ${ext}` );
+      }
+   const kb = require( "fs" ).readFileSync(
+      require( "path" ).join( __dirname, "..", "docs", "support-kb.md" ), "utf8" );
+   // Input formats legitimately mention PNG; the frame SEQUENCE must not.
+   for ( const line of kb.split( "\n" ) )
+      if ( /sequence|séquence/i.test( line ) )
+         assert.ok( line.indexOf( "PNG" ) < 0,
+            `the KB still calls the frame sequence PNG: "${line.trim()}"` );
+}
+
 console.log( "announced.test.js OK" );
