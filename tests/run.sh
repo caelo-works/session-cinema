@@ -120,6 +120,7 @@ module.exports = {
    locationStartFraming: locationStartFraming,
    zoomCameraLocation: zoomCameraLocation,
    projectToScreen: projectToScreen,
+   screenToVec: screenToVec,
    zoomCameraAt: zoomCameraAt,
    revealAlpha: revealAlpha,
    zoomEndFov: zoomEndFov,
