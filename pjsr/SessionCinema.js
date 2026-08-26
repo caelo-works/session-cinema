@@ -6883,9 +6883,12 @@ class AlignDialog extends Dialog
 
 function runHeadless( cfgPath )
 {
-   var result = { ok: false, rendered: 0, skipped: [], videoPath: "", framesDir: "",
-                  warnings: [], errorKey: "", error: "" };
-   var marker = "";
+   var result = { ok: false, rendered: 0, skipped: [], videoPath: "", scriptPath: "",
+                  framesDir: "", aborted: false, warnings: [], errorKey: "", error: "" };
+   // Known before the config is even parsed, so a config that cannot be read
+   // still produces a file saying so. Overridden below once outputDir is known.
+   var marker = File.extractDrive( cfgPath ) + File.extractDirectory( cfgPath ) +
+                "/sessioncinema-result.json";
    try
    {
       var raw = File.readTextFile( cfgPath );
@@ -6902,7 +6905,12 @@ function runHeadless( cfgPath )
          console.warningln( tr( "align.rotStaleLog" ) );
          result.warnings.push( tr( "align.rotStaleLog" ) );
       }
-      marker = user.marker || ( cfg.outputDir + "/sessioncinema-result.json" );
+      // An empty outputDir would put the marker on the filesystem root, where the
+      // write throws and the failure being diagnosed is the one that vanishes.
+      if ( user.marker )
+         marker = user.marker;
+      else if ( cfg.outputDir && String( cfg.outputDir ).length )
+         marker = cfg.outputDir + "/sessioncinema-result.json";
       var frames = [];
       var files = user.files || [];
       for ( var i = 0; i < files.length; ++i )
@@ -6914,14 +6922,21 @@ function runHeadless( cfgPath )
       result.skipped = r.skipped;
       result.videoPath = r.videoPath;
       result.framesDir = r.framesDir;
+      result.scriptPath = r.scriptPath;
+      result.aborted = r.aborted;
       result.errorKey = r.errorKey;
       if ( r.error && r.error.length )
          result.error = r.error;
+      // ok:true with an empty videoPath read as a success to every harness. Say
+      // it: frames exist, no video, and here is the script that encodes them.
+      if ( r.ok && !( r.videoPath && r.videoPath.length ) )
+         result.warnings.push( tr( "result.script", r.scriptPath || result.framesDir ) );
       if ( engine.perf )
          result.perf = engine.perf;
    }
    catch ( e )
    {
+      result.errorKey = "run.error";
       result.error = e.message || String( e );
    }
    // The result file is the ONLY channel automation has. It was written into a
