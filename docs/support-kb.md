@@ -190,7 +190,9 @@ using the **`FILTER`** header value:
 - **SHO (Hubble)**: SII → R, Ha → G, OIII → B
 - **HOO (bicolour)**: Ha → R, OIII → G, OIII → B
 - **HOS**: Ha → R, OIII → G, SII → B
-- **RGB** and **LRGB**: R → R, G → G, B → B
+- **RGB**: R → R, G → G, B → B. There is no LRGB entry: it was an exact alias of
+  RGB, so luminance subs were listed among the filters and fed no channel. A
+  config saved with LRGB opens as RGB and renders exactly as it did before.
 - Each channel can be overridden by hand.
 - **Remove dominant green (SCNR)** caps green at the R/B neutral — the usual
   narrowband green cast.

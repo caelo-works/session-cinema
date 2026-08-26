@@ -1259,11 +1259,19 @@ var PALETTES = {
    HOO:  { R: "Ha",  G: "OIII", B: "OIII", label: "HOO (bicolour)" },
    HOS:  { R: "Ha",  G: "OIII", B: "SII",  label: "HOS" },
    RGB:  { R: "R",   G: "G",    B: "B",    label: "RGB" },
-   LRGB: { R: "R",   G: "G",    B: "B",    label: "LRGB" }
+   // Kept so a config saved with it still resolves, but not offered: it was an
+   // exact alias of RGB. Luminance subs were counted in the filter list and fed
+   // no channel, which is a promise the render never kept.
+   LRGB: { R: "R",   G: "G",    B: "B",    label: "RGB" }
 };
-var PALETTE_ORDER = [ "SHO", "HOO", "HOS", "RGB", "LRGB" ];
+var PALETTE_ORDER = [ "SHO", "HOO", "HOS", "RGB" ];
 
 // Distinct FILTER values present, in first-appearance (shoot) order, with counts.
+// Grouped on the CANONICAL filter, not the raw string: a night written half "Ha"
+// and half "HA" used to appear as two filters, only one of which could be mapped
+// to a channel, and the other half of the subs never entered the composite.
+// The first spelling seen is kept as the label, so the dialog still shows what
+// the headers actually say.
 function detectFilters( frames )
 {
    var seen = {}, out = [];
@@ -1271,8 +1279,9 @@ function detectFilters( frames )
    {
       var f = String( ( frames[ i ] && frames[ i ].filter ) || "" ).trim();
       if ( !f.length ) continue;
-      if ( seen.hasOwnProperty( f ) ) { out[ seen[ f ] ].count++; continue; }
-      seen[ f ] = out.length;
+      var c = canonicalFilter( f );
+      if ( seen.hasOwnProperty( c ) ) { out[ seen[ c ] ].count++; continue; }
+      seen[ c ] = out.length;
       out.push( { filter: f, count: 1 } );
    }
    return out;
@@ -1296,13 +1305,14 @@ function resolveChannelMap( cfg, filters )
       if ( !byCanon.hasOwnProperty( c ) ) byCanon[ c ] = filters[ i ].filter;  // first wins
    }
    var present = {};
-   for ( var j = 0; j < filters.length; ++j ) present[ filters[ j ].filter ] = true;
+   for ( var j = 0; j < filters.length; ++j )
+      present[ canonicalFilter( filters[ j ].filter ) ] = true;
 
    function pick( override, role )
    {
       var o = String( override || "" ).trim();
       if ( o == CH_NONE ) return "";                       // explicitly left empty
-      if ( o.length && present[ o ] ) return o;            // explicit, and present
+      if ( o.length && present[ canonicalFilter( o ) ] ) return o;   // explicit, present
       if ( role && byCanon.hasOwnProperty( role ) ) return byCanon[ role ];
       return "";
    }
@@ -1318,10 +1328,10 @@ function resolveChannelMap( cfg, filters )
 // filter may feed several channels, e.g. OIII → G and B in HOO).
 function channelsFedBy( filter, map )
 {
-   var out = [];
-   if ( map.R && filter == map.R ) out.push( "R" );
-   if ( map.G && filter == map.G ) out.push( "G" );
-   if ( map.B && filter == map.B ) out.push( "B" );
+   var f = canonicalFilter( filter ), out = [];
+   if ( map.R && f == canonicalFilter( map.R ) ) out.push( "R" );
+   if ( map.G && f == canonicalFilter( map.G ) ) out.push( "G" );
+   if ( map.B && f == canonicalFilter( map.B ) ) out.push( "B" );
    return out;
 }
 
@@ -3459,7 +3469,7 @@ Engine.prototype.integrateFilter = function( filterName )
    {
       if ( this.checkAbort() ) break;
       var fr = this.frames[ i ];
-      if ( fr.filter != filterName ) continue;
+      if ( canonicalFilter( fr.filter ) != canonicalFilter( filterName ) ) continue;
       var win = this.openFrame( fr );
       if ( win == null ) continue;
       var im = win.mainView.image;
@@ -3539,8 +3549,9 @@ Engine.prototype.runStackingColor = function( map )
       // reference the mono path takes at n = 1. Retried on the next sub while it
       // does not come out positive, exactly as the mono path does. Noise
       // estimation is not free, so it only runs when the overlay asks for it.
-      if ( cfg.ovShowSnr && !( sigFirst[ fr.filter ] > 0 ) )
-         sigFirst[ fr.filter ] = estimateSigma( im );
+      var frCanon = canonicalFilter( fr.filter );
+      if ( cfg.ovShowSnr && !( sigFirst[ frCanon ] > 0 ) )
+         sigFirst[ frCanon ] = estimateSigma( im );
       for ( var c = 0; c < chans.length; ++c )
       {
          var ch = chans[ c ];
@@ -3571,7 +3582,7 @@ Engine.prototype.runStackingColor = function( map )
                // the stretch and the ramp below, which would otherwise be what the
                // dB figure measures. Once per distinct filter (HOO feeds G and B
                // from one OIII mean), and only over the channels actually drawn.
-               var fName = map[ key ];
+               var fName = canonicalFilter( map[ key ] );
                wByFilter[ fName ] = ( wByFilter[ fName ] || 0 ) + 1;
                if ( cfg.ovShowSnr && sigCur[ fName ] === undefined )
                   sigCur[ fName ] = estimateSigma( mw.mainView.image );
@@ -5239,6 +5250,13 @@ class SessionCinemaDialog extends Dialog
          var pk = PALETTE_ORDER[ pi ];
          this.paletteCombo.addItem( PALETTES[ pk ].label || pk );
          if ( pk == cfg.palette ) this.paletteCombo.currentItem = pi;
+      }
+      // A config saved with a palette no longer offered (LRGB, which was an exact
+      // alias of RGB) must not leave the combo showing something else.
+      if ( PALETTE_ORDER.indexOf( cfg.palette ) < 0 )
+      {
+         cfg.palette = ( cfg.palette == "LRGB" ) ? "RGB" : PALETTE_ORDER[ 0 ];
+         this.paletteCombo.currentItem = PALETTE_ORDER.indexOf( cfg.palette );
       }
       this.paletteCombo.onItemSelected = ( i ) =>
       {
