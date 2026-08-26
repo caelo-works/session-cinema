@@ -810,8 +810,14 @@ function colorRenderPlan( frames, map, fps, targetDuration )
       var rn = ( T > 1 ) ? eligible[ Math.round( i*( E - 1 )/( T - 1 ) ) ] : eligible[ E - 1 ];
       if ( !renderSet[ rn ] ) { renderSet[ rn ] = true; ++totalRenders; }
    }
-   return { mappedFrames: mappedFrames, firstFullN: firstFullN,
-            renderSet: renderSet, totalRenders: totalRenders };
+   // The last position that will render. Every entry of renderSet is mapped, so
+   // this one composes unless its sub cannot be opened — which is reported.
+   var lastRender = 0;
+   for ( i = 0; i < eligible.length; ++i )
+      if ( renderSet[ eligible[ i ] ] )
+         lastRender = eligible[ i ];
+   return { mappedFrames: mappedFrames, firstFullN: firstFullN, renderSet: renderSet,
+            totalRenders: totalRenders, lastRender: lastRender };
 }
 
 // The end reveal writes this many frames, or none when there is no image to
@@ -3317,7 +3323,7 @@ Engine.prototype.runStackingColor = function( map )
    // dialog makes for its estimate — that is the point of it being a function.
    var plan = colorRenderPlan( this.frames, map, cfg.fps, cfg.targetDuration );
    var mappedFrames = plan.mappedFrames, renderSet = plan.renderSet;
-   var totalRenders = plan.totalRenders;
+   var totalRenders = plan.totalRenders, lastRender = plan.lastRender;
 
    console.writeln( tr( "run.pass1", N ) );
    var stretches = this.channelStretches( map );
@@ -3429,7 +3435,12 @@ Engine.prototype.runStackingColor = function( map )
             dateObs: fr.dateObs,
             sigmaFirst: snr.first, sigmaCurrent: snr.current, title: this.title } );
          var bmp = composeColorBitmap( chImgs, cfg, ov );
-         if ( n == N )                                   // final frame → overlay-free reveal base
+         // The LAST RENDERED position, not n == N. N is the last sub in shoot
+         // order, and both skips above happen before n is computed: an SHO night
+         // pulled in HOO ends on an SII sub every time, so the equality never held
+         // and the whole end of the video — cross-fade, zoom, hold, the placement
+         // the user aligned by hand — vanished without a word.
+         if ( n == lastRender )
          {
             revealBase = composeColorBitmap( chImgs, cfg, null );
             lastOv = ov;
@@ -3452,6 +3463,8 @@ Engine.prototype.runStackingColor = function( map )
    // frame so it does not zoom with the image.
    if ( !this.aborted && revealBase && geomW )
       this.renderStackReveal( revealBase, geomW, geomH, lastOv, outIndex, totalRenders );
+   else if ( revealTailFrames( cfg ) > 0 && !this.aborted )
+      this.skipped.push( "end reveal (no final composite to fade from)" );
 };
 
 // Append the end-reveal frames: over STACK_REVEAL_SEC, cross-fade the final
