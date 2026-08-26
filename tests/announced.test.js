@@ -232,4 +232,67 @@ near( M.gmstDeg( 2451545.0 ), 280.46061837, 1e-6, "GMST at J2000.0" );
             `the KB still calls the frame sequence PNG: "${line.trim()}"` );
 }
 
+// --- the announced end field is the field the last frame shows ---------------
+//
+// zoomEndFov decides where the zoom stops, and the console prints the image's
+// field as a measurement. The two have to describe the same frame: the reveal
+// must exactly fill it in the mode the user chose — covering it with no black
+// border in crop, contained and touching on one axis in letterbox.
+//
+// This is the invariant that was false while a reveal delivered at another aspect
+// inflated P by 8.9 %: the zoom ended on a field the photo did not cover, and the
+// last frame carried 78 px of black down each side.
+{
+   const FORMATS = [ [ 1920, 1080 ], [ 3840, 2160 ], [ 1080, 1080 ], [ 1080, 1920 ] ];
+   const REVEALS = [ [ 6000, 4000 ], [ 6000, 3375 ], [ 4500, 4000 ], [ 3000, 3000 ],
+                     [ 2000, 3000 ], [ 5000, 2000 ] ];
+   const P = 1.6666667;                       // the image's true field, across its width
+
+   for ( const [ W, H ] of FORMATS )
+      for ( const [ rw, rh ] of REVEALS )
+         for ( const fit of [ M.FIT_CROP, M.FIT_LETTERBOX ] )
+         {
+            const endFov = M.zoomEndFov( P, rw, rh, W, H, fit );
+            assert.ok( endFov > 0, `endFov must be positive (${rw}x${rh} -> ${W}x${H})` );
+
+            // How much of the frame the reveal fills, on each axis, at that camera.
+            const fillW = P/endFov;
+            const fillH = ( P*rh/rw )/( endFov*H/W );
+            const what = `${rw}x${rh} in ${W}x${H}, ${fit === M.FIT_CROP ? "crop" : "letterbox"}`;
+
+            if ( fit === M.FIT_CROP )
+            {
+               assert.ok( fillW >= 1 - 1e-9 && fillH >= 1 - 1e-9,
+                  `${what}: crop must leave no black border (fills ${fillW.toFixed(4)} x ${fillH.toFixed(4)})` );
+               assert.ok( Math.min( fillW, fillH ) < 1 + 1e-9,
+                  `${what}: and must not zoom past what covering needs` );
+            }
+            else
+            {
+               assert.ok( fillW <= 1 + 1e-9 && fillH <= 1 + 1e-9,
+                  `${what}: letterbox must not crop (fills ${fillW.toFixed(4)} x ${fillH.toFixed(4)})` );
+               assert.ok( Math.max( fillW, fillH ) > 1 - 1e-9,
+                  `${what}: and must touch on one axis, not stop short` );
+            }
+         }
+
+   // Matching aspects settle on the integer pixel dimensions, so an existing 16:9
+   // render keeps its exact camera path rather than one rounding step away.
+   assert.strictEqual( M.zoomEndFov( P, 3840, 2160, 1920, 1080, M.FIT_CROP ), P );
+   assert.strictEqual( M.zoomEndFov( P, 3840, 2160, 1920, 1080, M.FIT_LETTERBOX ), P );
+
+   // And the field fed to it is the measured one. A 16:9 export of a 3:2 master
+   // is a crop: scaleWcsCropped keeps the pixel scale, so P stays the truth and
+   // the frame above closes on it. Scaling the axes apart inflated P by 8.9 %,
+   // and the assertions above would fail on that value.
+   const solved = M.makeWcs( 274.7, -13.8, 3000, 2000, [ [ -1/3600, 0 ], [ 0, -1/3600 ] ] );
+   const cropped = M.wcsImageFraming( M.scaleWcsCropped( solved, 6000, 4000, 6000, 3375 ),
+                                      6000, 3375 );
+   near( cropped.fovDeg, 6000/3600, 1e-9, "the field the overlay announces is the measured one" );
+   const inflated = M.wcsImageFraming( M.scaleWcsToDims( solved, 6000, 4000, 6000, 3375 ),
+                                       6000, 3375 );
+   assert.ok( inflated.fovDeg > cropped.fovDeg*1.08,
+      "and the old scaling really did inflate it, which is what this pins" );
+}
+
 console.log( "announced.test.js OK" );

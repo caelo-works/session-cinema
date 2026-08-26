@@ -2381,7 +2381,16 @@ function saveConfig( cfg )
 // dropping a French user's icon flipped an English interface to French, and
 // because persistableConfig() is written to the Settings on close AND on the
 // first Generate, deleting the icon did not put it back.
-var PERSONAL_KEYS = { language: true, lastMsPerFrame: true };
+// A process icon is made to be handed to someone else; the Settings file is not.
+// The observer's coordinates are read out of the headers without being asked for
+// and were carried in every exported icon to four decimals — about eleven metres —
+// by a user who never typed them and was never told they were there. They stay in
+// Settings, which is local, and stay out of anything shareable.
+// importParameters skips the same keys, so a trimmed icon falls back to the 999
+// sentinel that means "read them from the headers", not to 0 — which is a real
+// place in the Gulf of Guinea.
+var PERSONAL_KEYS = { language: true, lastMsPerFrame: true,
+                      observerLat: true, observerLong: true, observerDateUtc: true };
 
 function exportParameters( cfg )
 {

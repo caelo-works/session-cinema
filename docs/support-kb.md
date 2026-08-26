@@ -42,6 +42,29 @@ down to the user's image.
 | Where it appears | **Script → CaeloWorks → Session Cinema** |
 | Video encoding | ffmpeg — detected, installed in one click, or done afterwards by a generated script |
 
+### What leaves the machine, and what the video reveals
+
+Three channels, and a user who posts a process icon or publishes a video should
+know about them.
+
+**The process icon does not carry the site.** `observerLat`, `observerLong` and
+the shoot date are read from the headers without being asked for, and they stay
+**local**: they are in the settings file and deliberately not in an exported
+icon, which is made to be handed to someone else. Everything else about the
+recipe — style, cadence, format, palette, overlays, paths — does travel. Up to
+1.1.1 the coordinates travelled too, to four decimals, about eleven metres.
+
+**The video does reveal the site when the location option is on.** That is the
+feature: the opening frame draws the horizon, the cardinal points and the
+target's altitude, next to the `DATE-OBS` in the overlay. Altitude, azimuth and
+time together determine latitude and longitude. Anyone publishing a video who
+does not want their site inferred should untick **Simulate the shoot location**.
+
+**The real-sky bridge makes outbound requests.** With the survey bridge on, the
+target's right ascension, declination and field of view are sent to a public CDS
+service, twice per generation. It is the only unsolicited outbound traffic in the
+product; untick the bridge and there is none.
+
 ### What is in the video that does not come from the user
 
 Session Cinema redistributes no third-party data — the star and constellation
