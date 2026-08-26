@@ -3394,6 +3394,22 @@ function installFfmpegFromMirror( onTick )
 
 // Always written next to the frames, so a failed or missing ffmpeg never
 // strands the user: the exact command is one double-click away.
+// Where a video is written while it is still being written. ".part.mp4", NOT
+// ".mp4.part": ffmpeg picks its muxer from the extension, and an unknown one makes
+// it refuse the output entirely — "Unable to choose an output format […]; use a
+// standard extension for the filename". The name still says the file is partial,
+// which is the whole point: a truncated video must never sit under the final name,
+// because it looks like a video.
+function partialVideoPath( finalPath )
+{
+   var p = String( finalPath );
+   var dot = p.lastIndexOf( "." );
+   var slash = Math.max( p.lastIndexOf( "/" ), p.lastIndexOf( "\\" ) );
+   if ( dot <= slash + 1 )
+      return p + ".part";          // no extension to preserve
+   return p.substring( 0, dot ) + ".part" + p.substring( dot );
+}
+
 function writeEncodeScript( framesDir, ffmpegArgs, ffmpegPath )
 {
    var isWin = ( platformKind() == "windows" );
@@ -4790,7 +4806,7 @@ Engine.prototype.encode = function()
    // like a video. And Cancel now reaches here — the encode was the one long
    // phase with no abort check at all.
    var finalPath = this.videoPath();
-   var partPath = finalPath + ".part";
+   var partPath = partialVideoPath( finalPath );
    try { File.remove( partPath ); } catch ( e ) {}
    for ( var ai = 0; ai < args.length; ++ai )
       if ( args[ ai ] == finalPath )
@@ -4838,7 +4854,9 @@ Engine.prototype.encode = function()
    var why = r.output;
    if ( why && why.length )
    {
-      var lines = String( why ).split( "\n" );
+      // ffmpeg draws its progress with carriage returns; printed as-is they make
+      // the console overwrite itself and the message comes out shredded.
+      var lines = String( why ).split( "\r" ).join( "\n" ).split( "\n" );
       while ( lines.length && !lines[ lines.length - 1 ].length )
          lines.pop();
       console.warningln( tr( "run.encodeSaid",

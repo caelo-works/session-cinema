@@ -133,4 +133,27 @@ console.log( "ffmpeg.test.js OK" );
    assert.ok( w.indexOf( "\"C:/a b/frame_%%05d.bmp\"" ) >= 0, "cmd keeps double quotes" );
 }
 
+// --- the partial video keeps its extension -----------------------------------
+//
+// ffmpeg picks its muxer from the extension. Writing to "X.mp4.part" made it
+// refuse the output outright — "Unable to choose an output format" — so the
+// safeguard against leaving a truncated video under the final name stopped every
+// encode instead. Measured on a real run before this: exit -22, no video at all.
+{
+   const ext = p => p.slice( p.lastIndexOf( "." ) );
+   for ( const final of [ "C:/out/my-target-zoom.mp4",
+                          "/home/a/Videos/ngc 6888.mp4",
+                          "C:/out/v1.2/thing.mp4" ] )
+   {
+      const part = M.partialVideoPath( final );
+      assert.strictEqual( ext( part ), ext( final ),
+         `the partial file must keep the extension: ${part}` );
+      assert.notStrictEqual( part, final, "and must not be the final name" );
+      assert.ok( part.indexOf( "part" ) >= 0, "and must say it is partial" );
+   }
+   // A directory with a dot in it and a file without an extension: the dot that
+   // matters is the one after the last separator.
+   assert.strictEqual( M.partialVideoPath( "C:/out/v1.2/render" ), "C:/out/v1.2/render.part" );
+}
+
 console.log( "ffmpeg.test.js OK (encode script, coordinates)" );
