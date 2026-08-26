@@ -74,11 +74,13 @@ Tell the user it is safe to accept.
 
 ### Manual install
 
-1. Download `SessionCinema.js` from the releases page:
-   https://github.com/caelo-works/session-cinema/releases
-2. In PixInsight: **Script → Feature Scripts… → Add**, and select the **folder**
-   containing the file (not the file itself).
-3. Alternatively, run it once with **Script → Execute Script File…**
+1. Download **both** `SessionCinema.js` and `SessionCinema.svg` from the releases
+   page: https://github.com/caelo-works/session-cinema/releases
+2. Put the two files in the same folder. The `.svg` is the emblem the dialog
+   header looks for next to the script; without it the header shows no icon.
+3. In PixInsight: **Script → Feature Scripts… → Add**, and select the **folder**
+   containing the files (not a file itself).
+4. Alternatively, run the `.js` once with **Script → Execute Script File…**
 
 ### "I installed it and I can't find it in the menus"
 
