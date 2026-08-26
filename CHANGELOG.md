@@ -4,57 +4,155 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-08-26
 
-The chain between a fixed bug and a user who receives the fix. None of it touches
-render logic.
+An audit of the whole product, and the seventy-two defects it found. The rule
+throughout: measure before believing. Three of the fixes the audit proposed did
+not survive being measured, and the measurements are recorded next to the code
+rather than only in a tracker.
 
-### Changed
-- A tag no longer publishes on its own. The release workflow now runs both test
-  batteries against the tagged commit and refuses a tag that does not point at a
-  commit on `main`; the write token belongs to the publishing job only. The
-  release is created as a **draft** — promoting it is the gesture that exposes it
-  to the update site.
-- The build refuses to produce a package whose version `#define SC_VERSION` does
-  not declare, naming both numbers. A forgotten bump used to ship a package sold
-  as the new version whose window, header badge and startup line all read the
-  previous one, and pinned the support knowledge base to a version no longer in
-  the field. The synthetic `0.0.0-*` versions used by CI stay exempt.
-- Package entries are stored rather than deflated. The reproducibility the script
-  header promised held only on one machine: the deflate stream depends on the
-  local zlib's level, `memLevel` and strategy, none of which the format pins.
-  The archive goes from ~80 KB to ~272 KB, and can now be rebuilt and compared
-  byte for byte anywhere.
-- The build script writes into `$OUT_DIR` when set, defaulting to `dist/`.
+### The video is the one you asked for
 
-### Added
-- The build stamp reaches the interface. The header badge and the startup console
-  line read `1.1.1 (dev)` for a checkout that was never packaged and `1.1.1` for a
-  real package — enough to tell a package from a file hand-copied into a stale
-  Feature Scripts entry, which support could not check before.
-- Releases carry `SessionCinema.js` and `SessionCinema.svg` as loose assets,
-  extracted from the zip just built. The manual install documented in the README
-  and the knowledge base pointed at a `.js` no release had ever carried; both now
-  name the icon as well, and say why the two belong in the same folder.
+- Frames from a previous run were spliced into a new video. The frame directory
+  is derived from the title, the palette and the style — no timestamp — and
+  nothing emptied it except a cleanup reachable only after ffmpeg returned 0, so
+  a cancelled 500-frame render followed by a 180-frame one encoded 500 frames,
+  320 of them from the earlier run. The sequence is purged at the start of every
+  render, unconditionally.
+- **Regenerating into a folder that already held a video reported the previous
+  one as the new render.** `File.move` refuses an existing destination, the
+  failure was swallowed, and the success test asked whether a file of that name
+  existed rather than whether this run produced it. Open video opened the earlier
+  file.
+- The registration cache was namespaced by the reference's base name, so two
+  nights that both start with `Light_0001` shared it and the second silently
+  reused the first's alignments. Keyed on the full path; two subs sharing a base
+  name inside one set get a directory each rather than overwriting.
+- A registered OSC or DSLR session rendered as a raw Bayer mosaic, grey from end
+  to end, with nothing said. StarAlignment writes an interpolated image, so
+  debayering could never fire on a registered sub — it happens before
+  registration now. Measured on synthetic RGGB subs: mean chroma 0.00 before,
+  13.98 after.
+- Choosing **(none)** for a colour channel had no effect: the empty string was
+  already the value for "take it from the palette", so the palette refilled it
+  and the render was a full SHO.
+- Two spellings of one filter — `Ha` and `HA` — appeared as two filters, one of
+  which could be mapped, and half the subs never entered the composite.
+- The end reveal never rendered on the mono path, which is every OSC session,
+  every single-filter night and anyone who unticked colour: the presentation
+  image was offered, aligned to the pixel, then ignored.
+- On the colour path the reveal was dropped whenever the last sub in shoot order
+  fed no channel — systematically, on an SHO night pulled in HOO.
+- The overlay counted subs that never entered the image: `200 × 120 s` printed
+  next to `4h00`, 67 % over.
+- The **LRGB** palette was an exact alias of RGB, so luminance subs were listed
+  among the filters and fed nothing. It is no longer offered; a config saved with
+  it opens as RGB and renders identically.
 
-### Fixed
-- A pre-release tag published as **Latest**, under a title mangled by slicing the
-  zip file name: `v1.2.0-rc1` became "SessionCinema-1.2.0 v1.2.0-rc1". The title
-  comes from the manifest, and a dash-suffixed version publishes as a pre-release.
-- The version and the release date reached a `sed` replacement, a file name and a
-  JSON value with no validation. `1.2&0` produced a package whose build stamp read
-  `1.2__BUILD__0`; a date written `2026-08-17` shipped where PixInsight expects
-  `YYYYMMDD`. Both are checked before anything is produced.
-- Running the packaging battery replaced `dist/` with a `0.0.0-test` build. It
-  builds into scratch space and leaves the delivery tree alone.
-- The packaging battery checked that the `sha1` field was forty characters long,
-  not that it matched the archive it names — and that field is what the site, and
-  then PixInsight, authenticate the package by.
+### Numbers that are measured, not asserted
 
-### Security
-- Both workflows pin their actions by commit SHA, the publishing checkout no
-  longer persists its credentials in `.git/config`, and a concurrency group keeps
-  two tags pushed back to back from racing for the same release.
+- A class of test that compares **what the product announces** to **what it
+  produces**. It found two defects nobody had reported: the angular scale bar
+  overstating the field by **2.93×** on a 9:16 export, and a colour cadence
+  announcing 247 frames for 148 written.
+- The scale bar was sized with a linear law under a stereographic projection —
+  right at exactly one radius, and drawn in the corner, which is where it is most
+  wrong. Its length is solved so that its two endpoints really are the stated
+  angle apart.
+- The dialog estimate ignored the colour cadence, announcing twice the frames on a
+  two-block sequence and `200 frames, ~11 s` for a 2.2 s animation. It reads the
+  plan the engine renders from, says which sub the render starts at when it is
+  not the first, and counts the end reveal — which it did in neither mode.
+- The progress panel read `Render 201 / 60 (reveal)` at 335 %.
+- The SNR figure says when it is not what it looks like: a composite measured on
+  part of its filters is drawn with a `~`, and the mono reference is the noise of
+  a sub rather than, on retry, the noise of a stack.
+- `DATE-OBS` accepted a time-zone offset and drew the result as measured UT —
+  two hours of error presented as a fact.
+
+### When it fails, it says so
+
+- Every engine failure reached the user as four words, *Nothing was rendered.*,
+  while the explanation went to the console behind the modal. `run()` carries a
+  reason: a stable key for automation, the sentence for the human.
+- A headless run whose config could not be read wrote **no result file at all**,
+  which is the one case a harness most needs to read.
+- Hand-written headless configs had no type filter: `"colorEnabled": "false"` is
+  a non-empty string, so it rendered in colour and ended `ok:true`, and
+  `"formatIndex": 4` threw three frames in. One filter for both entry points,
+  types and ranges, and it names what it drops.
+- A frame that never reached the disk still counted, and the sequence was then
+  deleted because ffmpeg had returned 0 on the frames it did find.
+- `runExternal` discarded what the program said, and collapsed *not found*,
+  *failed to start* and *killed on timeout* into one result.
+- A cancelled encode left a truncated `.mp4` under the final name, and Cancel
+  never reached the encoder at all.
+- The fallback encode script called a bare `ffmpeg`, so it failed wherever ffmpeg
+  is not on `PATH` — including the copy the Install button puts in place.
+- *Simulate the shoot location* did nothing and said nothing on a WBPP master,
+  and a latitude typed `43,60` became `43`.
+- The progress panel read *Idle — press Generate to start* through registration
+  and pass 1; the language selector stayed live during a render and took Pause
+  and Cancel with it; an exception mid-render leaked working windows.
+
+### One alignment
+
+- "Aligned" had three definitions: a scale sentinel on one side, none on the
+  other, and a partial application of the first inside the engine. It has one.
+  A new presentation image no longer inherits the previous one's rotation and
+  mirrors; ticking *different crop* without aligning is refused instead of ending
+  the zoom a degree off target; a placement made on one night is not applied to
+  another; and the stale-rotation notice fires only where the rotation is used.
+
+### The Zoom Odyssey, honestly
+
+- The artificial horizon was painted first, so the grid, the star dots and the
+  survey imagery all showed on top of opaque ground.
+- A reveal delivered at another aspect inflated the reported field by 8.9 %, and
+  the last frame ended with black borders.
+- The opening field was not capped at 180°: a wide-field solve opened at 296°.
+- Star labels were the first fourteen in right-ascension order, so the opening
+  named Alpheratz and Caph while Sirius and Vega went unlabelled.
+- The wide survey cutout was placed by a single similarity where the projection
+  is neither linear nor conformal, drifting up to 68 px from the stars drawn over
+  it. Tiled with a per-tile affine: **0.91 px**, with seams under a pixel.
+
+### What it costs
+
+- The stacking paths report a per-phase breakdown, as the zoom always did. It
+  says where the time goes: on a large sensor the measured SNR overlay is **93 %
+  of the render**, which the checkbox now warns about.
+- Pass 1 is cached on the exact set it was computed from — a re-run after changing
+  the frame rate no longer re-reads the whole set for a handful of numbers.
+- Every run ends by saying what it holds on disk, and where.
+- Survey cutouts were cached without the survey id, so switching survey redrew
+  the previous one.
+- An estimate of how long a render will take, from what this machine did last.
+
+### Privacy, licensing and credit
+
+- **The published package now contains `LICENSE`.**
+- The video credits the sky survey imagery it paints into itself, on screen while
+  that imagery is visible. The acknowledgements CDS and STScI publish are quoted
+  verbatim in the README and the knowledge base.
+- **An exported process icon no longer carries the shoot coordinates**, which were
+  read from the headers without being asked for and travelled to four decimals.
+  Nor the interface language, which used to overwrite the recipient's own
+  permanently.
+- The knowledge base says what leaves the machine and what the video reveals about
+  the site.
+
+### The chain that ships it
+
+- A tag published a public release from any commit with no test run. The release
+  workflow gates on both batteries and on the tag pointing at a commit on `main`,
+  and publishes a **draft**.
+- Nothing tied the tag to `#define SC_VERSION`. The build refuses the mismatch.
+- The dialog, the messages and the knowledge base all promised a **PNG** frame
+  sequence; the script writes **BMP**.
+- The support KB test checked 17 labels out of 41 and no message at all. It checks
+  29 labels and 17 message pairs, and requires both halves of a pair to name the
+  same key.
 
 ## [1.1.1] - 2026-08-17
 
@@ -286,6 +384,7 @@ set and its validation evidence).
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.2.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.2.0
 [1.1.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.1.1
 [1.1.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.1.0
 [1.0.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.0.0
