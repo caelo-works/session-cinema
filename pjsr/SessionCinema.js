@@ -400,6 +400,7 @@ var STRINGS = {
       "run.frameLost":     "A frame could not be written: %1. Check free space and folder permissions.",
       "run.framesLost":    "%1 frame(s) could not be written — the video would be short. Nothing was deleted.",
       "run.encodeSaid":    "ffmpeg said: %1",
+      "run.encodeCancelled": "Encoding cancelled. No partial video was left behind; the BMP sequence and %1 are still there.",
       "run.encodeNoStart": "ffmpeg could not be started (%1). The BMP sequence and %2 are left for manual encoding.",
       "run.encodeTimeout": "ffmpeg was still running after %1 s and was stopped. The BMP sequence and %2 are left for manual encoding.",
 
@@ -410,6 +411,7 @@ var STRINGS = {
       "result.skipped":    "%1 input(s) were skipped (unreadable or geometry mismatch).",
       "result.aborted":    "Aborted. %1 frame(s) were rendered.",
       "result.nothing":    "Nothing was rendered.",
+      "zoom.noLocation":   "\"Simulate the shoot location\" is on, but no usable latitude, longitude and date were found — the headers carry none and none was typed in. The opening falls back to the equatorial sky.",
       "zoom.aspectDiffers": "The image to reveal has a different aspect ratio from the solved image. It is treated as a centred crop at the same pixel scale. If its framing is not centred, tick \"Different crop from the solved image\" and align it.",
       "zoom.errCropNotAligned": "\"Different crop from the solved image\" is ticked but the reveal has not been aligned. Open Align… and place it, or untick the box.",
       "zoom.errOpen":      "PixInsight could not open %1. Check the file is a readable FITS/XISF/TIFF and not in use elsewhere.",
@@ -631,6 +633,7 @@ var STRINGS = {
       "run.frameLost":     "Une image n'a pas pu être écrite : %1. Vérifiez l'espace disque et les droits du dossier.",
       "run.framesLost":    "%1 image(s) n'ont pas pu être écrites — la vidéo serait incomplète. Rien n'a été supprimé.",
       "run.encodeSaid":    "ffmpeg a répondu : %1",
+      "run.encodeCancelled": "Encodage annulé. Aucune vidéo partielle n'a été laissée ; la séquence BMP et %1 sont toujours là.",
       "run.encodeNoStart": "ffmpeg n'a pas pu démarrer (%1). La séquence BMP et %2 restent disponibles pour un encodage manuel.",
       "run.encodeTimeout": "ffmpeg tournait encore après %1 s et a été arrêté. La séquence BMP et %2 restent disponibles pour un encodage manuel.",
 
@@ -641,6 +644,7 @@ var STRINGS = {
       "result.skipped":    "%1 entrée(s) ignorée(s) (illisibles ou géométrie différente).",
       "result.aborted":    "Interrompu. %1 image(s) rendues.",
       "result.nothing":    "Rien n'a été rendu.",
+      "zoom.noLocation":   "« Simuler le lieu de prise de vue » est actif, mais aucune latitude, longitude et date exploitables n'ont été trouvées — les en-têtes n'en portent pas et rien n'a été saisi. L'ouverture retombe sur le ciel équatorial.",
       "zoom.aspectDiffers": "L'image à révéler n'a pas le même rapport d'aspect que l'image résolue. Elle est traitée comme un recadrage centré à la même échelle. Si son cadrage n'est pas centré, cochez « Cadrage différent de l'image résolue » et alignez-la.",
       "zoom.errCropNotAligned": "« Cadrage différent de l'image résolue » est coché mais l'image à révéler n'a pas été alignée. Ouvrez Aligner… pour la placer, ou décochez la case.",
       "zoom.errOpen":      "PixInsight n'a pas pu ouvrir %1. Vérifiez que le fichier est un FITS/XISF/TIFF lisible et qu'il n'est pas ouvert ailleurs.",
@@ -1189,25 +1193,42 @@ function buildFfmpegArgs( params )
    return args;
 }
 
-function shellQuote( s )
+// Windows cmd has no escape inside quotes, so a path containing a quote is
+// simply not representable — but $ and ` are literal there. A POSIX shell expands
+// both inside double quotes, and a backslash keeps its meaning, so single quotes
+// are the only safe form: the one character that matters is the single quote
+// itself, closed and re-opened around an escaped one.
+function shellQuote( s, posix )
 {
-   return "\"" + String( s ).split( "\"" ).join( "\\\"" ) + "\"";
+   var v = String( s );
+   if ( posix )
+      return "'" + v.split( "'" ).join( "'\\''" ) + "'";
+   return "\"" + v.split( "\"" ).join( "\\\"" ) + "\"";
 }
 
 // Full text of the fallback encoding script. In a .bat, every literal %
 // must be doubled or cmd.exe eats it (frame_%05d.png would break).
-function buildEncodeScriptText( isWin, ffmpegArgs )
+// ffmpegPath, when known, is written into the script. Calling a bare "ffmpeg"
+// failed wherever it is not on PATH — including the copy the Install button puts
+// in the script's own data directory, which is exactly the machine that needs the
+// fallback most.
+function buildEncodeScriptText( isWin, ffmpegArgs, ffmpegPath )
 {
-   var cmd = shellQuote( "ffmpeg" );
+   var posix = !isWin;
+   var cmd = shellQuote( ( ffmpegPath && ffmpegPath.length ) ? ffmpegPath : "ffmpeg", posix );
    for ( var i = 0; i < ffmpegArgs.length; ++i )
    {
-      var a = shellQuote( ffmpegArgs[ i ] );
+      var a = shellQuote( ffmpegArgs[ i ], posix );
       if ( isWin )
          a = a.split( "%" ).join( "%%" );
       cmd += " " + a;
    }
-   return isWin ? ( "@echo off\r\n" + cmd + "\r\npause\r\n" )
-                : ( "#!/bin/sh\n" + cmd + "\n" );
+   // chcp 65001: the file is written by a Qt toolkit, so its bytes are UTF-8,
+   // and a console left on cp850 turns every accented path into mojibake — then
+   // fails to find it. set -e so a POSIX script stops on the failure instead of
+   // reporting success.
+   return isWin ? ( "@echo off\r\nchcp 65001 > nul\r\n" + cmd + "\r\npause\r\n" )
+                : ( "#!/bin/sh\nset -e\n" + cmd + "\n" );
 }
 
 // Most frequent non-empty OBJECT among the frames, "" if none carries one.
@@ -2088,6 +2109,14 @@ function parseConstellationLines( jsonText )
 // headless config saying "1.0.0" — a version that wrote the OTHER convention —
 // silenced exactly the warning it should have raised.
 var ROT_CONVENTION_SINCE = [ 1, 1, 1 ];
+
+// "43,60" is how half of Europe writes a latitude, and parseFloat stops at the
+// comma and returns 43 — a silent 0.6 degree error in the observer's position.
+function parseCoord( t )
+{
+   var v = parseFloat( String( t == null ? "" : t ).trim().replace( ",", "." ) );
+   return isFinite( v ) ? v : null;
+}
 
 function parseSemver( v )
 {
@@ -2976,8 +3005,22 @@ function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
          if ( P.waitForFinished( 250 ) )
             break;
          waited += 250;
+         // A tick that returns true asks for the process to be stopped. A throw
+         // cannot be used: the catch here would swallow it.
          if ( onTick )
-            try { onTick(); } catch ( et ) {}
+         {
+            var stop = false;
+            try { stop = onTick() === true; } catch ( et ) {}
+            if ( stop )
+            {
+               try { P.kill(); } catch ( ek ) {}
+               result.started = true;
+               result.failure = "cancelled";
+               result.waitedMs = waited;
+               harvest();
+               return result;
+            }
+         }
          if ( keepUiAlive )
             processEvents();
          if ( timeoutMs > 0 && waited >= timeoutMs )
@@ -3073,9 +3116,15 @@ function installFfmpegFromMirror( onTick )
          continue;
       if ( kind != "windows" )
          runExternal( "/bin/chmod", [ "+x", dest ], 5000, false );
+      // Exiting 0 is not evidence of being ffmpeg: an HTML error page saved under
+      // the name and made executable would not, but a wrapper or a truncated
+      // archive might. Require it to say what it is.
       var v = runExternal( dest, [ "-version" ], 15000, true );
-      if ( v.started && v.exitCode == 0 )
+      if ( v.started && v.exitCode == 0 &&
+           String( v.output || "" ).toLowerCase().indexOf( "ffmpeg version" ) >= 0 )
          return dest;
+      if ( v.started && v.exitCode == 0 )
+         console.warningln( "downloaded binary does not identify itself as ffmpeg; discarded" );
    }
    try { File.remove( dest ); } catch ( e2 ) {}
    return "";
@@ -3083,11 +3132,11 @@ function installFfmpegFromMirror( onTick )
 
 // Always written next to the frames, so a failed or missing ffmpeg never
 // strands the user: the exact command is one double-click away.
-function writeEncodeScript( framesDir, ffmpegArgs )
+function writeEncodeScript( framesDir, ffmpegArgs, ffmpegPath )
 {
    var isWin = ( platformKind() == "windows" );
    var scriptPath = framesDir + ( isWin ? "/encode.bat" : "/encode.sh" );
-   File.writeTextFile( scriptPath, buildEncodeScriptText( isWin, ffmpegArgs ) );
+   File.writeTextFile( scriptPath, buildEncodeScriptText( isWin, ffmpegArgs, ffmpegPath ) );
    if ( !isWin )
       runExternal( "/bin/chmod", [ "+x", scriptPath ], 5000, false );
    return scriptPath;
@@ -4092,6 +4141,12 @@ Engine.prototype.runZoom = function()
       var lon = ( cfg.observerLong != 999 ) ? cfg.observerLong : meta.siteLong;
       var epoch = ( cfg.observerDateUtc && cfg.observerDateUtc.length )
                   ? parseDateObs( cfg.observerDateUtc ) : meta.dateObs;
+      if ( !( lat != null && lon != null && epoch != null && isFinite( lat ) && isFinite( lon ) ) )
+         // The only else in this block belongs to the altitude test and talks
+         // about the horizon. A WBPP master carries no SITELAT/SITELONG, so the
+         // checkbox did nothing and said nothing, and the zoom quietly opened on
+         // the equatorial sky instead.
+         console.warningln( tr( "zoom.noLocation" ) );
       if ( lat != null && lon != null && epoch != null && isFinite( lat ) && isFinite( lon ) )
       {
          var st = lstDeg( julianDate( epoch ), lon );
@@ -4332,8 +4387,8 @@ Engine.prototype.encode = function()
       holdLast: cfg.holdLast,
       outputPath: this.videoPath()
    } );
-   var scriptPath = writeEncodeScript( this.framesDir(), args );
    var ffmpeg = detectFfmpeg( cfg.ffmpegPath );
+   var scriptPath = writeEncodeScript( this.framesDir(), args, ffmpeg );
    if ( !ffmpeg.length )
    {
       console.warningln( tr( "run.encodeScript", scriptPath ) );
@@ -4341,7 +4396,34 @@ Engine.prototype.encode = function()
    }
    console.writeln( tr( "run.encoding" ) );
    this.progress( -1, 0, tr( "run.encoding" ) );
-   var r = runExternal( ffmpeg, args, 0, true );
+   // Encode into a temporary name and move it only once ffmpeg says it is done:
+   // a truncated file under the final name is the worst outcome, because it looks
+   // like a video. And Cancel now reaches here — the encode was the one long
+   // phase with no abort check at all.
+   var finalPath = this.videoPath();
+   var partPath = finalPath + ".part";
+   try { File.remove( partPath ); } catch ( e ) {}
+   for ( var ai = 0; ai < args.length; ++ai )
+      if ( args[ ai ] == finalPath )
+         args[ ai ] = partPath;
+   var self1 = this;
+   var r = runExternal( ffmpeg, args, 0, true, function() { return self1.checkAbort(); } );
+   if ( r.failure == "cancelled" )
+   {
+      try { File.remove( partPath ); } catch ( e ) {}
+      console.warningln( tr( "run.encodeCancelled", scriptPath ) );
+      return { encoded: false, scriptPath: scriptPath };
+   }
+   if ( r.started && r.exitCode == 0 && File.exists( partPath ) )
+   {
+      try { File.move( partPath, finalPath ); } catch ( e ) {}
+   }
+   else
+   {
+      // ffmpeg failed: the partial file is not a video and must not sit under a
+      // name that says it is.
+      try { if ( File.exists( partPath ) ) File.remove( partPath ); } catch ( e ) {}
+   }
    // The written file is the ground truth — exit codes can lie (see above).
    if ( r.started && r.exitCode == 0 && File.exists( this.videoPath() ) )
    {
@@ -5799,11 +5881,19 @@ class SessionCinemaDialog extends Dialog
       this.latLabel = new Label( this );
       this.latLabel.text = tr( "zoom.lat" );
       this.latEdit = coordEdit( cfg.observerLat, "43.60" );
-      this.latEdit.onTextUpdated = ( t ) => { self.cfg.observerLat = t.length ? parseFloat( t ) : 999; };
+      this.latEdit.onTextUpdated = ( t ) =>
+      {
+         var v = t.length ? parseCoord( t ) : null;
+         self.cfg.observerLat = ( v == null ) ? 999 : v;
+      };
       this.lonLabel = new Label( this );
       this.lonLabel.text = tr( "zoom.lon" );
       this.lonEdit = coordEdit( cfg.observerLong, "5.48" );
-      this.lonEdit.onTextUpdated = ( t ) => { self.cfg.observerLong = t.length ? parseFloat( t ) : 999; };
+      this.lonEdit.onTextUpdated = ( t ) =>
+      {
+         var v = t.length ? parseCoord( t ) : null;
+         self.cfg.observerLong = ( v == null ) ? 999 : v;
+      };
       this.dateLabel = new Label( this );
       this.dateLabel.text = tr( "zoom.date" );
       this.dateEdit = new Edit( this );

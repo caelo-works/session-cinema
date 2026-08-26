@@ -524,6 +524,11 @@ inside the frame instead of filling it — render in 16:9, crop afterwards, or
 update. **1.1.1:** check **Framing** — **Fit (letterbox)** keeps the bands by
 design; **Fill (center crop)** is the one that fills the frame.
 
+**"Encoding cancelled."**
+Cancel now reaches the encoder. No partial `.mp4` is left behind — the video is
+written under a temporary name and only moved into place once ffmpeg says it is
+done, so a file with the final name is always a complete video.
+
 **"ffmpeg failed."**
 The frames are safe: the script keeps the BMP sequence and an `encode.sh` /
 `encode.bat` next to them. Have the user run that script. Ask for the exit code

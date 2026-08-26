@@ -138,6 +138,8 @@ module.exports = {
    rotationNeedsCheck: rotationNeedsCheck,
    sanitizeConfig: sanitizeConfig,
    parseSemver: parseSemver,
+   parseCoord: parseCoord,
+   buildEncodeScriptText: buildEncodeScriptText,
    rotationsNeedingCheck: rotationsNeedingCheck,
    revealAligned: revealAligned,
    stampConfig: stampConfig,
