@@ -229,7 +229,9 @@ using the **`FILTER`** header value:
 **Output** (*« Sortie »*):
 
 - **Folder** — mandatory. The script refuses to run without one.
-- **Keep the PNG frame sequence** — off by default.
+- **Keep the BMP frame sequence** — off by default. A kept sequence is large:
+  each 1920x1080 frame is about 6 MB, so a 900-frame render leaves roughly
+  5.5 GB next to the video.
 - **ffmpeg** — see the ffmpeg section.
 
 **Progress** (*« Progression »*) — a live preview, a bar, **Pause** and **Cancel**.
@@ -291,7 +293,7 @@ keeps it. It installs to:
 **If the install fails**, the message says so and the fix is in it: check the
 internet connection, or install ffmpeg by hand and point at it with **Browse**.
 
-**If there is no ffmpeg at all, nothing is lost.** The script writes the **PNG
+**If there is no ffmpeg at all, nothing is lost.** The script writes the **BMP
 frame sequence** plus a ready-to-run **`encode.sh`** (or **`encode.bat`**) next to
 it. The user runs that script whenever they like and gets exactly the same video.
 Never tell a user that a missing ffmpeg has cost them their render.
@@ -361,8 +363,8 @@ image?). Align manually."** / *« L'alignement automatique n'a pas trouvé
 d'appariement d'étoiles fiable… »*
 Not a bug. A starless image has nothing to match. Align by hand.
 
-**"ffmpeg not found — the PNG sequence and an encoding script will be generated
-instead."** / *« ffmpeg introuvable — la séquence PNG et un script d'encodage
+**"ffmpeg not found — the BMP sequence and an encoding script will be generated
+instead."** / *« ffmpeg introuvable — la séquence BMP et un script d'encodage
 seront générés. »*
 Not an error. Offer the **Install ffmpeg…** button, or tell them to run the
 generated `encode.sh` / `encode.bat` later.
@@ -371,7 +373,7 @@ generated `encode.sh` / `encode.bat` later.
 manually and use Browse."** / *« Échec de l'installation de ffmpeg… »*
 Exactly what it says.
 
-**"ffmpeg failed (exit code N). The PNG sequence and … are left for manual
+**"ffmpeg failed (exit code N). The BMP sequence and … are left for manual
 encoding."** / *« Échec ffmpeg (code N)… »*
 The render succeeded and the frames are safe. Ask for the exit code and escalate.
 
@@ -515,7 +517,7 @@ update. **1.1.1:** check **Framing** — **Fit (letterbox)** keeps the bands by
 design; **Fill (center crop)** is the one that fills the frame.
 
 **"ffmpeg failed."**
-The frames are safe: the script keeps the PNG sequence and an `encode.sh` /
+The frames are safe: the script keeps the BMP sequence and an `encode.sh` /
 `encode.bat` next to them. Have the user run that script. Ask for the exit code
 and escalate.
 
