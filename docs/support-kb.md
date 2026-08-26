@@ -67,6 +67,10 @@ the **AnnotateImage** script's data files. Those ship with PixInsight; if they
 cannot be found the run says so by name in the console and continues with named
 stars only.
 
+**The introductory line follows the tab.** It used to describe the frame list on
+a tab that has none — Zoom Odyssey opens first and offers a single solved image.
+If a user says they cannot find the *Add* button, they are on the zoom tab.
+
 **Two styles, one window.** The window opens on the **Zoom Odyssey** tab; the
 second tab is **Progressive stack** (*« Empilement progressif »*). The right-hand
 half of the window — Overlay, Video, Output — is shared by both.

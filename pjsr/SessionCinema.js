@@ -189,9 +189,13 @@ var gRotPending = { zoom: false, stack: false, any: false };
 var STRINGS = {
 
    en: {
-      "help": "Add the raw light frames of one or more sessions (FITS or XISF), pick a style, " +
-              "then generate a frame sequence and its video. Overlays only show measured facts: " +
-              "frame count, cumulative exposure, noise-based SNR gain.",
+      "help.zoom": "Pick a style, then a plate-solved image: the video opens on the whole sky and " +
+              "zooms to where that image lives. Overlays only show measured facts: angular scale, " +
+              "field of view, star and constellation names.",
+      "help.stack": "Pick a style, then add the raw light frames of one or more sessions " +
+              "(FITS or XISF): the video builds the integration from the first sub to the last. " +
+              "Overlays only show measured facts: frame count, cumulative exposure, " +
+              "noise-based SNR gain.",
 
       "frames.title":      "Light frames",
       "frames.addFiles":   "Add files…",
@@ -292,6 +296,7 @@ var STRINGS = {
       "overlay.title":     "Overlay",
       "overlay.videoTitle": "Title:",
       "overlay.videoTitle.hint": "blank = OBJECT from the frames",
+      "overlay.videoTitle.hintZoom": "blank = OBJECT from the solved image",
       "overlay.counter":   "Frame counter",
       "overlay.exposure":  "Cumulative exposure",
       "overlay.time":      "UT clock",
@@ -427,9 +432,14 @@ var STRINGS = {
    },
 
    fr: {
-      "help": "Ajoutez les brutes d'une ou plusieurs sessions (FITS ou XISF), choisissez un style, " +
-              "puis générez la séquence d'images et sa vidéo. Les incrustations n'affichent " +
-              "que des faits mesurés : nombre de brutes, exposition cumulée, gain de SNR.",
+      "help.zoom": "Choisissez un style, puis une image résolue astrométriquement : la vidéo " +
+              "s'ouvre sur le ciel entier et zoome jusqu'à l'endroit où vit cette image. Les " +
+              "incrustations n'affichent que des faits mesurés : échelle angulaire, champ, " +
+              "noms d'étoiles et de constellations.",
+      "help.stack": "Choisissez un style, puis ajoutez les brutes d'une ou plusieurs sessions " +
+              "(FITS ou XISF) : la vidéo construit l'intégration de la première pose à la " +
+              "dernière. Les incrustations n'affichent que des faits mesurés : nombre de brutes, " +
+              "exposition cumulée, gain de SNR.",
 
       "frames.title":      "Brutes",
       "frames.addFiles":   "Ajouter des fichiers…",
@@ -530,6 +540,7 @@ var STRINGS = {
       "overlay.title":     "Habillage",
       "overlay.videoTitle": "Titre :",
       "overlay.videoTitle.hint": "vide = OBJECT lu dans les brutes",
+      "overlay.videoTitle.hintZoom": "vide = OBJECT lu dans l'image résolue",
       "overlay.counter":   "Compteur d'images",
       "overlay.exposure":  "Exposition cumulée",
       "overlay.time":      "Horloge TU",
@@ -2169,6 +2180,19 @@ function revealAligned( cfg, which )
 // that nothing reads, with no way to dismiss it, teaches people to ignore
 // warnings — and the stamp that would clear it is withheld until every pending
 // rotation is checked, so the notice could never go away on its own.
+// Every label that shares the dialog's left column. The column is measured on
+// these, in the current language — see where labelWidth is computed. Adding a
+// labelled row to that column means adding its key here; tests/i18n.test.js
+// checks they all exist in both locales.
+var LABEL_COLUMN_KEYS = [
+   "zoom.image", "zoom.revealImage", "zoom.lat", "zoom.lon", "zoom.date",
+   "stretch.label", "seq.palette", "seq.reveal", "seq.revealDur",
+   "overlay.videoTitle", "overlay.subtitle", "overlay.distance", "overlay.signature",
+   "video.format", "video.fit", "video.fps", "video.duration",
+   "video.holdFirst", "video.holdLast", "video.quality",
+   "out.dir", "out.ffmpeg"
+];
+
 function rotationsNeedingCheck( cfg )
 {
    var zoomUsed = !!cfg.zoomRevealCropped && revealAligned( cfg, "zoom" );
@@ -5606,7 +5630,19 @@ class SessionCinemaDialog extends Dialog
       this.windowTitle = SC_TITLE + " " + SC_VERSION;
       this.userResizable = true;
 
+      // The label column used to be sized on ONE hard-coded English string.
+      // minWidth is a floor, not an imposed width, so the column stayed straight
+      // only while every label fitted inside it — and in French "Figé sur la
+      // première image (s) :" measures 219 px against that 188 px reference,
+      // pushing its spin box and, through the shared sizer, the whole row 31 px
+      // out of line with the rest of the group. Invisible in English, which is
+      // why it survived. Measured on the labels actually drawn, in the language
+      // actually in use; the old reference stays as a floor so the English layout
+      // is unchanged.
       var labelWidth = this.font.width( "Animation length (s): MMM" );
+      for ( var lk = 0; lk < LABEL_COLUMN_KEYS.length; ++lk )
+         labelWidth = Math.max( labelWidth,
+                                this.font.width( tr( LABEL_COLUMN_KEYS[ lk ] ) + "  " ) );
 
       // ---- header: emblem + title + tagline ----
       this.emblem = this.makeEmblem();
@@ -5640,11 +5676,19 @@ class SessionCinemaDialog extends Dialog
 
       // ---- help ----
       this.helpLabel = new Label( this );
-      this.helpLabel.text = tr( "help" );
+      // The help box sits ABOVE the tabs, so it is the first thing read — and it
+      // described the other tab. Zoom Odyssey opens by default and has no frame
+      // list and no Add button, so the sentence sent the reader looking for a
+      // control that is not on screen. The stated order was backwards too: the
+      // style comes first, because it decides which controls exist at all.
+      this.helpLabel.text = "";
       this.helpLabel.wordWrapping = true;
       this.helpLabel.frameStyle = FrameStyle.Box;
       this.helpLabel.margin = 8;
-      this.helpLabel.minWidth = 620;
+      // Physical pixels were a floor here: at factor 1 on a small screen 620 px
+      // forces a window width nothing releases, and at factor 2 it is half the
+      // text around it. Scaled, like the three controls that already were.
+      this.helpLabel.minWidth = this.logicalPixelsToPhysical( 620 );
 
       // ---- frames group ----
       this.tree = new TreeBox( this );
@@ -5656,10 +5700,10 @@ class SessionCinemaDialog extends Dialog
       this.tree.rootDecoration = false;
       this.tree.alternateRowColor = true;
       this.tree.multipleSelection = true;
-      this.tree.minHeight = 160;
-      this.tree.setColumnWidth( 0, 40 );
-      this.tree.setColumnWidth( 1, 300 );
-      this.tree.setColumnWidth( 2, 160 );
+      this.tree.minHeight = this.logicalPixelsToPhysical( 160 );
+      this.tree.setColumnWidth( 0, this.logicalPixelsToPhysical( 40 ) );
+      this.tree.setColumnWidth( 1, this.logicalPixelsToPhysical( 300 ) );
+      this.tree.setColumnWidth( 2, this.logicalPixelsToPhysical( 160 ) );
 
       this.addFilesButton = new PushButton( this );
       this.addFilesButton.text = tr( "frames.addFiles" );
@@ -5923,7 +5967,19 @@ class SessionCinemaDialog extends Dialog
       this.filterInfoLabel = new Label( this );
       this.filterInfoLabel.text = tr( "seq.noFilters" );
       this.filterInfoLabel.wordWrapping = true;
-      try { this.filterInfoLabel.styleSheet = "QLabel { color: gray; }"; } catch ( e ) {}
+      // "gray" measured 3.95:1 on white, 3.47 on the light grey theme and 3.59 on
+      // the dark one — under WCAG AA's 4.5:1 on every background tested, including
+      // the dark theme it was presumably chosen for. And colour was its only
+      // signal: no single colour can pass on both a white and a near-black
+      // background, so the fix is not a better colour. The theme's own text colour
+      // is readable by construction, and italic carries "secondary" without it.
+      try
+      {
+         var fif = this.filterInfoLabel.font;
+         fif.italic = true;
+         this.filterInfoLabel.font = fif;
+      }
+      catch ( e ) {}
 
       this.colorGroup = new GroupBox( this );
       this.colorGroup.title = tr( "seq.colorGroup" );
@@ -6499,7 +6555,7 @@ class SessionCinemaDialog extends Dialog
 
       // ---- progress panel: thumbnail + spinner + bar (full width, above buttons) ----
       this.thumbCtrl = new Control( this );
-      this.thumbCtrl.setFixedSize( 176, 99 );
+      this.thumbCtrl.setScaledFixedSize( 176, 99 );
       this.thumbCtrl.__bmp = null;
       this.thumbCtrl.onPaint = function()
       {
@@ -6690,7 +6746,18 @@ class SessionCinemaDialog extends Dialog
       var l = new Label( this );
       l.wordWrapping = true;
       l.visible = false;
-      try { l.styleSheet = "QLabel { color: #d08a30; }"; } catch ( e ) {}
+      // #d08a30 measured 2.85:1 on white and 2.50 on the light grey theme, well
+      // under 4.5:1 — and this is the stale-rotation notice, the warning 1.1.1 was
+      // cut for. It already states its meaning in words and opens with a warning
+      // sign, so the colour was decoration. Weight carries the emphasis on every
+      // theme; colour cannot.
+      try
+      {
+         var lf = l.font;
+         lf.bold = true;
+         l.font = lf;
+      }
+      catch ( e ) {}
       return l;
    }
 
@@ -6717,7 +6784,7 @@ class SessionCinemaDialog extends Dialog
       if ( bmp == null )
          return null;
       var ctrl = new Control( this );
-      ctrl.setFixedSize( 44, 44 );
+      ctrl.setScaledFixedSize( 44, 44 );
       ctrl.__bmp = bmp;
       ctrl.onPaint = function()
       {
@@ -6746,7 +6813,8 @@ class SessionCinemaDialog extends Dialog
    {
       var fmt = OUTPUT_FORMATS[ this.cfg.formatIndex ];
       var scale = Math.min( 176/fmt.w, 140/fmt.h );
-      try { this.thumbCtrl.setFixedSize( Math.round( fmt.w*scale ), Math.round( fmt.h*scale ) ); } catch ( e ) {}
+      try { this.thumbCtrl.setScaledFixedSize( Math.round( fmt.w*scale ),
+                                               Math.round( fmt.h*scale ) ); } catch ( e ) {}
       this.thumbCtrl.repaint();
    }
 
@@ -6908,6 +6976,15 @@ class SessionCinemaDialog extends Dialog
    {
       var isStack = ( this.cfg.style == STYLE_STACKING );
       var isZoom = ( this.cfg.style == STYLE_ZOOM );
+      this.helpLabel.text = tr( isZoom ? "help.zoom" : "help.stack" );
+      // Same reason: in zoom mode there are no frames, the OBJECT is read from
+      // the solved image.
+      try
+      {
+         this.titleEdit.placeholderText = tr( isZoom ? "overlay.videoTitle.hintZoom"
+                                                     : "overlay.videoTitle.hint" );
+      }
+      catch ( e ) {}
       this.stackNote.visible = isStack;
       this.updateTagline();
       // Per-style overlay items.
@@ -7510,7 +7587,7 @@ class SessionCinemaResultDialog extends Dialog
       this.info = new Label( this );
       this.info.text = lines.join( "\n" );
       this.info.wordWrapping = true;
-      this.info.minWidth = 460;
+      this.info.minWidth = this.logicalPixelsToPhysical( 460 );
       this.info.margin = 8;
       this.info.frameStyle = FrameStyle.Box;
 
