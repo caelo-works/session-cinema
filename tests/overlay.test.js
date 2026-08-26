@@ -145,22 +145,39 @@ assert.strictEqual( M.slugify( "___" ), "session" );
    assert.ok( mono - gain < 1, `but not by much: ${mono - gain} dB` );
 }
 
-// compositeSnrSigmas — an unmeasurable filter drops out of both sums (the ratio
-// stays coherent); with nothing measurable left the caller gets zeros, which the
-// overlay turns into "SNR —" rather than into silence.
+// compositeSnrSigmas — an unmeasurable filter still drops out of both sums, so
+// the ratio stays coherent, but the result now SAYS the measurement was partial.
+// The figure it produces is not wrong by a little: measured on HOO with 50 Ha +
+// 50 OIII at s = 0.004, the complete composite reads +19.5 dB, the same call with
+// the OIII sigmaCurrent missing reads +17.0 dB, and the truth is +26.5 dB. The
+// overlay draws it with a "~" rather than as a clean measurement.
 {
    const s = 0.004;
    const good = { weight: 1, sigmaFirst: s, sigmaCurrent: s/10 };
-   assert.deepStrictEqual(
-      M.compositeSnrSigmas( [ good, { weight: 1, sigmaFirst: 0, sigmaCurrent: s } ] ),
-      M.compositeSnrSigmas( [ good ] ), "a filter with no first-sub noise drops out" );
-   assert.deepStrictEqual(
-      M.compositeSnrSigmas( [ good, { weight: 0, sigmaFirst: s, sigmaCurrent: s } ] ),
-      M.compositeSnrSigmas( [ good ] ), "so does a filter feeding no channel" );
-   assert.deepStrictEqual( M.compositeSnrSigmas( [] ), { first: 0, current: 0 } );
+   const partial = M.compositeSnrSigmas( [ good, { weight: 1, sigmaFirst: 0, sigmaCurrent: s } ] );
+   const alone = M.compositeSnrSigmas( [ good ] );
+   assert.ok( Math.abs( partial.first - alone.first ) < 1e-12,
+      "the surviving filters still set the value" );
+   assert.ok( Math.abs( partial.current - alone.current ) < 1e-12 );
+   assert.strictEqual( partial.partial, true, "a dropped filter must be declared" );
+   assert.strictEqual( alone.partial, false, "a complete measurement must not be" );
+
+   // A filter feeding no channel is not a dropped measurement.
+   const noWeight = M.compositeSnrSigmas( [ good, { weight: 0, sigmaFirst: s, sigmaCurrent: s } ] );
+   assert.strictEqual( noWeight.partial, false, "weight 0 is not a failed measurement" );
+
+   assert.deepStrictEqual( M.compositeSnrSigmas( [] ), { first: 0, current: 0, partial: false } );
    assert.deepStrictEqual( M.compositeSnrSigmas( [ { weight: 1, sigmaFirst: 0, sigmaCurrent: 0 } ] ),
-                           { first: 0, current: 0 } );
+                           { first: 0, current: 0, partial: false } );
    assert.strictEqual( M.formatSnrGainDb( 0, 0 ), "" );
+
+   // The reservation reaches the caption.
+   const base = { ovShowSnr: true, ovShowCounter: false, ovShowExposure: false,
+                  ovShowTime: false, ovTitle: "" };
+   const clean = M.buildOverlayInfo( base, { sigmaFirst: s, sigmaCurrent: s/2 } );
+   const flagged = M.buildOverlayInfo( base, { sigmaFirst: s, sigmaCurrent: s/2, snrPartial: true } );
+   assert.ok( clean.subLeft.indexOf( "SNR +6.0 dB" ) >= 0, clean.subLeft );
+   assert.ok( flagged.subLeft.indexOf( "SNR ~+6.0 dB" ) >= 0, flagged.subLeft );
 }
 
 console.log( "overlay.test.js OK" );
