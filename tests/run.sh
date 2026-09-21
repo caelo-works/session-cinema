@@ -119,6 +119,7 @@ module.exports = {
    frameFileName: frameFileName,
    angularSepDeg: angularSepDeg,
    makeWcs: makeWcs,
+   readImageWcs: readImageWcs,
    wcsPixelToSky: wcsPixelToSky,
    wcsImageFraming: wcsImageFraming,
    makeCamera: makeCamera,

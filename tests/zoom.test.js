@@ -742,3 +742,26 @@ console.log( "zoom.test.js OK (survey credit)" );
 }
 
 console.log( "zoom.test.js OK (camera roll)" );
+
+// --- readImageWcs: 1.9.5 standard namespace, legacy PCL: one, and neither ---
+{
+   const vec = a => ( { at: i => a[ i ] } );
+   const mat = m => ( { at: ( r, c ) => m[ r ][ c ] } );
+   const solution = ns => ( {
+      [ ns + "ReferenceCelestialCoordinates" ]: vec( [ 83.8, -5.4 ] ),
+      [ ns + "ReferenceImageCoordinates" ]: vec( [ 1000, 700 ] ),
+      [ ns + "LinearTransformationMatrix" ]: mat( [ [ -2e-4, 0 ], [ 0, 2e-4 ] ] )
+   } );
+   const view = props => ( { propertyValue: id => props[ id ] } );
+   for ( const ns of [ "AstrometricSolution:", "PCL:AstrometricSolution:" ] )
+   {
+      const w = M.readImageWcs( view( solution( ns ) ) );
+      assert.deepStrictEqual( [ w.refRA, w.refDec, w.refX, w.refY ], [ 83.8, -5.4, 1000, 700 ], ns );
+      assert.deepStrictEqual( w.cd, [ [ -2e-4, 0 ], [ 0, 2e-4 ] ], ns );
+   }
+   // The standard block wins when a converted image still carries the old one.
+   const both = Object.assign( solution( "PCL:AstrometricSolution:" ), solution( "AstrometricSolution:" ) );
+   both[ "PCL:AstrometricSolution:ReferenceCelestialCoordinates" ] = vec( [ 0, 0 ] );
+   assert.strictEqual( M.readImageWcs( view( both ) ).refRA, 83.8 );
+   assert.strictEqual( M.readImageWcs( view( {} ) ), null );
+}

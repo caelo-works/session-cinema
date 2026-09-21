@@ -39,6 +39,7 @@ was a real defect before it was measured.
 | `Graphics.drawBitmapRect( p, bmp, r )` | Places the **top-left of `r`** on `p` in the transformed frame. |
 | `ExternalProcess` | `P.stdout` carries the text; **`P.stderr` always reads empty** — the two are merged upstream. A missing program does not throw: `start` succeeds and `waitForStarted` returns false. |
 | `View.setPropertyValue` | An astrometric solution survives `saveAs` only through the **four-argument** form, `( id, value, 0, Storable|Permanent )`. The three-argument form takes the flags for a type and throws. |
+| Astrometric solution (1.9.5) | Stored under the standard XISF `AstrometricSolution:` namespace, same keys as the legacy `PCL:AstrometricSolution:` block. A standard block reopened in 1.9.5 is completed by the core (native coordinates, pole). A legacy block holding only the linear part is **not** converted on open, so both namespaces must be read. |
 | `Vector` | `new Vector( 274.7, -13.8 )` throws. Use `new Vector( 2 )` then `v.at( 0, x )`. |
 | `estimateSigma` | Returns 0 on a strictly flat frame, a fully clipped one, and a flat frame with a single hot pixel. **Not** on a near-empty narrowband frame, which measures cleanly. |
 | `IntegerResample` before `render()` | **Slower**, not faster: 48 ms → 195 ms on a 5100×5100 RGB view to 1920×1080. It rewrites the whole image to save a blit Qt does in tens of milliseconds. |
@@ -55,6 +56,7 @@ fixtures are generated:
   keyword, stars given colours so a correct debayer is measurable.
 - **a plate-solved image** — the astrometric solution written into the view
   properties (see the table above), so the whole Zoom Odyssey path is reachable.
+  Keep one in each namespace: legacy `PCL:` and the 1.9.5 standard one.
 - **large subs** — 3000 px, for anything about cost.
 
 Keep them, and the probes, in a staging directory outside the repository.
