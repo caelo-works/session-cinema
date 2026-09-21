@@ -3,15 +3,15 @@
 **This is written for a support agent, not for a user.** Quote it, do not
 paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Applies to **1.2.0**. To check what the user is running: the version is printed
-under the script's name in the top-left of its window (`v1.2.0`). A version
-followed by `(dev)` — `v1.2.0 (dev)` — means the file did not come from a package:
+Applies to **1.2.1**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.2.1`). A version
+followed by `(dev)` — `v1.2.1 (dev)` — means the file did not come from a package:
 it was copied by hand. That is worth knowing before anything else.
 
 **Ask for that number early.** 1.2.0 fixed seventy-two defects, many of which a
 user reports rather than notices, and several of which change what the same
 symptom means. On an earlier version you confirm the bug and tell them to update;
-on 1.2.0 the same description usually means something else.
+on 1.2.0 and later the same description usually means something else.
 
 **The interface is bilingual — English and French — and the user will describe
 *their* window.** A French user says *« Habillage »*, not "Overlay"; *« Brutes »*,
@@ -37,7 +37,7 @@ down to the user's image.
 
 | | |
 |---|---|
-| Version | 1.2.0 |
+| Version | 1.2.1 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 to 1.9.99** — Windows, macOS, Linux |
 | Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
@@ -447,6 +447,8 @@ The Output → Folder field is empty.
 solution astrométrique. Résolvez-la d'abord… »*
 Zoom Odyssey needs a **plate-solved** image. A WBPP master is already solved; an
 exported JPEG or a hand-processed TIFF is not. The fix is in the message.
+**Except on 1.2.0 under PixInsight 1.9.5**: there it is raised on images that *are*
+solved — see *Fixed in 1.2.1* below.
 
 **"Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF)."** /
 *« Impossible de charger l'image à révéler… »*
@@ -534,14 +536,28 @@ purpose. A rotation of exactly 0° never triggers it.
 
 ## Known bugs and limits — read before answering
 
-**No bug is open in 1.2.0.** Entries are kept for one version back, because users
+**No bug is open in 1.2.1.** Entries are kept for one version back, because users
 who have not updated still hit them and because the symptoms identify the version
 from the description alone. An entry leaves this list when its version is two
 releases behind.
 
 **So: get the version first.** On the version named in the heading, confirm the
-bug — it is ours, the user did nothing wrong — and tell them to update. On 1.2.0,
+bug — it is ours, the user did nothing wrong — and tell them to update. On the current version,
 the same description means something else and belongs in escalation, not here.
+
+### Fixed in 1.2.1 — "it says my image is not solved, and it is"
+
+**Symptom:** Zoom Odyssey stops with **"This image has no astrometric solution…"**
+on an image the user solved — typically a WBPP master, or an image they just ran
+ImageSolver on.
+
+**On 1.2.0 with PixInsight 1.9.5:** real bug. PixInsight 1.9.5 stores the solution
+in a new standard format that 1.2.0 did not read. Confirm it and tell them to
+update; there is no workaround on 1.2.0 under 1.9.5. Under PixInsight 1.9.4, 1.2.0
+is not affected.
+
+**On 1.2.1:** both formats are read. The message now means the image really has no
+solution.
 
 ### Fixed in 1.2.0 — the ones a user is most likely to describe
 
