@@ -2714,13 +2714,23 @@ function estimateSigma( img )
 // ---------------------------------------------------------------------------
 
 // Read the linear WCS from a solved view's AstrometricSolution; null if unsolved.
+// PixInsight 1.9.5 stores it under the standard XISF "AstrometricSolution:"
+// namespace and converts older images on open; "PCL:AstrometricSolution:" is
+// the pre-1.9.5 layout. Same keys, same semantics — read whichever is present.
 function readImageWcs( view )
 {
+   var ns = "AstrometricSolution:";
+   try
+   {
+      if ( view.propertyValue( ns + "ReferenceCelestialCoordinates" ) == null )
+         ns = "PCL:AstrometricSolution:";
+   }
+   catch ( e ) { ns = "PCL:AstrometricSolution:"; }
    function pvec( id )
    {
       try
       {
-         var v = view.propertyValue( id );
+         var v = view.propertyValue( ns + id );
          return ( v == null ) ? null : [ v.at( 0 ), v.at( 1 ) ];
       }
       catch ( e ) { return null; }
@@ -2729,14 +2739,14 @@ function readImageWcs( view )
    {
       try
       {
-         var m = view.propertyValue( id );
+         var m = view.propertyValue( ns + id );
          return ( m == null ) ? null : [ [ m.at( 0, 0 ), m.at( 0, 1 ) ], [ m.at( 1, 0 ), m.at( 1, 1 ) ] ];
       }
       catch ( e ) { return null; }
    }
-   var refCel = pvec( "PCL:AstrometricSolution:ReferenceCelestialCoordinates" );
-   var refImg = pvec( "PCL:AstrometricSolution:ReferenceImageCoordinates" );
-   var cd = pmat( "PCL:AstrometricSolution:LinearTransformationMatrix" );
+   var refCel = pvec( "ReferenceCelestialCoordinates" );
+   var refImg = pvec( "ReferenceImageCoordinates" );
+   var cd = pmat( "LinearTransformationMatrix" );
    if ( !refCel || !refImg || !cd )
       return null;
    return makeWcs( refCel[ 0 ], refCel[ 1 ], refImg[ 0 ], refImg[ 1 ], cd );
