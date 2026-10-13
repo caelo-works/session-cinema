@@ -3,9 +3,9 @@
 **This is written for a support agent, not for a user.** Quote it, do not
 paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Applies to **1.2.1**. To check what the user is running: the version is printed
-under the script's name in the top-left of its window (`v1.2.1`). A version
-followed by `(dev)` — `v1.2.1 (dev)` — means the file did not come from a package:
+Applies to **1.3.0**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.3.0`). A version
+followed by `(dev)` — `v1.3.0 (dev)` — means the file did not come from a package:
 it was copied by hand. That is worth knowing before anything else.
 
 **Ask for that number early.** 1.2.0 fixed seventy-two defects, many of which a
@@ -37,7 +37,7 @@ down to the user's image.
 
 | | |
 |---|---|
-| Version | 1.2.1 |
+| Version | 1.3.0 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 to 1.9.99** — Windows, macOS, Linux |
 | Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
@@ -286,8 +286,7 @@ using the **`FILTER`** header value:
   **Progress bar**, **Angular scale bar (zoom)**.
 - **Measured SNR gain (stacking)** — a noise-based gain in dB, measured on the
   running stack, never a theoretical √N. In mono and in colour alike since 1.1.1;
-  **in 1.1.0 it did not draw at all in colour, which is the default** — see the
-  known-bugs section. When the measurement itself fails, 1.1.1 writes `SNR —`
+  **in 1.1.0 it did not draw at all in colour, which is the default.** When the measurement itself fails, 1.1.1 writes `SNR —`
   rather than dropping the figure.
 - **Subtitle**, **Distance**, **Signature** — free text.
 
@@ -443,7 +442,7 @@ The settings can be saved and replayed two ways:
 a progressive stack must set `style` explicitly in the config.
 
 Also note: an alignment saved **before** 1.1.0 — in a process icon or in a JSON —
-is reinterpreted with the opposite rotation. See the known-bugs section. Since
+is reinterpreted with the opposite rotation. See *"My revealed image is rotated wrong since the update"* under Troubleshooting. Since
 1.1.1 a config carries `cfgVersion`, the build that wrote it, and a rotation that
 arrives without one is flagged rather than trusted: the warning appears in the
 console and, for a headless run, in the `warnings` field of
@@ -565,7 +564,7 @@ purpose. A rotation of exactly 0° never triggers it.
 
 ## Known bugs and limits — read before answering
 
-**No bug is open in 1.2.1.** Entries are kept for one version back, because users
+**No bug is open in 1.3.0.** Entries are kept for one version back, because users
 who have not updated still hit them and because the symptoms identify the version
 from the description alone. An entry leaves this list when its version is two
 releases behind.
@@ -629,54 +628,17 @@ any of these descriptions is confirmation, not a mystery — tell them to update
 
 
 
-### Fixed in 1.1.1 — "the SNR gain never appears"
+### Changed in 1.3.0 — "where is the Install ffmpeg button?"
 
-**Symptom:** **Measured SNR gain (stacking)** is ticked and the dB figure is not in
-the video; the overlay shows only the frame count and the cumulative exposure.
+Not a bug. It was removed on purpose: PixInsight's developer rules (CPD Program
+Rules v1.0) forbid a script from downloading and running a program outside
+PixInsight's own update system. The user installs ffmpeg themselves and clicks
+**Detect** — the full answer is in *ffmpeg: the user installs it, the script
+finds it*. An ffmpeg that an earlier version installed keeps working.
 
-**On 1.1.0:** real bug. The figure was never drawn on a **colour** composite, which
-is the default, and nothing said so. Mono renders were fine. Confirm it and tell
-them to update; there is no other workaround than rendering in mono — which means
-unticking **Colour composite — map filters to R / G / B** (*« Composite couleur —
-associer les filtres à R / V / B »*) in the **Colour (multi-filter)** group. The
-subs are then integrated as a single monochrome stack.
-
-**On 1.1.1:** it is measured in colour too, and if it ever cannot be measured the
-overlay says **`SNR —`** instead of dropping the term. So a *missing* dB figure now
-means the box is unticked; a **`SNR —`** means the measurement failed — that one is
-worth escalating with the console output.
-
-### Fixed in 1.1.1 — "my vertical video ends half black"
-
-**Symptom:** "I rendered a Zoom Odyssey in 1080×1920 for Instagram/TikTok/Shorts
-and the end of the video is half black."
-
-**On 1.1.0:** real bug. The final framing fitted the *whole* image inside the frame
-whatever **Framing** said, leaving about **59 %** of a vertical frame black even on
-**Fill (center crop)**. Workaround: render in 16:9, or crop afterwards.
-
-**On 1.1.1:** **Framing** is honoured. **Fill (center crop)** fills the frame and
-crops the sides; **Fit (letterbox)** still keeps the whole image with bands — which
-is a legitimate choice, so check which one they picked before calling it a bug.
-16:9 renders are unchanged.
-
-### Fixed in 1.1.1 — "my revealed image is rotated wrong since the update"
-
-**Symptom:** "I updated and now my revealed image is rotated, or lands in the wrong
-place. I changed nothing."
-
-**Cause, on any version:** 1.1.0 changed the sign convention of the **stored**
-rotation. An alignment saved by 1.0.0 or earlier — in the settings, in a process
-icon, or in a headless JSON — is read with the opposite sign and lands at twice the
-angle away. The stored number cannot be repaired automatically: nothing records
-which convention wrote it.
-
-**Answer, and it works immediately, on every version:** open **Align…** and redo
-the alignment once. **Auto** is enough. Alignments with no rotation at all are
-unaffected, which is why most users never see this.
-
-**What 1.1.1 changed** is that the script now *says so* instead of rendering
-quietly — see the ⚠ notice in *Messages that do NOT stop the run*.
+Also new in 1.3.0, so a user may ask: the panel can say **⚠️ ffmpeg found, not
+selected** at start-up. One click on **Detect**. The script no longer runs any
+program the user has not chosen.
 
 ### The real-sky survey bridge needs an internet connection
 

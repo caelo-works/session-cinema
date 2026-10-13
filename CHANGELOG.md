@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] - 2026-10-13
 
 Compliance with the CPD Program Rules v1.0 that PixInsight published on
 2026-10-13. Session Cinema now downloads nothing but survey imagery, and runs no
@@ -424,6 +424,7 @@ set and its validation evidence).
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.3.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.0
 [1.2.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.2.1
 [1.2.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.2.0
 [1.1.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.1.1
