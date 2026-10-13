@@ -108,11 +108,13 @@ module.exports = {
    slugify: slugify,
    buildOverlayInfo: buildOverlayInfo,
    buildFfmpegArgs: buildFfmpegArgs,
-   FFMPEG_MIRROR_BASE: FFMPEG_MIRROR_BASE,
-   ffmpegMirrorCandidates: ffmpegMirrorCandidates,
    ffmpegInstalledName: ffmpegInstalledName,
    ffmpegInstallDir: ffmpegInstallDir,
    ffmpegCandidatePaths: ffmpegCandidatePaths,
+   findFfmpegOnDisk: findFfmpegOnDisk,
+   isHttpsUrl: isHttpsUrl,
+   isNoNetworkError: isNoNetworkError,
+   encodeCommand: encodeCommand,
    shellQuote: shellQuote,
    buildEncodeScriptText: buildEncodeScriptText,
    partialVideoPath: partialVideoPath,
@@ -154,7 +156,6 @@ module.exports = {
    rotationsNeedingCheck: rotationsNeedingCheck,
    revealAligned: revealAligned,
    stampConfig: stampConfig,
-   orderMirrorCandidatesByArch: orderMirrorCandidatesByArch,
    alignTileGrid: alignTileGrid,
    offsetAlignment: offsetAlignment,
    saQualityOk: saQualityOk,
@@ -199,6 +200,15 @@ fi
 # Check the exact file the tests load (script body AND exports block)
 node --check "$MODULE"
 echo "OK   syntax (node --check)"
+
+# The PJSR preprocessor strips "//" to the end of the line wherever it appears,
+# including inside a regex literal: /^[A-Za-z]:\//.test( dir ) loads in Node and
+# leaves PixInsight with a broken line and a script that silently never starts.
+if grep -nF '\//' "$JS" | grep -v '^[0-9]*:[[:space:]]*//' ; then
+   echo "FAIL a '\\//' on a code line: the PJSR preprocessor cuts it as a comment. Use [\\/]." >&2
+   exit 1
+fi
+echo "OK   no '//' hidden in a regex literal"
 
 failures=0
 for t in "$ROOT"/tests/*.test.js; do

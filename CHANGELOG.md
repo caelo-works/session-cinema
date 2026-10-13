@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Compliance with the CPD Program Rules v1.0 that PixInsight published on
+2026-10-13. Session Cinema now downloads nothing but survey imagery, and runs no
+program you have not chosen.
+
+### Removed
+
+- **Install ffmpeg…** is gone. Install ffmpeg yourself (`winget install ffmpeg`,
+  `brew install ffmpeg`, your package manager, or ffmpeg.org) and pick it with
+  **Detect** or **Browse**; the panel says how. An ffmpeg installed by an earlier
+  version is still found and offered.
+
+### Changed
+
+- ffmpeg is found by checking files on disk — PATH included — and is run only
+  once you have chosen it. Opening the dialog launches nothing.
+- Survey cutouts are downloaded through PixInsight's own network stack instead of
+  curl: HTTPS only, certificates verified, no redirects, and a cutout is used only
+  if it decodes at exactly the size requested, on download and from the cache.
+- The generated `encode.sh` is no longer made executable; the message gives the
+  `sh` command.
+
+### Added
+
+- **Clear caches…** in the Output group deletes what Session Cinema keeps in the
+  system temp directory.
+- A tooltip on **Real-sky survey bridge** says what it sends, to whom, and that
+  unticking it removes all network access.
+- README: *Network, programs and files*, listing every connection, program and
+  location outside the PixInsight installation.
+
 ## [1.2.1] - 2026-09-21
 
 ### Fixed

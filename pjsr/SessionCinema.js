@@ -277,7 +277,6 @@ var STRINGS = {
       "prog.done":         "Done.",
       "prog.starting":     "Starting…",
       "overlay.snrCost":   "Measured, not estimated — which costs a noise estimation per channel on every rendered frame. On a large sensor that is the single most expensive thing in the render; the PERF line at the end of the run says exactly how much.",
-      "out.installingFor": "Downloading ffmpeg… %1 s",
       "prog.pause":        "Pause",
       "prog.resume":       "Resume",
       "prog.cancel":       "Cancel",
@@ -305,6 +304,7 @@ var STRINGS = {
       "zoom.horizon":      "Horizon",
       "zoom.grid":         "Coordinate grid",
       "zoom.hips":         "Real-sky survey bridge",
+      "zoom.hipsHint":     "Downloads two survey cutouts per render from the CDS hips2fits service (alasky.cds.unistra.fr), over HTTPS. It sends the target's coordinates and field of view — nothing about you or your site. Untick it and Session Cinema makes no network connection at all.",
       "zoom.location.opt": "Simulate shoot location",
       "zoom.location.hint": "Open from the real sky as seen from the shoot site (SITELAT/SITELONG/DATE-OBS), with a true horizon and cardinal points.",
       "zoom.lat":          "Lat:",
@@ -348,15 +348,17 @@ var STRINGS = {
       "out.detect":        "Detect",
       "out.allFiles":      "All files",
       "out.ffmpegFound":   "ffmpeg found: %1",
-      "out.ffmpegMissing": "ffmpeg not found — the BMP sequence and an encoding script will be generated instead.",
+      "out.ffmpegMissing": "ffmpeg not found. Install it yourself — Windows: winget install ffmpeg · macOS: brew install ffmpeg · Linux: your package manager, or a build from ffmpeg.org — then click Detect or Browse. Without it, the BMP sequence and an encoding script are generated instead.",
+      "out.ffmpegOffer":   "ffmpeg is installed at %1. Click Detect to use it — Session Cinema runs no program you have not chosen.",
+      "out.ffmpegNotFfmpeg": "%1 does not answer as ffmpeg (ffmpeg -version). Choose another file.",
       "out.ffmpegHeaderOk":      "⚙️ ffmpeg detected",
       "out.ffmpegHeaderMissing": "⚠️ ffmpeg not found",
-      "out.ffmpegHeaderBusy":    "⏳ installing ffmpeg…",
-      "out.install":       "Install ffmpeg…",
-      "out.installConfirm":"Download ffmpeg (about 50–90 MB) from %1 and install it to %2?",
-      "out.installing":    "Downloading ffmpeg from %1… this may take a few minutes.",
-      "out.installDone":   "ffmpeg installed: %1",
-      "out.installFail":   "ffmpeg installation failed — check your internet connection, or install it manually and use Browse.",
+      "out.ffmpegHeaderOffer":   "⚠️ ffmpeg found, not selected",
+      "out.clearCache":    "Clear caches…",
+      "out.clearCacheHint": "Registered subs, survey cutouts and alignment images kept in %1. Deleting them is safe; the next render rebuilds what it needs, more slowly.",
+      "out.clearCacheConfirm": "Delete Session Cinema's caches in %1 (%2)? The next render rebuilds what it needs, more slowly.",
+      "out.clearCacheDone": "Caches cleared: %1 freed.",
+      "out.clearCacheEmpty": "There is no cache to clear.",
 
       "btn.generate":      "Generate",
       "btn.close":         "Close",
@@ -521,7 +523,6 @@ var STRINGS = {
       "prog.done":         "Terminé.",
       "prog.starting":     "Démarrage…",
       "overlay.snrCost":   "Mesuré, pas estimé — ce qui coûte une estimation de bruit par canal sur chaque image rendue. Sur un grand capteur c'est le poste le plus cher du rendu ; la ligne PERF en fin de rendu dit exactement combien.",
-      "out.installingFor": "Téléchargement de ffmpeg… %1 s",
       "prog.pause":        "Pause",
       "prog.resume":       "Reprendre",
       "prog.cancel":       "Annuler",
@@ -549,6 +550,7 @@ var STRINGS = {
       "zoom.horizon":      "Horizon",
       "zoom.grid":         "Grille de coordonnées",
       "zoom.hips":         "Pont vers le relevé réel du ciel",
+      "zoom.hipsHint":     "Télécharge deux découpes de relevé par rendu depuis le service hips2fits du CDS (alasky.cds.unistra.fr), en HTTPS. Envoie les coordonnées et le champ de la cible — rien sur vous ni sur votre site. Décochez-la et Session Cinema n'établit plus aucune connexion réseau.",
       "zoom.location.opt": "Simuler le lieu de prise de vue",
       "zoom.location.hint": "Ouvre sur le ciel réel vu depuis le lieu de prise de vue (SITELAT/SITELONG/DATE-OBS), avec un vrai horizon et les points cardinaux.",
       "zoom.lat":          "Lat :",
@@ -592,15 +594,17 @@ var STRINGS = {
       "out.detect":        "Détecter",
       "out.allFiles":      "Tous les fichiers",
       "out.ffmpegFound":   "ffmpeg trouvé : %1",
-      "out.ffmpegMissing": "ffmpeg introuvable — la séquence BMP et un script d'encodage seront générés.",
+      "out.ffmpegMissing": "ffmpeg introuvable. Installez-le vous-même — Windows : winget install ffmpeg · macOS : brew install ffmpeg · Linux : votre gestionnaire de paquets, ou une version de ffmpeg.org — puis cliquez sur Détecter ou Parcourir. Sans lui, la séquence BMP et un script d'encodage sont générés.",
+      "out.ffmpegOffer":   "ffmpeg est installé dans %1. Cliquez sur Détecter pour l'utiliser — Session Cinema ne lance aucun programme que vous n'avez pas choisi.",
+      "out.ffmpegNotFfmpeg": "%1 ne répond pas comme ffmpeg (ffmpeg -version). Choisissez un autre fichier.",
       "out.ffmpegHeaderOk":      "⚙️ ffmpeg détecté",
       "out.ffmpegHeaderMissing": "⚠️ ffmpeg introuvable",
-      "out.ffmpegHeaderBusy":    "⏳ installation de ffmpeg…",
-      "out.install":       "Installer ffmpeg…",
-      "out.installConfirm":"Télécharger ffmpeg (environ 50–90 Mo) depuis %1 et l'installer dans %2 ?",
-      "out.installing":    "Téléchargement de ffmpeg depuis %1… cela peut prendre quelques minutes.",
-      "out.installDone":   "ffmpeg installé : %1",
-      "out.installFail":   "Échec de l'installation de ffmpeg — vérifiez la connexion internet, ou installez-le manuellement puis utilisez Parcourir.",
+      "out.ffmpegHeaderOffer":   "⚠️ ffmpeg trouvé, non sélectionné",
+      "out.clearCache":    "Vider les caches…",
+      "out.clearCacheHint": "Brutes recalées, découpes de relevé et images d'alignement conservées dans %1. Les supprimer est sans risque ; le prochain rendu reconstruit ce dont il a besoin, plus lentement.",
+      "out.clearCacheConfirm": "Supprimer les caches de Session Cinema dans %1 (%2) ? Le prochain rendu reconstruit ce dont il a besoin, plus lentement.",
+      "out.clearCacheDone": "Caches vidés : %1 libérés.",
+      "out.clearCacheEmpty": "Il n'y a aucun cache à vider.",
 
       "btn.generate":      "Générer",
       "btn.close":         "Fermer",
@@ -1125,48 +1129,14 @@ function envPath( getEnv, name )
    return ( v && v.length ) ? String( v ).split( "\\" ).join( "/" ) : "";
 }
 
-// Base URL of the CaeloWorks ffmpeg mirror: one static, self-contained build
-// per platform/architecture under a fixed name (hosting contract in
-// docs/ffmpeg-mirror.md). Downloads are validated by running `-version`.
-var FFMPEG_MIRROR_BASE = "https://pixinsight-scripts.caelo.works/ffmpeg/";
-
-// Mirror file names to try, in order. PJSR does not expose the CPU
-// architecture, so on macOS and Linux both builds are listed: a binary for
-// the wrong CPU fails the `-version` gate and the next one is tried.
-function ffmpegMirrorCandidates( platform )
-{
-   if ( platform == "windows" )
-      return [ "ffmpeg-windows-x64.exe" ];
-   if ( platform == "macos" )
-      return [ "ffmpeg-macos-arm64", "ffmpeg-macos-x64" ];
-   return [ "ffmpeg-linux-x64", "ffmpeg-linux-arm64" ];
-}
-
 function ffmpegInstalledName( platform )
 {
    return ( platform == "windows" ) ? "ffmpeg.exe" : "ffmpeg";
 }
 
-// Reorder the mirror candidates so the build matching the machine (from
-// `uname -m`) downloads first — a wrong-architecture build is 50–90 MB of
-// wasted transfer before the -version gate rejects it. Unknown/empty uname
-// output leaves the order untouched (try-in-order remains the fallback).
-function orderMirrorCandidatesByArch( names, unameM )
-{
-   var m = String( unameM || "" ).toLowerCase();
-   if ( !/arm|aarch|x86|amd64/.test( m ) )
-      return names.slice();
-   var wantArm = /arm|aarch/.test( m );
-   return names.slice().sort( function ( a, b )
-   {
-      var aArm = a.indexOf( "arm64" ) >= 0, bArm = b.indexOf( "arm64" ) >= 0;
-      if ( aArm == bArm )
-         return 0;
-      return ( aArm == wantArm ) ? -1 : 1;
-   } );
-}
-
-// Per-user directory where the auto-installed ffmpeg lives (forward slashes).
+// Per-user directory where versions before 1.3.0 installed ffmpeg from the
+// CaeloWorks mirror. Nothing writes there any more (CPD Program Rules 5.2); an
+// ffmpeg already there is still offered, like any other one found on disk.
 function ffmpegInstallDir( platform, getEnv )
 {
    function env( name ) { return envPath( getEnv, name ); }
@@ -1187,17 +1157,25 @@ function ffmpegInstallDir( platform, getEnv )
    return ( xdg.length ? xdg : ( home + "/.local/share" ) ) + "/caeloworks/ffmpeg";
 }
 
-// Ordered list of ffmpeg locations to probe beyond a user-provided path:
-// PATH first, then a previous auto-install, then the usual package managers.
+// Ordered list of ffmpeg locations to look for: every PATH directory, then the
+// legacy auto-install, then the usual package managers. Absolute paths only, so
+// finding one is a File.exists, never a launch: nothing is run until the user
+// has chosen it (CPD Program Rules 5.3).
 function ffmpegCandidatePaths( platform, getEnv )
 {
    function env( name ) { return envPath( getEnv, name ); }
+   var name = ffmpegInstalledName( platform );
    var list = [];
-   var installed = ffmpegInstallDir( platform, getEnv ) + "/" + ffmpegInstalledName( platform );
+   var dirs = env( "PATH" ).split( platform == "windows" ? ";" : ":" );
+   for ( var d = 0; d < dirs.length; ++d )
+   {
+      var dir = dirs[ d ].replace( /^"|"$/g, "" ).replace( /\/+$/, "" );
+      if ( dir.length && ( platform == "windows" ? /^[A-Za-z]:[\/]/.test( dir ) : dir.charAt( 0 ) == "/" ) )
+         list.push( dir + "/" + name );
+   }
+   list.push( ffmpegInstallDir( platform, getEnv ) + "/" + name );
    if ( platform == "windows" )
    {
-      list.push( "ffmpeg.exe" );
-      list.push( installed );
       var la = env( "LOCALAPPDATA" );
       if ( la.length )
          list.push( la + "/Microsoft/WinGet/Links/ffmpeg.exe" );          // winget
@@ -1210,8 +1188,6 @@ function ffmpegCandidatePaths( platform, getEnv )
    }
    else
    {
-      list.push( "ffmpeg" );
-      list.push( installed );
       list.push( "/usr/bin/ffmpeg" );
       list.push( "/usr/local/bin/ffmpeg" );
       if ( platform == "macos" )
@@ -1225,7 +1201,21 @@ function ffmpegCandidatePaths( platform, getEnv )
          list.push( "/home/linuxbrew/.linuxbrew/bin/ffmpeg" );
       }
    }
-   return list;
+   var seen = {}, out = [];
+   for ( var k = 0; k < list.length; ++k )
+   {
+      var key = ( platform == "windows" ) ? list[ k ].toLowerCase() : list[ k ];
+      if ( !seen[ key ] ) { seen[ key ] = true; out.push( list[ k ] ); }
+   }
+   return out;
+}
+
+// First candidate that exists on disk, or "". exists is injected (File.exists).
+function findFfmpegOnDisk( candidates, exists )
+{
+   for ( var i = 0; i < candidates.length; ++i )
+      try { if ( exists( candidates[ i ] ) ) return candidates[ i ]; } catch ( e ) {}
+   return "";
 }
 
 // ffmpeg argument list (pure; paths are passed through untouched).
@@ -3019,6 +3009,76 @@ function cacheFootprint( framesDir )
             regDir: tmp + "/sc-reg", hipsDir: tmp };
 }
 
+// Files directly under dir matching a FileFind pattern ("sc-hips-*").
+function tempFilesMatching( dir, pattern )
+{
+   var out = [];
+   try
+   {
+      var ff = new FileFind;
+      if ( ff.begin( dir + "/" + pattern ) )
+         do { if ( ff.isFile ) out.push( { path: dir + "/" + ff.name, size: ff.size > 0 ? ff.size : 0 } ); }
+         while ( ff.next() );
+   }
+   catch ( e ) {}
+   return out;
+}
+
+var SESSION_CACHE_PATTERNS = [ "sc-hips-*", "sc-autoalign-*" ];
+
+// Everything Session Cinema keeps under the system temp directory between runs:
+// <temp>/sc-reg/ and the <temp>/sc-hips-* and <temp>/sc-autoalign-* files.
+function sessionCacheBytes()
+{
+   var tmp = File.systemTempDirectory, n = dirSize( tmp + "/sc-reg", 6 );
+   for ( var p = 0; p < SESSION_CACHE_PATTERNS.length; ++p )
+   {
+      var l = tempFilesMatching( tmp, SESSION_CACHE_PATTERNS[ p ] );
+      for ( var i = 0; i < l.length; ++i )
+         n += l[ i ].size;
+   }
+   return n;
+}
+
+function removeTree( dir, depth )
+{
+   if ( !( depth > 0 ) || !File.directoryExists( dir ) )
+      return;
+   try
+   {
+      var ff = new FileFind, files = [], dirs = [];
+      if ( ff.begin( dir + "/*" ) )
+         do
+         {
+            if ( ff.name == "." || ff.name == ".." )
+               continue;
+            ( ff.isDirectory ? dirs : files ).push( dir + "/" + ff.name );
+         }
+         while ( ff.next() );
+      for ( var i = 0; i < files.length; ++i )
+         try { File.remove( files[ i ] ); } catch ( e ) {}
+      for ( var j = 0; j < dirs.length; ++j )
+         removeTree( dirs[ j ], depth - 1 );
+      File.removeDirectory( dir );
+   }
+   catch ( e ) {}
+}
+
+// Returns the bytes actually freed.
+function clearSessionCaches()
+{
+   var tmp = File.systemTempDirectory, before = sessionCacheBytes();
+   removeTree( tmp + "/sc-reg", 6 );
+   for ( var p = 0; p < SESSION_CACHE_PATTERNS.length; ++p )
+   {
+      var l = tempFilesMatching( tmp, SESSION_CACHE_PATTERNS[ p ] );
+      for ( var i = 0; i < l.length; ++i )
+         try { File.remove( l[ i ].path ); } catch ( e ) {}
+   }
+   gHipsCache = {};
+   return Math.max( 0, before - sessionCacheBytes() );
+}
+
 function fileSize( path )
 {
    try { var f = new File; f.openForReading( path ); var n = f.size; f.close(); return n; }
@@ -3049,8 +3109,12 @@ function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx, onTick )
       if ( File.exists( out ) && fileSize( out ) > 2048 )
          try
          {
+            // Integrity before use (CPD rule 4.6): a cutout is generated on
+            // request, so there is no hash to pin. What can be checked is that it
+            // decodes, at exactly the size that was asked for. A cached file
+            // is held to the same test every time it is read back.
             var b = new Bitmap( out );
-            if ( b.width > 1 && b.height > 1 )
+            if ( b.width == nPx && b.height == nPx )
                return b;
          }
          catch ( e ) {}
@@ -3065,7 +3129,7 @@ function fetchHipsBitmap( hips, ra, dec, fovDeg, nPx, onTick )
    var attempts = 3;
    for ( var a = 1; a <= attempts; ++a )
    {
-      if ( curlDownload( url, out, 90, 2048, onTick ) )
+      if ( httpsDownload( url, out, 90, 2048, onTick ) )
       {
          var bmp = loadValid();
          if ( bmp ) { gHipsCache[ key ] = bmp; return bmp; }
@@ -3301,34 +3365,64 @@ function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
    return result;
 }
 
-// One curl invocation shared by every download in the script (survey cutouts,
-// ffmpeg install): fetch url into outPath (removed first), following
-// redirects, failing on HTTP errors. The process timeout is derived from
-// curl's own --max-time so the two can never drift apart. Returns true when
-// curl ran to success and wrote more than minBytes.
-// gNoNetwork: set once curl says it could not connect. A DNS failure or a closed
-// port does not heal in ninety seconds, but the survey bridge retried three times
-// per cutout and fetches two cutouts — six connect timeouts of 20 s in series,
-// about two minutes of a run that had already decided nothing would come. Once
-// this is set the bridge stops asking and the run continues on the catalogue.
+// Every download in the script goes through here, through PixInsight's own
+// network stack: no external program. Measured on PixInsight 1.9.5 (see
+// docs/pjsr-validation.md): untrusted, revoked, expired and wrong-host
+// certificates are refused, and redirects are not followed — a 3xx comes back
+// as its own response code. Only https:// is accepted and only a 200 counts,
+// which together make a downgrade to plain HTTP impossible (CPD rule 6.3).
+// Returns true when more than minBytes were written to outPath.
+// gNoNetwork: set once a connection cannot be made at all. A DNS failure or a
+// closed port does not heal in ninety seconds, but the survey bridge retried
+// three times per cutout and fetches two cutouts. Once this is set the bridge
+// stops asking and the run continues on the catalogue.
 var gNoNetwork = false;
 
-function curlDownload( url, outPath, maxTimeSec, minBytes, onTick )
+function isHttpsUrl( url )
+{
+   return /^https:\/\/[^\/\s]/i.test( String( url || "" ) );
+}
+
+// A transfer error that says there is no network to talk to, as opposed to a
+// server that answered badly. Wording from libcurl, which NetworkTransfer wraps.
+function isNoNetworkError( info )
+{
+   return /could not resolve|couldn't resolve|failed to connect|couldn't connect|could not connect/i.test( String( info || "" ) );
+}
+
+function httpsDownload( url, outPath, maxTimeSec, minBytes, onTick )
 {
    try { File.remove( outPath ); } catch ( e ) {}
-   var curl = ( platformKind() == "windows" ) ? "curl.exe" : "curl";
-   if ( gNoNetwork )
+   if ( gNoNetwork || !isHttpsUrl( url ) )
       return false;
-   var r = runExternal( curl, [ "-f", "-s", "-S", "-L", "-o", outPath,
-                                "--connect-timeout", "20",
-                                "--max-time", String( maxTimeSec ), url ],
-                        ( maxTimeSec + 60 )*1000, true, onTick );
-   if ( r.started && r.exitCode == 0 && fileSize( outPath ) > minBytes )
+   var t0 = Date.now(), f = new File, ok = false, code = 0, info = "";
+   try
+   {
+      var T = new NetworkTransfer;
+      T.setSSL( true, true, true, true );
+      T.setConnectionTimeout( 20 );
+      T.setURL( url );
+      f.createForWriting( outPath );
+      T.onDownloadDataAvailable = function( data ) { f.write( data ); return true; };
+      // Returning false aborts the transfer: the overall deadline and Cancel.
+      T.onTransferProgress = function()
+      {
+         var stop = false;
+         if ( onTick )
+            try { stop = onTick() === true; } catch ( et ) {}
+         processEvents();
+         return !stop && ( Date.now() - t0 ) < maxTimeSec*1000;
+      };
+      ok = T.download();
+      code = T.responseCode;
+      info = T.errorInformation;
+   }
+   catch ( e ) { info = e.message || String( e ); }
+   try { f.close(); } catch ( e ) {}
+   if ( ok && code == 200 && fileSize( outPath ) > minBytes )
       return true;
-   // curl exits 6 on a name it cannot resolve and 7 on a connection refused;
-   // "could not start" means no curl at all. None of those is worth a retry, and
-   // none of them is worth five more.
-   if ( !r.started || r.exitCode == 6 || r.exitCode == 7 )
+   try { File.remove( outPath ); } catch ( e ) {}
+   if ( !ok && isNoNetworkError( info ) )
    {
       if ( !gNoNetwork )
          console.warningln( tr( "net.unavailable" ) );
@@ -3337,71 +3431,22 @@ function curlDownload( url, outPath, maxTimeSec, minBytes, onTick )
    return false;
 }
 
-function detectFfmpeg( userPath )
+// Run the ffmpeg the user chose, once, to check it is one. Only ever called on
+// a path the user picked, typed, or accepted with Detect — never on a guess.
+function verifyFfmpeg( path )
 {
-   var candidates = [];
-   if ( userPath && userPath.length )
-      candidates.push( userPath );
-   candidates = candidates.concat( ffmpegCandidatePaths( platformKind(), getEnvironmentVariable ) );
-   for ( var i = 0; i < candidates.length; ++i )
-   {
-      // An absolute candidate that does not exist is skipped without paying
-      // the process-launch probe; bare names must go through PATH resolution.
-      if ( candidates[ i ].indexOf( "/" ) >= 0 && !File.exists( candidates[ i ] ) )
-         continue;
-      var r = runExternal( candidates[ i ], [ "-version" ], 10000, false );
-      if ( r.started && r.exitCode == 0 )
-         return candidates[ i ];
-   }
-   return "";
+   if ( !path || !path.length || !File.exists( path ) )
+      return false;
+   var r = runExternal( path, [ "-version" ], 10000, false );
+   return r.started && r.exitCode == 0 &&
+          String( r.output || "" ).toLowerCase().indexOf( "ffmpeg version" ) >= 0;
 }
 
-// Download-and-install ffmpeg from the CaeloWorks mirror into the per-user
-// install directory. Each platform build is tried in order; a candidate that
-// does not pass `ffmpeg -version` (wrong CPU architecture, truncated or
-// corrupt download) is removed and the next one is tried. Returns the
-// installed path, or "" on failure.
-// onTick is called about every 250 ms while a transfer runs. It used to be left
-// out here, and with curl -s that meant 50-90 MB of silence.
-function installFfmpegFromMirror( onTick )
+// How to run the generated encode script. Not executable on macOS/Linux — no
+// chmod is launched for it — so the shell is named.
+function encodeCommand( scriptPath )
 {
-   var kind = platformKind();
-   var dir = ffmpegInstallDir( kind, getEnvironmentVariable );
-   if ( !File.directoryExists( dir ) )
-      try { File.createDirectory( dir, true ); } catch ( e ) {}
-   var dest = dir + "/" + ffmpegInstalledName( kind );
-   var names = ffmpegMirrorCandidates( kind );
-   if ( kind != "windows" )
-   {
-      // Ask the machine its architecture so the native build downloads first.
-      var uf = File.systemTempDirectory + "/sc-uname.txt";
-      // By name, not by absolute path: /bin/sh and /bin/chmod hold on macOS and on
-      // most distributions, and not on NixOS or a stripped container. PATH is what
-      // the platform is for.
-      runExternal( "sh", [ "-c", "uname -m > \"" + uf + "\"" ], 5000, false );
-      try { names = orderMirrorCandidatesByArch( names, File.readTextFile( uf ) ); } catch ( eu ) {}
-      try { File.remove( uf ); } catch ( eu2 ) {}
-   }
-   for ( var c = 0; c < names.length; ++c )
-   {
-      // A static ffmpeg is tens of MB: anything small is an error body or a
-      // truncated transfer, not worth the execution probe.
-      if ( !curlDownload( FFMPEG_MIRROR_BASE + names[ c ], dest, 900, 1000000, onTick ) )
-         continue;
-      if ( kind != "windows" )
-         runExternal( "chmod", [ "+x", dest ], 5000, false );
-      // Exiting 0 is not evidence of being ffmpeg: an HTML error page saved under
-      // the name and made executable would not, but a wrapper or a truncated
-      // archive might. Require it to say what it is.
-      var v = runExternal( dest, [ "-version" ], 15000, true );
-      if ( v.started && v.exitCode == 0 &&
-           String( v.output || "" ).toLowerCase().indexOf( "ffmpeg version" ) >= 0 )
-         return dest;
-      if ( v.started && v.exitCode == 0 )
-         console.warningln( "downloaded binary does not identify itself as ffmpeg; discarded" );
-   }
-   try { File.remove( dest ); } catch ( e2 ) {}
-   return "";
+   return ( !scriptPath || /\.bat$/i.test( scriptPath ) ) ? scriptPath : ( "sh \"" + scriptPath + "\"" );
 }
 
 // Always written next to the frames, so a failed or missing ffmpeg never
@@ -3427,8 +3472,6 @@ function writeEncodeScript( framesDir, ffmpegArgs, ffmpegPath )
    var isWin = ( platformKind() == "windows" );
    var scriptPath = framesDir + ( isWin ? "/encode.bat" : "/encode.sh" );
    File.writeTextFile( scriptPath, buildEncodeScriptText( isWin, ffmpegArgs, ffmpegPath ) );
-   if ( !isWin )
-      runExternal( "chmod", [ "+x", scriptPath ], 5000, false );
    return scriptPath;
 }
 
@@ -4804,11 +4847,11 @@ Engine.prototype.encode = function()
       holdLast: cfg.holdLast,
       outputPath: this.videoPath()
    } );
-   var ffmpeg = detectFfmpeg( cfg.ffmpegPath );
+   var ffmpeg = verifyFfmpeg( cfg.ffmpegPath ) ? String( cfg.ffmpegPath ) : "";
    var scriptPath = writeEncodeScript( this.framesDir(), args, ffmpeg );
    if ( !ffmpeg.length )
    {
-      console.warningln( tr( "run.encodeScript", scriptPath ) );
+      console.warningln( tr( "run.encodeScript", encodeCommand( scriptPath ) ) );
       return { encoded: false, scriptPath: scriptPath };
    }
    console.writeln( tr( "run.encoding" ) );
@@ -6359,6 +6402,7 @@ class SessionCinemaDialog extends Dialog
 
       this.hipsCheck = new CheckBox( this );
       this.hipsCheck.text = tr( "zoom.hips" );
+      this.hipsCheck.toolTip = tr( "zoom.hipsHint" );
       this.hipsCheck.checked = cfg.hipsEnabled;
       this.hipsCheck.onCheck = ( c ) => { self.cfg.hipsEnabled = c; };
 
@@ -6626,6 +6670,15 @@ class SessionCinemaDialog extends Dialog
       this.keepFramesCheck.text = tr( "out.keepFrames" );
       this.keepFramesCheck.checked = cfg.keepFrames;
       this.keepFramesCheck.onCheck = ( c ) => { self.cfg.keepFrames = c; };
+      this.clearCacheButton = new PushButton( this );
+      this.clearCacheButton.text = tr( "out.clearCache" );
+      this.clearCacheButton.toolTip = tr( "out.clearCacheHint", File.systemTempDirectory );
+      this.clearCacheButton.onClick = () => this.onClearCaches();
+      this.keepFramesSizer = new HorizontalSizer;
+      this.keepFramesSizer.spacing = 6;
+      this.keepFramesSizer.add( this.keepFramesCheck );
+      this.keepFramesSizer.addStretch();
+      this.keepFramesSizer.add( this.clearCacheButton );
 
       this.ffmpegLabel = new Label( this );
       this.ffmpegLabel.text = tr( "out.ffmpeg" );
@@ -6648,17 +6701,12 @@ class SessionCinemaDialog extends Dialog
          {
             self.cfg.ffmpegPath = d.fileNames[ 0 ];
             self.ffmpegEdit.text = d.fileNames[ 0 ];
-            self.onDetectFfmpeg();
+            self.onDetectFfmpeg( true );
          }
       };
       this.ffmpegDetect = new PushButton( this );
       this.ffmpegDetect.text = tr( "out.detect" );
-      this.ffmpegDetect.onClick = () => this.onDetectFfmpeg();
-      // Only shown while ffmpeg is missing (setFfmpegSection toggles it).
-      this.ffmpegInstall = new PushButton( this );
-      this.ffmpegInstall.text = tr( "out.install" );
-      this.ffmpegInstall.visible = false;
-      this.ffmpegInstall.onClick = () => this.onInstallFfmpeg();
+      this.ffmpegDetect.onClick = () => this.onDetectFfmpeg( true );
       this.ffmpegSizer = new HorizontalSizer;
       this.ffmpegSizer.spacing = 6;
       this.ffmpegSizer.add( this.ffmpegLabel );
@@ -6668,14 +6716,12 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegStatus.text = "";
       this.ffmpegStatus.wordWrapping = true;
 
-      // The path row would be cramped with three buttons on it: they live on
-      // their own row, under the path and its status line.
+      // The buttons live on their own row, under the path and its status line.
       this.ffmpegButtonsSizer = new HorizontalSizer;
       this.ffmpegButtonsSizer.spacing = 6;
       this.ffmpegButtonsSizer.addStretch();
       this.ffmpegButtonsSizer.add( this.ffmpegBrowse );
       this.ffmpegButtonsSizer.add( this.ffmpegDetect );
-      this.ffmpegButtonsSizer.add( this.ffmpegInstall );
 
       // Everything ffmpeg lives in a collapsible sub-section: a one-line
       // clickable header carrying the essential state, and a body that only
@@ -6699,7 +6745,7 @@ class SessionCinemaDialog extends Dialog
       this.outGroup.sizer.margin = 8;
       this.outGroup.sizer.spacing = 6;
       this.outGroup.sizer.add( this.outSizer );
-      this.outGroup.sizer.add( this.keepFramesCheck );
+      this.outGroup.sizer.add( this.keepFramesSizer );
       this.outGroup.sizer.add( this.ffmpegHeader );
       this.outGroup.sizer.add( this.ffmpegBody );
 
@@ -6851,7 +6897,6 @@ class SessionCinemaDialog extends Dialog
       setIcon( this.outBrowse,           ":/icons/folder-open.png" );
       setIcon( this.ffmpegBrowse,        ":/icons/document-open.png" );
       setIcon( this.ffmpegDetect,        ":/icons/search.png" );
-      setIcon( this.ffmpegInstall,       ":/icons/install.png" );
       setIcon( this.zoomImageBrowse,     ":/icons/document-open.png" );
       setIcon( this.fromSubButton,       ":/icons/star.png" );
       setIcon( this.revealImageBrowse,   ":/icons/document-open.png" );
@@ -6916,7 +6961,7 @@ class SessionCinemaDialog extends Dialog
       this.refreshTree();
       this.updateThumbSize();
       this.updateStyleDependents();
-      this.onDetectFfmpeg();
+      this.onDetectFfmpeg( false );
    }
 
    // Header emblem: the script icon, drawn into a fixed-size Control. Located
@@ -7372,88 +7417,67 @@ class SessionCinemaDialog extends Dialog
    }
 
    // Single owner of the ffmpeg sub-section state: header text (arrow +
-   // status emoji), body visibility, and the install button (only offered
-   // while ffmpeg is missing). state: "ok" | "missing" | "busy".
+   // status emoji) and body visibility. state: "ok" | "offer" | "missing".
    setFfmpegSection( state, expanded )
    {
       this.ffmpegState = state;
       this.ffmpegSectionExpanded = expanded;
       var key = ( state == "ok" ) ? "out.ffmpegHeaderOk" :
-                ( state == "busy" ) ? "out.ffmpegHeaderBusy" : "out.ffmpegHeaderMissing";
+                ( state == "offer" ) ? "out.ffmpegHeaderOffer" : "out.ffmpegHeaderMissing";
       this.ffmpegHeader.text = ( expanded ? "▾  " : "▸  " ) + tr( key );
       this.ffmpegBody.visible = expanded;
-      this.ffmpegInstall.visible = ( state != "ok" );
       this.adjustToContents();
    }
 
-   onDetectFfmpeg()
+   // chosen: the user clicked Detect or picked a file, so the program may be
+   // run to check it. Otherwise (dialog opening) nothing is launched: a chosen
+   // path that exists is trusted until the render, and one found on disk is only
+   // offered (CPD Program Rules 5.3).
+   onDetectFfmpeg( chosen )
    {
-      var found = detectFfmpeg( this.cfg.ffmpegPath );
-      if ( found.length )
+      var path = String( this.cfg.ffmpegPath || "" );
+      if ( !chosen )
       {
-         this.cfg.ffmpegPath = found;
-         this.ffmpegEdit.text = found;
-         this.ffmpegStatus.text = tr( "out.ffmpegFound", found );
-      }
-      else
-         this.ffmpegStatus.text = tr( "out.ffmpegMissing" );
-      this.setFfmpegSection( found.length ? "ok" : "missing", found.length == 0 );
-   }
-
-   onInstallFfmpeg()
-   {
-      var dir = ffmpegInstallDir( platformKind(), getEnvironmentVariable );
-      if ( ( new MessageBox( tr( "out.installConfirm", FFMPEG_MIRROR_BASE, dir ),
-                             SC_TITLE, StdIcon.Question,
-                             StdButton.Yes, StdButton.No ) ).execute() != StdButton.Yes )
-         return;
-      this.ffmpegStatus.text = tr( "out.installing", FFMPEG_MIRROR_BASE );
-      this.setFfmpegSection( "busy", true );
-      this.ffmpegBody.enabled = false;   // one switch for every ffmpeg control
-      // Generate stayed clickable during the download, and the engine is not
-      // re-entrant: a second run would have shared this dialog's progress state
-      // and written into the same frame directory.
-      this.setBusy( true );
-      this.pauseButton.enabled = false;
-      this.cancelButton.enabled = false;
-      this.progressBar.__indet = true;
-      var self0 = this, ticks = 0;
-      this.progressStatus.text = tr( "out.installing", FFMPEG_MIRROR_BASE );
-      processEvents();
-      var path = "";
-      try
-      {
-         path = installFfmpegFromMirror( function()
+         if ( path.length && File.exists( path ) )
          {
-            self0.progressBar.__phase += 14;
-            self0.progressStatus.text = tr( "out.installingFor",
-                                            Math.round( ( ++ticks )*0.25 ) );
-            self0.progressBar.repaint();
-            processEvents();
-         } );
+            this.ffmpegStatus.text = tr( "out.ffmpegFound", path );
+            this.setFfmpegSection( "ok", false );
+            return;
+         }
+         var offer = findFfmpegOnDisk( ffmpegCandidatePaths( platformKind(), getEnvironmentVariable ), File.exists );
+         this.ffmpegStatus.text = offer.length ? tr( "out.ffmpegOffer", offer ) : tr( "out.ffmpegMissing" );
+         this.setFfmpegSection( offer.length ? "offer" : "missing", true );
+         return;
       }
-      finally
-      {
-         this.ffmpegBody.enabled = true;
-         this.setBusy( false );
-         this.progressBar.__indet = false;
-         this.progressBar.repaint();
-         this.progressStatus.text = tr( "prog.idle" );
-      }
-      if ( path.length )
+      if ( !path.length || !File.exists( path ) )
+         path = findFfmpegOnDisk( ffmpegCandidatePaths( platformKind(), getEnvironmentVariable ), File.exists );
+      if ( path.length && verifyFfmpeg( path ) )
       {
          this.cfg.ffmpegPath = path;
          this.ffmpegEdit.text = path;
-         this.ffmpegStatus.text = tr( "out.installDone", path );
-         // false collapsed the section the user had just opened to watch this
-         // finish, hiding the path it had found.
+         this.ffmpegStatus.text = tr( "out.ffmpegFound", path );
          this.setFfmpegSection( "ok", true );
+         return;
       }
-      else
+      this.ffmpegStatus.text = path.length ? tr( "out.ffmpegNotFfmpeg", path ) : tr( "out.ffmpegMissing" );
+      this.setFfmpegSection( "missing", true );
+   }
+
+   onClearCaches()
+   {
+      var tmp = File.systemTempDirectory;
+      var before = sessionCacheBytes();
+      if ( before <= 0 )
       {
-         this.ffmpegStatus.text = tr( "out.installFail" );
-         this.setFfmpegSection( "missing", true );
+         ( new MessageBox( tr( "out.clearCacheEmpty" ), SC_TITLE, StdIcon.Information, StdButton.Ok ) ).execute();
+         return;
       }
+      if ( ( new MessageBox( tr( "out.clearCacheConfirm", tmp, formatBytes( before ) ),
+                             SC_TITLE, StdIcon.Question, StdButton.Yes, StdButton.No ) ).execute() != StdButton.Yes )
+         return;
+      var freed = clearSessionCaches();
+      ( new MessageBox( tr( "out.clearCacheDone", formatBytes( freed ) ), SC_TITLE,
+                        StdIcon.Information, StdButton.Ok ) ).execute();
    }
 
    validate( needOutput )
@@ -7755,7 +7779,7 @@ class SessionCinemaResultDialog extends Dialog
          if ( result.videoPath && result.videoPath.length )
             lines.push( tr( "result.video", result.videoPath ) );
          else if ( result.scriptPath && result.scriptPath.length )
-            lines.push( tr( "result.script", result.scriptPath ) );
+            lines.push( tr( "result.script", encodeCommand( result.scriptPath ) ) );
          if ( result.skipped && result.skipped.length )
             lines.push( tr( "result.skipped", result.skipped.length ) );
       }
@@ -8165,7 +8189,7 @@ function runHeadless( cfgPath )
       if ( r.lostFrames )
          result.warnings.push( tr( "run.framesLost", r.lostFrames ) );
       if ( r.ok && !( r.videoPath && r.videoPath.length ) )
-         result.warnings.push( tr( "result.script", r.scriptPath || result.framesDir ) );
+         result.warnings.push( tr( "result.script", r.scriptPath ? encodeCommand( r.scriptPath ) : result.framesDir ) );
       if ( engine.perf )
          result.perf = engine.perf;
    }

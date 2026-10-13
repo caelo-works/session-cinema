@@ -159,19 +159,6 @@ for ( const p of CASES )
    assert.deepStrictEqual( M.rescaleAlignment( al, 1 ), al, "factor 1 is the identity" );
 }
 
-// Mirror candidates reordered by machine architecture
-{
-   const linux = [ "ffmpeg-linux-x64", "ffmpeg-linux-arm64" ];
-   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( linux, "aarch64\n" ),
-                           [ "ffmpeg-linux-arm64", "ffmpeg-linux-x64" ], "arm machine gets arm first" );
-   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( linux, "x86_64\n" ), linux, "x64 keeps order" );
-   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( linux, "" ), linux, "unknown keeps order" );
-   const mac = [ "ffmpeg-macos-arm64", "ffmpeg-macos-x64" ];
-   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( mac, "arm64" ), mac, "already-native order untouched" );
-   assert.deepStrictEqual( M.orderMirrorCandidatesByArch( mac, "x86_64" ),
-                           [ "ffmpeg-macos-x64", "ffmpeg-macos-arm64" ], "Intel Mac gets x64 first" );
-}
-
 // Cross-path consistency: the WCS render path (cropWcsCentered) must place
 // every reveal pixel on the same sky as the popup preview (revealPlacement).
 // This is the invariant "what you align is what renders".

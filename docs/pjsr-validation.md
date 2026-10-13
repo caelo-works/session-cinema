@@ -40,6 +40,8 @@ was a real defect before it was measured.
 | `ExternalProcess` | `P.stdout` carries the text; **`P.stderr` always reads empty** — the two are merged upstream. A missing program does not throw: `start` succeeds and `waitForStarted` returns false. |
 | `View.setPropertyValue` | An astrometric solution survives `saveAs` only through the **four-argument** form, `( id, value, 0, Storable|Permanent )`. The three-argument form takes the flags for a type and throws. |
 | Astrometric solution (1.9.5) | Stored under the standard XISF `AstrometricSolution:` namespace, same keys as the legacy `PCL:AstrometricSolution:` block. A standard block reopened in 1.9.5 is completed by the core (native coordinates, pole). A legacy block holding only the linear part is **not** converted on open, so both namespaces must be read. |
+| `NetworkTransfer` (1.9.5, Windows) | Verifies certificates by default: untrusted, revoked, expired and wrong-host are refused. **Does not follow redirects** — a 3xx is returned as the response code with no body. `setSSL( true, true, … )` does **not** refuse a plain `http://` URL: HTTPS has to be enforced on the URL. `download()` returns true on a 404: check `responseCode`. Returning false from `onTransferProgress` aborts. A cold first request can fail with `CERT_TRUST_REVOCATION_STATUS_UNKNOWN`; a retry passes. |
+| PJSR preprocessor | Strips `//` to the end of the line **even inside a regex literal**: `/^[A-Za-z]:\//` loads in Node and leaves a script that never starts in PixInsight, with no message. `tests/run.sh` refuses `\//` on a code line. |
 | `Vector` | `new Vector( 274.7, -13.8 )` throws. Use `new Vector( 2 )` then `v.at( 0, x )`. |
 | `estimateSigma` | Returns 0 on a strictly flat frame, a fully clipped one, and a flat frame with a single hot pixel. **Not** on a near-empty narrowband frame, which measures cleanly. |
 | `IntegerResample` before `render()` | **Slower**, not faster: 48 ms → 195 ms on a 5100×5100 RGB view to 1920×1080. It rewrites the whole image to save a blit Qt does in tens of milliseconds. |
@@ -65,13 +67,12 @@ Keep them, and the probes, in a staging directory outside the repository.
 
 **Everything platform-specific off Windows.** CI runs on Linux but executes only
 the pure functions under Node: it exercises no platform-specific line and opens no
-socket. The macOS and Linux install roots, the `chmod` and `sh` calls and the POSIX
-encode script have never been run on those platforms. Do not claim them in a
+socket. The macOS and Linux install roots, `NetworkTransfer` and the POSIX encode
+script have never been run on those platforms. Do not claim them in a
 release note without a run.
 
-**A real connection failure.** The survey bridge stops asking once curl reports it
-could not resolve or could not connect — exit 6, exit 7, or curl missing entirely.
-The opposite direction is verified: an HTTP 404 (exit 22) does **not** switch the
-bridge off, and the run completes from the star catalogue. A genuine offline run
-has not been reproduced against PixInsight from this bench; cutting the network
-under it is not something the harness can do.
+**A real connection failure.** The survey bridge stops asking once
+`NetworkTransfer` reports it could not resolve or could not connect. A name that
+does not resolve was measured (3 ms, `Could not resolve host`); a genuinely
+offline machine has not been reproduced against PixInsight from this bench —
+cutting the network under it is not something the harness can do.
