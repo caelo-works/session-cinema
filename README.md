@@ -4,7 +4,7 @@
 
 ### Turn a night of raw subs into a colour "watch your stack build itself" video
 
-[![Version](https://img.shields.io/badge/version-1.1.1-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.0-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
 [![PixInsight](https://img.shields.io/badge/PixInsight-%E2%89%A5%201.9.4-67e8f9?style=for-the-badge&labelColor=0f172a)](https://pixinsight.com/)
 [![Status](https://img.shields.io/badge/status-stable-34d399?style=for-the-badge&labelColor=0f172a)](https://pixinsight-scripts.caelo.works/en/scripts/session-cinema)
 [![License](https://img.shields.io/badge/license-GPL--3.0-94a3b8?style=for-the-badge&labelColor=0f172a)](LICENSE)
@@ -47,7 +47,7 @@ by per-frame auto-stretching.
 | 🖼️ **Sober overlays** | Title, frame counter, cumulative exposure, UT clock, progress bar, optional signature — all individually switchable |
 | 📱 **Social-ready formats** | 16:9 (1080p / 4K), square 1:1 and vertical 9:16, fill-crop or letterbox framing, H.264 `yuv420p` with faststart |
 | ⚙️ **Robust pipeline** | FITS/XISF input, CFA debayering via `BAYERPAT`, chronological ordering across multiple nights via `DATE-OBS`, unreadable or mismatched frames skipped and reported |
-| 🎞️ **ffmpeg, not required** | Detects ffmpeg from PATH and the usual package managers (winget, Chocolatey, Scoop, Homebrew, MacPorts, snap); if none is found, one click downloads and installs a static build from the CaeloWorks mirror — or encode later with the generated `encode.sh` / `encode.bat` |
+| 🎞️ **ffmpeg, not required** | Finds the ffmpeg you installed (PATH, winget, Chocolatey, Scoop, Homebrew, MacPorts, snap) and runs it only once you have chosen it — or encode later with the generated `encode.sh` / `encode.bat` |
 | 🎨 **Multi-filter colour** | Filters detected and mapped to R/G/B via a palette (SHO, HOO, HOS, RGB) or manual override; optional SCNR green removal; a finished image revealed at the end, aligned onto the stack automatically by star matching (or by hand) |
 | 🌍 **Bilingual UI** | English and French, switchable live, settings remembered across sessions |
 
@@ -74,9 +74,6 @@ In PixInsight, open **Resources → Updates → Manage Repositories** and add
 **Resources → Updates → Check for Updates**, accept the install and restart.
 The script then lives under **Script → CaeloWorks → Session Cinema**, and
 updates are delivered automatically through the same channel.
-
-> The repository is not CPD-signed yet, so PixInsight shows an
-> "unsigned repository" warning; signing is underway.
 
 ### Manual install
 
@@ -126,8 +123,6 @@ beside the script. Then in PixInsight use **Script → Feature Scripts…**, cli
   actually do where that differs from what their naming suggests.
 - **[Reveal alignment](docs/reveal-alignment.md)** — how **Auto** places your
   finished image on the frame behind it, when it gives up, and what to do then.
-- **[ffmpeg mirror](docs/ffmpeg-mirror.md)** — the hosting contract behind the
-  one-click ffmpeg install (site side).
 
 ## Development
 
@@ -203,6 +198,51 @@ This produces two files under `dist/`:
 - **`update-package.json`** — the metadata contract for the site: name, slug,
   version, `fileName`, `sha1`, type, `releaseDate`, `piVersionRange`, title
   and `descriptionHtml`.
+
+## Network, programs and files
+
+What Session Cinema does outside PixInsight, all of it.
+
+**Network.** One connection, and only while **Real-sky survey bridge** is ticked
+(it is by default): for each Zoom Odyssey render, two requests over HTTPS to the
+CDS hips2fits service, `https://alasky.cds.unistra.fr/hips-image-services/hips2fits`.
+They carry the target's right ascension, declination, field of view, the cutout
+size and the survey name — nothing about you or your site. They go through
+PixInsight's own network stack; certificates are verified, redirects are not
+followed, plain HTTP is refused, and a cutout is used only if it decodes at
+exactly the size requested. Untick the bridge and Session Cinema makes no
+network connection at all. Nothing else is ever downloaded, and no program.
+
+**Programs launched.**
+
+- **ffmpeg**, to encode the video — the one *you* installed and chose with
+  **Detect** or **Browse**. Session Cinema does not ship or download it. It looks
+  for one on disk (PATH, then winget, Chocolatey, Scoop, Homebrew, MacPorts,
+  snap, Linuxbrew, and the folder where versions before 1.3.0 installed it) by
+  checking that the file exists, and runs nothing until you have chosen it: then
+  `ffmpeg -version` once to check it, and ffmpeg itself for each encode.
+- **The system file browser** — `explorer.exe`, `open` or `xdg-open` — only when
+  you click to show the output folder or the video.
+
+Nothing else. The generated `encode.sh` / `encode.bat` is written for you to run;
+Session Cinema never runs it.
+
+**Files written outside the PixInsight installation.**
+
+- The **output folder** you choose: the video, and, if kept or if ffmpeg is
+  missing, the BMP frame sequence with `encode.sh` / `encode.bat`.
+- The **system temp directory**: `sc-reg/` (registered subs and stretch cache),
+  `sc-hips-*.jpg` (survey cutouts), `sc-autoalign-*.png` (reveal alignment).
+  These make a re-run fast. **Clear caches…** in the Output group deletes them;
+  so can you, at any time.
+- Settings, through PixInsight's own settings interface, under
+  `SessionCinema/config`.
+- Only in headless mode, the result file named by `SESSIONCINEMA_AUTORUN`.
+
+Versions before 1.3.0 could download ffmpeg into `%LOCALAPPDATA%\CaeloWorks\ffmpeg`
+(Windows), `~/Library/Application Support/CaeloWorks/ffmpeg` (macOS) or
+`~/.local/share/caeloworks/ffmpeg` (Linux). Nothing writes there any more; delete
+the folder if you do not use it.
 
 ## License and credits
 

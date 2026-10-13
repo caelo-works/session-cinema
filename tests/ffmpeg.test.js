@@ -1,4 +1,5 @@
-// ffmpeg discovery candidates, auto-install locations and mirror contract.
+// ffmpeg discovery (find on disk, never launch a guess), legacy install dir,
+// and what the script may launch or download at all (CPD Program Rules v1.0).
 "use strict";
 const assert = require( "assert" );
 const M = require( "./build/module.js" );
@@ -16,24 +17,12 @@ const winEnv = envGetter( {
 const macEnv = envGetter( { HOME: "/Users/astro" } );
 const linuxEnv = envGetter( { HOME: "/home/astro" } );
 
-// Mirror contract: fixed names, one per platform/arch, preferred arch first
-assert.ok( M.FFMPEG_MIRROR_BASE.startsWith( "https://" ) );
-assert.ok( M.FFMPEG_MIRROR_BASE.endsWith( "/" ), "base joins with a bare file name" );
-assert.deepStrictEqual( M.ffmpegMirrorCandidates( "windows" ), [ "ffmpeg-windows-x64.exe" ] );
-assert.deepStrictEqual( M.ffmpegMirrorCandidates( "macos" ),
-                        [ "ffmpeg-macos-arm64", "ffmpeg-macos-x64" ] );
-assert.deepStrictEqual( M.ffmpegMirrorCandidates( "linux" ),
-                        [ "ffmpeg-linux-x64", "ffmpeg-linux-arm64" ] );
-for ( const p of [ "windows", "macos", "linux" ] )
-   for ( const n of M.ffmpegMirrorCandidates( p ) )
-      assert.ok( /^ffmpeg-[a-z0-9-]+(\.exe)?$/.test( n ), "url-safe file name: " + n );
-
 // Installed binary name
 assert.strictEqual( M.ffmpegInstalledName( "windows" ), "ffmpeg.exe" );
 assert.strictEqual( M.ffmpegInstalledName( "macos" ), "ffmpeg" );
 assert.strictEqual( M.ffmpegInstalledName( "linux" ), "ffmpeg" );
 
-// Install dir: per-user, forward slashes, CaeloWorks-branded
+// Legacy install dir (written by versions before 1.3.0, never written now)
 assert.strictEqual( M.ffmpegInstallDir( "windows", winEnv ),
                     "C:/Users/astro/AppData/Local/CaeloWorks/ffmpeg" );
 // LOCALAPPDATA missing -> derived from USERPROFILE
@@ -49,45 +38,87 @@ assert.strictEqual(
    M.ffmpegInstallDir( "linux", envGetter( { HOME: "/home/astro", XDG_DATA_HOME: "/data/xdg" } ) ),
    "/data/xdg/caeloworks/ffmpeg" );
 
-// Candidate paths: PATH first, then a previous auto-install, then managers
+// Candidate paths: every PATH directory, then the legacy auto-install, then
+// package managers. Absolute only: finding one must never need a launch.
 {
-   const c = M.ffmpegCandidatePaths( "windows", winEnv );
-   assert.strictEqual( c[ 0 ], "ffmpeg.exe" );
+   const env = envGetter( {
+      LOCALAPPDATA: "C:\\Users\\astro\\AppData\\Local",
+      ProgramData: "C:\\ProgramData",
+      USERPROFILE: "C:\\Users\\astro",
+      PATH: "C:\\Windows\\system32;\"C:\\Program Files\\ffmpeg\\bin\";;relative\\dir;C:\\tools\\"
+   } );
+   const c = M.ffmpegCandidatePaths( "windows", env );
+   assert.strictEqual( c[ 0 ], "C:/Windows/system32/ffmpeg.exe", "PATH first, in order" );
+   assert.strictEqual( c[ 1 ], "C:/Program Files/ffmpeg/bin/ffmpeg.exe", "quotes stripped" );
+   assert.strictEqual( c[ 2 ], "C:/tools/ffmpeg.exe", "relative and empty entries skipped, trailing slash trimmed" );
    assert.ok( c.includes( "C:/Users/astro/AppData/Local/CaeloWorks/ffmpeg/ffmpeg.exe" ),
-              "previous auto-install probed" );
+              "legacy auto-install still offered" );
    assert.ok( c.includes( "C:/Users/astro/AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe" ), "winget" );
    assert.ok( c.includes( "C:/ProgramData/chocolatey/bin/ffmpeg.exe" ), "chocolatey" );
    assert.ok( c.includes( "C:/Users/astro/scoop/shims/ffmpeg.exe" ), "scoop" );
    assert.ok( c.includes( "C:/ffmpeg/bin/ffmpeg.exe" ), "legacy manual location" );
-   for ( const p of c )
-      assert.ok( !p.includes( "\\" ), "forward slashes only: " + p );
 }
 {
-   const c = M.ffmpegCandidatePaths( "macos", macEnv );
-   assert.strictEqual( c[ 0 ], "ffmpeg" );
+   const c = M.ffmpegCandidatePaths( "macos", envGetter( { HOME: "/Users/astro", PATH: "/opt/homebrew/bin:/usr/bin:bin" } ) );
+   assert.strictEqual( c[ 0 ], "/opt/homebrew/bin/ffmpeg" );
+   assert.strictEqual( new Set( c ).size, c.length, "PATH and known locations do not repeat" );
    assert.ok( c.includes( "/Users/astro/Library/Application Support/CaeloWorks/ffmpeg/ffmpeg" ) );
-   assert.ok( c.includes( "/opt/homebrew/bin/ffmpeg" ), "Homebrew (Apple Silicon)" );
    assert.ok( c.includes( "/opt/local/bin/ffmpeg" ), "MacPorts" );
    assert.ok( c.includes( "/usr/local/bin/ffmpeg" ), "Homebrew (Intel)" );
    assert.ok( !c.includes( "/snap/bin/ffmpeg" ), "snap is Linux-only" );
 }
 {
    const c = M.ffmpegCandidatePaths( "linux", linuxEnv );
-   assert.strictEqual( c[ 0 ], "ffmpeg" );
    assert.ok( c.includes( "/home/astro/.local/share/caeloworks/ffmpeg/ffmpeg" ) );
    assert.ok( c.includes( "/usr/bin/ffmpeg" ) );
    assert.ok( c.includes( "/snap/bin/ffmpeg" ), "snap" );
    assert.ok( c.includes( "/home/linuxbrew/.linuxbrew/bin/ffmpeg" ), "Linuxbrew" );
 }
-// Missing env vars never produce broken paths, and lists stay duplicate-free
 for ( const p of [ "windows", "macos", "linux" ] )
 {
    const c = M.ffmpegCandidatePaths( p, envGetter( {} ) );
-   assert.ok( c.length >= 4 );
+   assert.ok( c.length >= 3 );
    assert.strictEqual( new Set( c ).size, c.length, "no duplicates on " + p );
    for ( const path of c )
+   {
+      assert.ok( !path.includes( "\\" ), "forward slashes only: " + path );
+      assert.ok( p == "windows" ? /^[A-Za-z]:\//.test( path ) : path.startsWith( "/" ),
+                 "absolute, so it can be checked without running it: " + path );
       assert.ok( !path.startsWith( "/CaeloWorks" ) && !path.includes( "//" ),
                  "no dangling root from missing env: " + path );
+   }
+}
+// findFfmpegOnDisk only asks the file system.
+{
+   const seen = [];
+   const exists = p => { seen.push( p ); return p == "/b/ffmpeg"; };
+   assert.strictEqual( M.findFfmpegOnDisk( [ "/a/ffmpeg", "/b/ffmpeg", "/c/ffmpeg" ], exists ), "/b/ffmpeg" );
+   assert.deepStrictEqual( seen, [ "/a/ffmpeg", "/b/ffmpeg" ], "stops at the first hit" );
+   assert.strictEqual( M.findFfmpegOnDisk( [ "/a" ], () => { throw new Error( "x" ); } ), "" );
+}
+
+// --- what the script may launch and download (CPD Program Rules 5.2, 5.3, 6.3)
+{
+   const SRC = require( "fs" ).readFileSync( require( "path" ).join( __dirname, "..", "pjsr", "SessionCinema.js" ), "utf8" );
+   // Every program launched is the user's ffmpeg or the OS file browser on a click.
+   const launched = [ ...SRC.matchAll( /runExternal\(\s*([^,]+),/g ) ].map( m => m[ 1 ].trim() );
+   const allowed = [ "program", "path", "ffmpeg", "\"explorer.exe\"", "\"open\"", "\"xdg-open\"" ];
+   for ( const p of launched )
+      assert.ok( allowed.includes( p ), "unexpected program launched: runExternal( " + p + ", …" );
+   assert.ok( !/\bcurl\b/.test( SRC.replace( /^\s*\/\/.*$/gm, "" ) ), "no curl: downloads go through NetworkTransfer" );
+   assert.ok( !/MIRROR|caelo\.works\/ffmpeg|installFfmpeg/.test( SRC ), "no ffmpeg mirror left" );
+   // Only HTTPS, and the URL builder agrees.
+   assert.ok( M.isHttpsUrl( "https://alasky.cds.unistra.fr/x" ) );
+   for ( const u of [ "http://alasky.cds.unistra.fr/x", "HTTPS:/x", "ftp://x", "", null, "https:///x" ] )
+      assert.ok( !M.isHttpsUrl( u ), "refused: " + u );
+   assert.ok( M.isHttpsUrl( M.hips2fitsUrl( "CDS/P/DSS2/color", 10, 20, 1.5, 512 ) ) );
+   assert.ok( M.isNoNetworkError( "NetworkTransfer::Download(): Could not resolve host: x.invalid" ) );
+   assert.ok( M.isNoNetworkError( "Failed to connect to x port 443" ) );
+   assert.ok( !M.isNoNetworkError( "schannel: CertGetCertificateChain trust error CERT_TRUST_REVOCATION_STATUS_UNKNOWN" ),
+              "a TLS hiccup is retried, it does not switch the bridge off" );
+   // The encode script is not made executable, so it is run through sh.
+   assert.strictEqual( M.encodeCommand( "/out/f/encode.sh" ), "sh \"/out/f/encode.sh\"" );
+   assert.strictEqual( M.encodeCommand( "C:/out/f/encode.bat" ), "C:/out/f/encode.bat" );
 }
 
 console.log( "ffmpeg.test.js OK" );

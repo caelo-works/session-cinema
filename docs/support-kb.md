@@ -63,9 +63,11 @@ time together determine latitude and longitude. Anyone publishing a video who
 does not want their site inferred should untick **Simulate the shoot location**.
 
 **The real-sky bridge makes outbound requests.** With the survey bridge on, the
-target's right ascension, declination and field of view are sent to a public CDS
-service, twice per generation. It is the only unsolicited outbound traffic in the
-product; untick the bridge and there is none.
+target's right ascension, declination and field of view are sent to the CDS
+hips2fits service (`alasky.cds.unistra.fr`), over HTTPS, twice per generation. It
+is the **only** network connection the product makes — since 1.3.0 nothing else
+is ever downloaded — and the checkbox's tooltip says so. Untick the bridge and
+there is none.
 
 ### Credits: the sky survey imagery in the video, and how to acknowledge it
 
@@ -173,7 +175,7 @@ words on the left are the **exact** strings the dialog shows.
 - **Align…** = **Aligner…**
 - **Auto** = **Auto**
 - **Detect** = **Détecter**
-- **Install ffmpeg…** = **Installer ffmpeg…**
+- **Clear caches…** = **Vider les caches…**
 - **Generate** = **Générer**
 - **Colour composite — map filters to R / G / B** = **Composite couleur — associer les filtres à R / V / B**
 - **Screen stretch:** = **Étirement d'affichage :**
@@ -317,6 +319,18 @@ deleted automatically — the registration cache is what makes a re-run fast —
 the line names the directory and the user decides. The same figures are in the
 result window and in the headless result file, under `disk`.
 
+Exactly what lives under the system temp directory (`%TEMP%` on Windows,
+usually `/tmp` or `$TMPDIR` elsewhere):
+
+- `sc-reg/` — registered subs and their stretch cache;
+- `sc-hips-*.jpg` — survey cutouts;
+- `sc-autoalign-*.png` — images written while **Auto** aligns a reveal.
+
+**Clear caches…** (*« Vider les caches… »*), next to **Keep the BMP frame
+sequence**, deletes those three after a confirmation that shows the size. It is
+always safe: the next render rebuilds what it needs, only more slowly. It never
+touches the output folder.
+
 **"Why did my render take so long?"** The console prints a per-phase breakdown at
 the end of every run (`PERF stack mono`, `PERF stack colour`, `PERF zoom`),
 in milliseconds per rendered frame. In practice the answer is almost always the
@@ -374,27 +388,41 @@ fades it in and out so the fit can be checked.
 
 The script encodes the video with **ffmpeg**. It does not ship one.
 
-### ffmpeg: where it is looked for, and what happens without it
+### ffmpeg: the user installs it, the script finds it
 
-**It looks for ffmpeg** in the system `PATH`, then in a previous auto-install, then
-in the usual package managers — winget, Chocolatey and Scoop on Windows; Homebrew
-and MacPorts on macOS; snap and Linuxbrew on Linux.
+**Since 1.3.0 the script never downloads ffmpeg.** The **Install ffmpeg…** button
+of earlier versions is gone: PixInsight's developer rules forbid a script from
+downloading and running a program outside PixInsight's own update system. If a
+user asks where the button went, that is the answer — it is not a bug.
 
-**If none is found**, the Output panel shows **⚠️ ffmpeg not found** and offers a
-button, **Install ffmpeg…** (*« Installer ffmpeg… »*). It downloads a static build
-(about 50–90 MB) from the CaeloWorks mirror, checks that it actually runs, and
-keeps it. It installs to:
+**How a user gets ffmpeg:** they install it themselves — `winget install ffmpeg`
+on Windows, `brew install ffmpeg` on macOS, their package manager on Linux, or a
+build from ffmpeg.org — then click **Detect** or point at it with **Browse**.
+
+**Where it is looked for:** every directory of the system `PATH`, then the folder
+where earlier versions installed it, then the usual package managers — winget,
+Chocolatey and Scoop on Windows; Homebrew and MacPorts on macOS; snap and
+Linuxbrew on Linux. Looking only checks that the file exists. **Nothing is run
+until the user has chosen it**: when one is found at start-up, the panel shows
+**⚠️ ffmpeg found, not selected** and asks them to click **Detect**. Detect (or
+Browse) then runs `ffmpeg -version` once to check it is ffmpeg, and remembers the
+path. A file that does not answer as ffmpeg is refused with
+**"… does not answer as ffmpeg (ffmpeg -version). Choose another file."**
+
+**The ffmpeg that 1.2.x and earlier installed** is still found and offered,
+like any other, and nothing writes there any more. It lives in:
 
 - **Windows**: `%LOCALAPPDATA%\CaeloWorks\ffmpeg`
 - **macOS**: `~/Library/Application Support/CaeloWorks/ffmpeg`
 - **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg`, or `~/.local/share/caeloworks/ffmpeg`
 
-**If the install fails**, the message says so and the fix is in it: check the
-internet connection, or install ffmpeg by hand and point at it with **Browse**.
+A user who wants it gone can delete that folder; they then need their own ffmpeg.
 
 **If there is no ffmpeg at all, nothing is lost.** The script writes the **BMP
 frame sequence** plus a ready-to-run **`encode.sh`** (or **`encode.bat`**) next to
 it. The user runs that script whenever they like and gets exactly the same video.
+On macOS and Linux the script is not made executable: the message gives the
+command, `sh "…/encode.sh"`.
 Never tell a user that a missing ffmpeg has cost them their render.
 
 ---
@@ -485,15 +513,16 @@ image?). Align manually."** / *« L'alignement automatique n'a pas trouvé
 d'appariement d'étoiles fiable… »*
 Not a bug. A starless image has nothing to match. Align by hand.
 
-**"ffmpeg not found — the BMP sequence and an encoding script will be generated
-instead."** / *« ffmpeg introuvable — la séquence BMP et un script d'encodage
-seront générés. »*
-Not an error. Offer the **Install ffmpeg…** button, or tell them to run the
-generated `encode.sh` / `encode.bat` later.
+**"ffmpeg not found. Install it yourself …"** / *« ffmpeg introuvable.
+Installez-le vous-même … »*
+Not an error. The message carries the install commands. Tell them to install
+ffmpeg, then click **Detect** — or to run the generated `encode.sh` /
+`encode.bat` later.
 
-**"ffmpeg installation failed — check your internet connection, or install it
-manually and use Browse."** / *« Échec de l'installation de ffmpeg… »*
-Exactly what it says.
+**"ffmpeg is installed at …. Click Detect to use it …"** / *« ffmpeg est installé
+dans …. Cliquez sur Détecter pour l'utiliser … »*
+Not an error. One was found on disk; the script waits for the user to choose it
+before running it. One click on **Detect**.
 
 **"ffmpeg failed (exit code N). The BMP sequence and … are left for manual
 encoding."** / *« Échec ffmpeg (code N)… »*
@@ -712,7 +741,8 @@ The frames are safe: the script keeps the BMP sequence and an `encode.sh` /
 and escalate.
 
 **"PixInsight says the repository is unsigned."**
-Expected. The CaeloWorks repository is not CPD-signed yet. It is safe to accept.
+Not expected: the CaeloWorks repository is CPD-signed. Ask for a screenshot of the
+warning and the repository URL they added, and escalate.
 
 **"I installed it but I can't find it."**
 It is at **Script → CaeloWorks → Session Cinema**, and **PixInsight must be

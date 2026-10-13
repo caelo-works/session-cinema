@@ -1,4 +1,10 @@
-# ffmpeg mirror — hosting contract
+# ffmpeg mirror — hosting contract (retired)
+
+> **Retired in 1.3.0.** Session Cinema no longer downloads ffmpeg: the CPD Program
+> Rules v1.0 (rules 5.1–5.3) forbid running a program that did not come through
+> the PixInsight update system or an independent install by the user. The URLs
+> below are still requested by 1.2.x and earlier, and serving them stays a
+> decision of the site repository. Nothing in this repository uses them any more.
 
 Session Cinema can install ffmpeg automatically when none is detected: the
 script downloads a static build from the CaeloWorks mirror and validates it by
