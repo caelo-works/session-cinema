@@ -233,3 +233,35 @@ console.log( "ffmpeg.test.js OK" );
 }
 
 console.log( "ffmpeg.test.js OK (encode script, coordinates)" );
+
+// --- PixInsight 1.9.6: PNG and WebP need their own format modules ----------
+{
+   const fs = require( "fs" ), path = require( "path" );
+   assert.strictEqual( M.imageModuleForPath( "C:/x/final.PNG" ), "PNG" );
+   assert.strictEqual( M.imageModuleForPath( "/x/final.webp" ), "WEBP" );
+   for ( const p of [ "/x/final.jpg", "/x/final.tif", "/x/final.xisf", "/x/png", "", null ] )
+      assert.strictEqual( M.imageModuleForPath( p ), "", "no extra module for " + p );
+   // StarAlignment reads the auto-align temp files through the format modules:
+   // they must be in a format every installation reads.
+   const SRC = fs.readFileSync( path.join( __dirname, "..", "pjsr", "SessionCinema.js" ), "utf8" );
+   assert.ok( /"\/sc-autoalign-" \+ tag \+ "\.bmp"/.test( SRC ), "auto-align temp files are BMP" );
+   assert.ok( !/sc-autoalign-[^"]*"[^;]*\.png/.test( SRC ), "no PNG temp file left for StarAlignment" );
+   console.log( "image modules OK" );
+}
+
+// --- Return never starts a render (PixInsight 1.9.6 contained mode) --------
+{
+   const fs = require( "fs" ), path = require( "path" );
+   const SRC = fs.readFileSync( path.join( __dirname, "..", "pjsr", "SessionCinema.js" ), "utf8" );
+   const start = SRC.indexOf( "class SessionCinemaDialog extends Dialog" );
+   const end = SRC.indexOf( "class SessionCinemaResultDialog extends Dialog" );
+   assert.ok( start > 0 && end > start, "main dialog class found" );
+   const main = SRC.slice( start, end );
+   const ctor = main.slice( main.indexOf( "super();" ), main.indexOf( "super();" ) + 800 );
+   assert.ok( /this\.autoDefaultButton = false;/.test( ctor ), "main dialog: autoDefaultButton = false right after super()" );
+   assert.ok( !/defaultButton = true/.test( main ), "main dialog: no default button, so Return cannot press Generate" );
+   // The two small dialogs keep an explicit default: Return there only confirms or closes.
+   assert.ok( /this\.okButton\.defaultButton = true;/.test( SRC ), "Align dialog: OK stays the default" );
+   assert.ok( /this\.closeButton\.defaultButton = true;/.test( SRC.slice( end ) ), "result dialog: Close stays the default" );
+   console.log( "default buttons OK" );
+}

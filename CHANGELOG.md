@@ -4,7 +4,35 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-10-31
+
+Compatibility with PixInsight 1.9.6, which moved PNG and WebP support out of the
+BMP module into separate PNG and WEBP modules that an upgraded installation may
+not have.
+
+### Fixed
+
+- **Auto** alignment no longer depends on the PNG module. Its temporary files
+  were PNG images, which StarAlignment reads through PixInsight's format modules;
+  without the PNG module every attempt failed and was reported as "no reliable
+  star match". They are now BMP files (`sc-autoalign-*.bmp`).
+
+- Pressing Return in the main window no longer starts a render. PixInsight
+  1.9.6 hosts dialogs inside its main window by default, where Return presses
+  the default button, which was **Generate**: typing a title and pressing
+  Return launched a render. The main window now has no default button; in the
+  alignment and result windows, Return still confirms or closes.
+
+### Changed
+
+- When a reveal or end image in PNG or WebP cannot be loaded because PixInsight
+  has no module for it, the message names the module to install
+  (**Process > Modules > Install Modules**).
+
 ## [1.3.1] - 2026-10-31
+
+Tagged but never published: PixInsight 1.9.6 came out before it was signed, and
+its changes ship in 1.3.2.
 
 The PixInsight Development Team asked for two more points under the CPD Program
 Rules: the ffmpeg that earlier versions downloaded must no longer run, and the
@@ -306,7 +334,7 @@ said and said nothing about it.
   attempt progress.
 - One-click ffmpeg install: when detection comes up empty, the output row
   offers to download a static build from a CaeloWorks mirror (retired since
-  1.3.1) into a per-user directory. Every candidate is
+  1.3.2) into a per-user directory. Every candidate is
   validated by running `-version`, which doubles as the architecture selector
   on macOS/Linux (arm64/x64 tried in order); the resulting path is persisted
   like a hand-picked one.
@@ -462,6 +490,7 @@ set and its validation evidence).
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.3.2]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.2
 [1.3.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.1
 [1.3.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.0
 [1.2.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.2.1

@@ -4,7 +4,7 @@
 
 ### Turn a night of raw subs into a colour "watch your stack build itself" video
 
-[![Version](https://img.shields.io/badge/version-1.3.1-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.2-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
 [![PixInsight](https://img.shields.io/badge/PixInsight-%E2%89%A5%201.9.4-67e8f9?style=for-the-badge&labelColor=0f172a)](https://pixinsight.com/)
 [![Status](https://img.shields.io/badge/status-stable-34d399?style=for-the-badge&labelColor=0f172a)](https://pixinsight-scripts.caelo.works/en/scripts/session-cinema)
 [![License](https://img.shields.io/badge/license-GPL--3.0-94a3b8?style=for-the-badge&labelColor=0f172a)](LICENSE)
@@ -101,7 +101,7 @@ a per-user folder:
 - **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg/ffmpeg`, by default
   `~/.local/share/caeloworks/ffmpeg/ffmpeg`
 
-That copy was downloaded outside the PixInsight update system, so from 1.3.1 on
+That copy was downloaded outside the PixInsight update system, so from 1.3.2 on
 Session Cinema **never runs it and no longer offers it**, even if your settings,
 your PATH or a file you browse to point at it. While it is still on disk, the
 ffmpeg panel of the **Output** group tells you where it is and offers
@@ -290,7 +290,7 @@ Session Cinema never runs it.
 - The **output folder** you choose: the video, and, if kept or if ffmpeg is
   missing, the BMP frame sequence with `encode.sh` / `encode.bat`.
 - The **system temp directory**: `sc-reg/` (registered subs and stretch cache),
-  `sc-hips-*.jpg` (survey cutouts), `sc-autoalign-*.png` (reveal alignment).
+  `sc-hips-*.jpg` (survey cutouts), `sc-autoalign-*.bmp` (reveal alignment).
   These make a re-run fast. **Clear caches…** in the Output group deletes them;
   so can you, at any time.
 - Settings, through PixInsight's own settings interface, under

@@ -3,9 +3,9 @@
 **This is written for a support agent, not for a user.** Quote it, do not
 paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Applies to **1.3.1**. To check what the user is running: the version is printed
-under the script's name in the top-left of its window (`v1.3.1`). A version
-followed by `(dev)` — `v1.3.1 (dev)` — means the file did not come from a package:
+Applies to **1.3.2**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.3.2`). A version
+followed by `(dev)` — `v1.3.2 (dev)` — means the file did not come from a package:
 it was copied by hand. That is worth knowing before anything else.
 
 **Ask for that number early.** 1.2.0 fixed seventy-two defects, many of which a
@@ -37,7 +37,7 @@ down to the user's image.
 
 | | |
 |---|---|
-| Version | 1.3.1 |
+| Version | 1.3.2 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 to 1.9.99** — Windows, macOS, Linux |
 | Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
@@ -126,10 +126,10 @@ Updates then arrive automatically through the same channel.
 
 ### "PixInsight says the script is unsigned" or "unsigned repository"
 
-**Not expected.** Since 1.3.1 the script itself is signed by CaeloWorks, and the
+**Not expected.** Since 1.3.2 the script itself is signed by CaeloWorks, and the
 CaeloWorks update repository is signed too. Session Cinema runs with
 **Allow execution of unsigned scripts** turned off. A warning usually means one of
-three things: a version older than 1.3.1 (ask for the version), a copy whose
+three things: a version older than 1.3.2 (ask for the version), a copy whose
 `SessionCinema.js` was edited (any change to the code voids the signature), or a
 manual install where `SessionCinema.xsgn` was not kept next to the script. Ask for
 the version, the install route and a screenshot of the warning, and escalate if
@@ -331,7 +331,7 @@ usually `/tmp` or `$TMPDIR` elsewhere):
 
 - `sc-reg/` — registered subs and their stretch cache;
 - `sc-hips-*.jpg` — survey cutouts;
-- `sc-autoalign-*.png` — images written while **Auto** aligns a reveal.
+- `sc-autoalign-*.bmp` — images written while **Auto** aligns a reveal (`.png` before 1.3.2).
 
 **Clear caches…** (*« Vider les caches… »*), next to **Keep the BMP frame
 sequence**, deletes those three after a confirmation that shows the size. It is
@@ -484,6 +484,16 @@ solved — see *Fixed in 1.2.1* below.
 The finished image is unreadable or in an unsupported format. This one is raised
 **before the render starts**. Do not confuse it with the next entry, which looks
 like it and comes from a different place.
+
+**"PixInsight has no module to read … files. Since PixInsight 1.9.6 they need
+the … module"** / *« PixInsight n'a aucun module pour lire les fichiers …. Depuis
+PixInsight 1.9.6, il leur faut le module … »*
+Added under the two messages above, or printed in the console when the end image
+of a progressive stack is skipped. Not a Session Cinema bug: PixInsight 1.9.6 moved
+PNG and WebP out of its BMP module into separate **PNG** and **WEBP** modules, and an
+upgraded installation may not have them. Tell the user to install them with
+**Process > Modules > Install Modules** and restart PixInsight, or to save the image
+as TIFF or XISF. Since 1.3.2 the automatic alignment no longer depends on them.
 
 **"Could not load the solved or reveal image for alignment."** / *« Impossible de
 charger l'image résolue ou l'image à révéler pour l'alignement. »*
@@ -639,7 +649,7 @@ Versions 1.1.0 to 1.2.1 could install ffmpeg in one click, downloaded into:
 - **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg/ffmpeg`, by default
   `~/.local/share/caeloworks/ffmpeg/ffmpeg`
 
-**Since 1.3.1 that copy is never run and no longer offered**, even when the
+**Since 1.3.2 that copy is never run and no longer offered**, even when the
 settings, the `PATH` or a file picked with **Browse** point at it: it was
 downloaded outside PixInsight's update system, which PixInsight's developer rules
 forbid. This is deliberate, not a bug. A path saved by 1.2.x that pointed at it is
@@ -665,7 +675,7 @@ Not a bug. It was removed on purpose: PixInsight's developer rules (CPD Program
 Rules v1.0) forbid a script from downloading and running a program outside
 PixInsight's own update system. The user installs ffmpeg themselves and clicks
 **Detect** — the full answer is in *ffmpeg: the user installs it, the script
-finds it*. Since 1.3.1, the ffmpeg an earlier version installed is no longer
+finds it*. Since 1.3.2, the ffmpeg an earlier version installed is no longer
 used either: see *Upgrading from 1.2.x or earlier: the old ffmpeg copy*.
 
 Also new in 1.3.0, so a user may ask: the panel can say **⚠️ ffmpeg found, not
@@ -735,10 +745,16 @@ The frames are safe: the script keeps the BMP sequence and an `encode.sh` /
 and escalate.
 
 **"PixInsight says the script or the repository is unsigned."**
-Not expected from 1.3.1 on: both the script and the CaeloWorks repository are
-signed. Ask for the version (older than 1.3.1 is unsigned), whether the script was
+Not expected from 1.3.2 on: both the script and the CaeloWorks repository are
+signed. Ask for the version (older than 1.3.2 is unsigned), whether the script was
 edited or installed by hand without `SessionCinema.xsgn`, a screenshot of the
 warning and the repository URL they added, then escalate.
+
+**"Pressing Enter started a render."**
+Expected on 1.3.1 and earlier under PixInsight 1.9.6: PixInsight now shows dialogs
+inside its main window, where Enter presses the default button, and that was
+**Generate**. Fixed in 1.3.2: Enter no longer starts anything in the main window.
+On an older version the user stops the render with **Cancel** and updates.
 
 **"Session Cinema no longer uses my ffmpeg" after updating from 1.2.x.**
 Expected if it was the copy the one-click install downloaded. See *Upgrading from

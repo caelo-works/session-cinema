@@ -24,7 +24,7 @@
                (mono or multi-filter colour) with sober scientific overlays \
                (frame count, cumulative exposure, measured SNR gain).
 
-#define SC_VERSION "1.3.1"
+#define SC_VERSION "1.3.2"
 #define SC_TITLE   "Session Cinema"
 
 // Stamped by scripts/build-update-package.sh at packaging time.
@@ -386,6 +386,7 @@ var STRINGS = {
       "zoom.belowHorizon": "Target was below the horizon at the given site/time — using the equatorial opening.",
       "zoom.revealFrom":   "Reveal image: %1 (%2×%3).",
       "zoom.errReveal":    "Could not load the reveal image. Check the file (JPEG/PNG/TIFF/FITS/XISF).",
+      "err.formatModule":  "PixInsight has no module to read %1 files. Since PixInsight 1.9.6 they need the %2 module: install it with Process > Modules > Install Modules, then restart PixInsight, or save the image as TIFF or XISF.",
       "zoom.fetching":     "Downloading real-sky survey (CDS/Aladin hips2fits)…",
       "zoom.fetchedNear":  "Survey (close-up) downloaded.",
       "zoom.fetchedWide":  "Survey (wide field) downloaded.",
@@ -640,6 +641,7 @@ var STRINGS = {
       "zoom.belowHorizon": "La cible était sous l'horizon au lieu/heure donnés — ouverture équatoriale utilisée.",
       "zoom.revealFrom":   "Image révélée : %1 (%2×%3).",
       "zoom.errReveal":    "Impossible de charger l'image à révéler. Vérifiez le fichier (JPEG/PNG/TIFF/FITS/XISF).",
+      "err.formatModule":  "PixInsight n'a aucun module pour lire les fichiers %1. Depuis PixInsight 1.9.6, il leur faut le module %2 : installez-le avec Process > Modules > Install Modules, puis redémarrez PixInsight, ou enregistrez l'image en TIFF ou en XISF.",
       "zoom.fetching":     "Téléchargement de l'imagerie réelle du ciel (CDS/Aladin hips2fits)…",
       "zoom.fetchedNear":  "Relevé (gros plan) téléchargé.",
       "zoom.fetchedWide":  "Relevé (grand champ) téléchargé.",
@@ -2859,6 +2861,39 @@ function isRasterPath( path )
    return false;
 }
 
+// PixInsight 1.9.6 moved PNG and WebP out of the BMP module into separate PNG and
+// WEBP modules, which an upgraded installation may not have. The module a file
+// extension needs when it is one of those, else "" (pure).
+function imageModuleForPath( path )
+{
+   var ext = String( path || "" ).replace( /^.*\./, "." ).toLowerCase();
+   if ( ext == ".png" )
+      return "PNG";
+   if ( ext == ".webp" )
+      return "WEBP";
+   return "";
+}
+
+// When an image could not be loaded: the message naming the module PixInsight
+// lacks for it, or "" when the format is readable and the file itself is at
+// fault. Asks the core whether any installed module reads that extension.
+function missingFormatModuleText( path )
+{
+   var module = imageModuleForPath( path );
+   if ( !module.length )
+      return "";
+   var ext = File.extractExtension( path ).toLowerCase();
+   try
+   {
+      new FileFormat( ext, true, false );
+      return "";
+   }
+   catch ( e )
+   {
+   }
+   return tr( "err.formatModule", ext.substring( 1 ).toUpperCase(), module );
+}
+
 // Load an ALREADY-FINISHED image (JPEG/PNG/TIFF or a processed FITS/XISF) as a
 // Bitmap, without applying any stretch. Returns null on failure.
 function loadFinishedBitmap( path )
@@ -4470,6 +4505,9 @@ Engine.prototype.renderStackReveal = function( stackBmp, stackW, stackH, ov, out
    if ( reveal == null )
    {
       this.skipped.push( "presentation image unreadable" );
+      var moduleText = missingFormatModuleText( cfg.stackRevealPath );
+      if ( moduleText.length )
+         console.warningln( moduleText );
       return outIndex;
    }
    var rw = reveal.width, rh = reveal.height;
@@ -4609,6 +4647,9 @@ Engine.prototype.runZoom = function()
       if ( revealBmp == null )
       {
          this.fail( "zoom.errReveal" );
+         var moduleText = missingFormatModuleText( cfg.zoomRevealPath );
+         if ( moduleText.length )
+            this.errorText += "\n" + moduleText;
          return;
       }
       revealW = revealBmp.width;
@@ -5489,9 +5530,13 @@ function rescaleAlignment( al, revealFactor )
 function autoAlignReveal( bgBmp, revealBmp, onProgress )
 {
    var written = [];
-   function savePng( bmp, tag )
+   // BMP, not PNG: StarAlignment reads these files through PixInsight's format
+   // modules, and since 1.9.6 PNG needs a separate module an upgraded install may
+   // lack. Without it every attempt failed and was reported as "no reliable star
+   // match". BMP stays in the BMP module, the one the video frames already use.
+   function saveTemp( bmp, tag )
    {
-      var path = File.systemTempDirectory + "/sc-autoalign-" + tag + ".png";
+      var path = File.systemTempDirectory + "/sc-autoalign-" + tag + ".bmp";
       bmp.save( path );
       if ( written.indexOf( path ) < 0 )
          written.push( path );
@@ -5534,8 +5579,8 @@ function autoAlignReveal( bgBmp, revealBmp, onProgress )
    var result = null;
    try
    {
-      var bgPath = savePng( bgBmp, "bg" );
-      var rvPath = savePng( revealBmp, "rv" );
+      var bgPath = saveTemp( bgBmp, "bg" );
+      var rvPath = saveTemp( revealBmp, "rv" );
       // Stage A — full frame vs full frame.
       for ( var m = 0; m < 2 && result == null; ++m )
       {
@@ -5548,7 +5593,7 @@ function autoAlignReveal( bgBmp, revealBmp, onProgress )
          var fr = Math.min( 1, tiles[ 0 ].w/revealBmp.width, tiles[ 0 ].h/revealBmp.height );
          var rw = Math.max( 16, Math.round( revealBmp.width*fr ) );
          var rh = Math.max( 16, Math.round( revealBmp.height*fr ) );
-         var rvSmall = ( fr == 1 ) ? rvPath : savePng( revealBmp.scaledTo( rw, rh ), "rv-tile" );
+         var rvSmall = ( fr == 1 ) ? rvPath : saveTemp( revealBmp.scaledTo( rw, rh ), "rv-tile" );
          var tilePaths = [];   // rendered once, reused by the triangles pass
          for ( var pass = 0; pass < 2 && result == null; ++pass )
             for ( var t = 0; t < tiles.length && result == null; ++t )
@@ -5561,7 +5606,7 @@ function autoAlignReveal( bgBmp, revealBmp, onProgress )
                   var g = new Graphics( tileBmp );
                   g.drawBitmapRect( new Point( 0, 0 ), bgBmp, new Rect( T.x, T.y, T.x + T.w, T.y + T.h ) );
                   g.end();
-                  tilePaths[ t ] = savePng( tileBmp, "tile" + t );
+                  tilePaths[ t ] = saveTemp( tileBmp, "tile" + t );
                }
                var al = runSA( tilePaths[ t ], rvSmall, pass == 1, rw, rh );
                if ( al != null )
@@ -5915,6 +5960,13 @@ class SessionCinemaDialog extends Dialog
    constructor( cfg, frames )
    {
       super();
+      // Return must never start a render. PixInsight 1.9.6 hosts dialogs in the
+      // main window by default, where Return presses the default button, and
+      // Generate was that button: typing a title and pressing Return launched a
+      // render of several minutes. No button here is the default, and none
+      // becomes one by taking the focus. On 1.9.4/1.9.5 this property does not
+      // exist and the assignment is a harmless expando.
+      this.autoDefaultButton = false;
       var self = this;
       this.cfg = cfg;
       this.frames = frames;
@@ -6865,7 +6917,6 @@ class SessionCinemaDialog extends Dialog
 
       this.generateButton = new PushButton( this );
       this.generateButton.text = tr( "btn.generate" );
-      this.generateButton.defaultButton = true;
       this.generateButton.onClick = () => this.onGenerate();
 
       this.closeButton = new PushButton( this );
@@ -7763,7 +7814,12 @@ class SessionCinemaDialog extends Dialog
       var revealBmp = loadFinishedBitmap( isZoom ? c.zoomRevealPath : c.stackRevealPath );
       if ( bgBmp == null || revealBmp == null )
       {
-         ( new MessageBox( tr( "align.loadFailed" ), tr( "err.title" ),
+         var alignText = tr( "align.loadFailed" );
+         var moduleText = ( revealBmp == null ) ?
+            missingFormatModuleText( isZoom ? c.zoomRevealPath : c.stackRevealPath ) : "";
+         if ( moduleText.length )
+            alignText += "\n\n" + moduleText;
+         ( new MessageBox( alignText, tr( "err.title" ),
                            StdIcon.Error, StdButton.Ok ) ).execute();
          return;
       }
