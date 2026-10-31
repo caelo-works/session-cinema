@@ -22,24 +22,24 @@ assert.strictEqual( M.ffmpegInstalledName( "windows" ), "ffmpeg.exe" );
 assert.strictEqual( M.ffmpegInstalledName( "macos" ), "ffmpeg" );
 assert.strictEqual( M.ffmpegInstalledName( "linux" ), "ffmpeg" );
 
-// Legacy install dir (written by versions before 1.3.0, never written now)
-assert.strictEqual( M.ffmpegInstallDir( "windows", winEnv ),
+// Legacy install dir (written by 1.1.0 to 1.2.1; never written, offered or run now)
+assert.strictEqual( M.legacyFfmpegDir( "windows", winEnv ),
                     "C:/Users/astro/AppData/Local/CaeloWorks/ffmpeg" );
 // LOCALAPPDATA missing -> derived from USERPROFILE
 assert.strictEqual(
-   M.ffmpegInstallDir( "windows", envGetter( { USERPROFILE: "C:\\Users\\astro" } ) ),
+   M.legacyFfmpegDir( "windows", envGetter( { USERPROFILE: "C:\\Users\\astro" } ) ),
    "C:/Users/astro/AppData/Local/CaeloWorks/ffmpeg" );
-assert.strictEqual( M.ffmpegInstallDir( "macos", macEnv ),
+assert.strictEqual( M.legacyFfmpegDir( "macos", macEnv ),
                     "/Users/astro/Library/Application Support/CaeloWorks/ffmpeg" );
-assert.strictEqual( M.ffmpegInstallDir( "linux", linuxEnv ),
+assert.strictEqual( M.legacyFfmpegDir( "linux", linuxEnv ),
                     "/home/astro/.local/share/caeloworks/ffmpeg" );
 // XDG_DATA_HOME wins over the ~/.local/share default
 assert.strictEqual(
-   M.ffmpegInstallDir( "linux", envGetter( { HOME: "/home/astro", XDG_DATA_HOME: "/data/xdg" } ) ),
+   M.legacyFfmpegDir( "linux", envGetter( { HOME: "/home/astro", XDG_DATA_HOME: "/data/xdg" } ) ),
    "/data/xdg/caeloworks/ffmpeg" );
 
-// Candidate paths: every PATH directory, then the legacy auto-install, then
-// package managers. Absolute only: finding one must never need a launch.
+// Candidate paths: every PATH directory, then package managers. Never the
+// legacy auto-install. Absolute only: finding one must never need a launch.
 {
    const env = envGetter( {
       LOCALAPPDATA: "C:\\Users\\astro\\AppData\\Local",
@@ -51,8 +51,7 @@ assert.strictEqual(
    assert.strictEqual( c[ 0 ], "C:/Windows/system32/ffmpeg.exe", "PATH first, in order" );
    assert.strictEqual( c[ 1 ], "C:/Program Files/ffmpeg/bin/ffmpeg.exe", "quotes stripped" );
    assert.strictEqual( c[ 2 ], "C:/tools/ffmpeg.exe", "relative and empty entries skipped, trailing slash trimmed" );
-   assert.ok( c.includes( "C:/Users/astro/AppData/Local/CaeloWorks/ffmpeg/ffmpeg.exe" ),
-              "legacy auto-install still offered" );
+   assert.ok( !c.some( p => /caeloworks\/ffmpeg/i.test( p ) ), "legacy auto-install never offered" );
    assert.ok( c.includes( "C:/Users/astro/AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe" ), "winget" );
    assert.ok( c.includes( "C:/ProgramData/chocolatey/bin/ffmpeg.exe" ), "chocolatey" );
    assert.ok( c.includes( "C:/Users/astro/scoop/shims/ffmpeg.exe" ), "scoop" );
@@ -62,14 +61,14 @@ assert.strictEqual(
    const c = M.ffmpegCandidatePaths( "macos", envGetter( { HOME: "/Users/astro", PATH: "/opt/homebrew/bin:/usr/bin:bin" } ) );
    assert.strictEqual( c[ 0 ], "/opt/homebrew/bin/ffmpeg" );
    assert.strictEqual( new Set( c ).size, c.length, "PATH and known locations do not repeat" );
-   assert.ok( c.includes( "/Users/astro/Library/Application Support/CaeloWorks/ffmpeg/ffmpeg" ) );
+   assert.ok( !c.includes( "/Users/astro/Library/Application Support/CaeloWorks/ffmpeg/ffmpeg" ), "legacy not offered" );
    assert.ok( c.includes( "/opt/local/bin/ffmpeg" ), "MacPorts" );
    assert.ok( c.includes( "/usr/local/bin/ffmpeg" ), "Homebrew (Intel)" );
    assert.ok( !c.includes( "/snap/bin/ffmpeg" ), "snap is Linux-only" );
 }
 {
    const c = M.ffmpegCandidatePaths( "linux", linuxEnv );
-   assert.ok( c.includes( "/home/astro/.local/share/caeloworks/ffmpeg/ffmpeg" ) );
+   assert.ok( !c.includes( "/home/astro/.local/share/caeloworks/ffmpeg/ffmpeg" ), "legacy not offered" );
    assert.ok( c.includes( "/usr/bin/ffmpeg" ) );
    assert.ok( c.includes( "/snap/bin/ffmpeg" ), "snap" );
    assert.ok( c.includes( "/home/linuxbrew/.linuxbrew/bin/ffmpeg" ), "Linuxbrew" );
@@ -77,7 +76,7 @@ assert.strictEqual(
 for ( const p of [ "windows", "macos", "linux" ] )
 {
    const c = M.ffmpegCandidatePaths( p, envGetter( {} ) );
-   assert.ok( c.length >= 3 );
+   assert.ok( c.length >= 2 );
    assert.strictEqual( new Set( c ).size, c.length, "no duplicates on " + p );
    for ( const path of c )
    {
@@ -88,6 +87,52 @@ for ( const p of [ "windows", "macos", "linux" ] )
                  "no dangling root from missing env: " + path );
    }
 }
+// The legacy copy is excluded whichever way it arrives (CPD Program Rules 5.1, 5.2).
+{
+   // Through PATH, even spelt differently.
+   const env = envGetter( {
+      LOCALAPPDATA: "C:\\Users\\astro\\AppData\\Local",
+      PATH: "C:\\Users\\Astro\\AppData\\Local\\caeloworks\\FFMPEG\\;C:\\tools"
+   } );
+   const c = M.ffmpegCandidatePaths( "windows", env );
+   assert.strictEqual( c[ 0 ], "C:/tools/ffmpeg.exe", "legacy PATH entry dropped" );
+   assert.ok( !c.some( p => /caeloworks\/ffmpeg/i.test( p ) ) );
+   const lin = M.ffmpegCandidatePaths( "linux",
+      envGetter( { HOME: "/home/astro", PATH: "/home/astro/.local/share/caeloworks/ffmpeg:/usr/bin" } ) );
+   assert.strictEqual( lin[ 0 ], "/usr/bin/ffmpeg", "legacy PATH entry dropped on Linux" );
+
+   // Saved setting or browsed file.
+   assert.strictEqual( M.legacyFfmpegPath( "windows", winEnv ),
+                       "C:/Users/astro/AppData/Local/CaeloWorks/ffmpeg/ffmpeg.exe" );
+   assert.ok( M.isLegacyFfmpeg( "C:\\Users\\astro\\AppData\\Local\\CaeloWorks\\ffmpeg\\ffmpeg.exe", "windows", winEnv ) );
+   assert.ok( M.isLegacyFfmpeg( "c:/users/ASTRO/appdata/local/caeloworks/ffmpeg/FFMPEG.EXE", "windows", winEnv ),
+              "Windows paths compare without case" );
+   assert.ok( M.isLegacyFfmpeg( "/users/astro/library/application support/caeloworks/ffmpeg/ffmpeg", "macos", macEnv ),
+              "macOS paths compare without case" );
+   assert.ok( M.isLegacyFfmpeg( "/home/astro/.local/share/caeloworks/ffmpeg/ffmpeg", "linux", linuxEnv ) );
+   assert.ok( !M.isLegacyFfmpeg( "/home/astro/.local/share/CaeloWorks/ffmpeg/ffmpeg", "linux", linuxEnv ),
+              "Linux is case-sensitive: another file" );
+   for ( const other of [ "", null, undefined, "/usr/bin/ffmpeg", "C:/ffmpeg/bin/ffmpeg.exe",
+                          "/home/astro/.local/share/caeloworks/ffmpeg" ] )
+      assert.ok( !M.isLegacyFfmpeg( other, "linux", linuxEnv ), "not legacy: " + other );
+}
+
+// No mirror URL anywhere in the code or the docs, and the legacy copy is
+// never launched: verifyFfmpeg refuses it before runExternal.
+{
+   const fs = require( "fs" ), path = require( "path" );
+   const root = path.join( __dirname, ".." );
+   const files = [ "pjsr/SessionCinema.js", "README.md", "CHANGELOG.md" ]
+      .concat( fs.readdirSync( path.join( root, "docs" ) ).map( f => "docs/" + f ) );
+   for ( const f of files )
+      assert.ok( !/caelo\.works\/ffmpeg|ffmpeg-(windows|macos|linux)-(x64|arm64)/.test( fs.readFileSync( path.join( root, f ), "utf8" ) ),
+                 "mirror URL left in " + f );
+   assert.ok( !fs.existsSync( path.join( root, "docs", "ffmpeg-mirror.md" ) ), "mirror contract removed" );
+   const SRC = fs.readFileSync( path.join( root, "pjsr", "SessionCinema.js" ), "utf8" );
+   const verify = SRC.slice( SRC.indexOf( "function verifyFfmpeg" ) );
+   assert.ok( verify.indexOf( "isLegacyFfmpeg" ) < verify.indexOf( "runExternal" ), "legacy refused before any launch" );
+}
+
 // findFfmpegOnDisk only asks the file system.
 {
    const seen = [];

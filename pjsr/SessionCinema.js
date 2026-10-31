@@ -24,7 +24,7 @@
                (mono or multi-filter colour) with sober scientific overlays \
                (frame count, cumulative exposure, measured SNR gain).
 
-#define SC_VERSION "1.3.0"
+#define SC_VERSION "1.3.1"
 #define SC_TITLE   "Session Cinema"
 
 // Stamped by scripts/build-update-package.sh at packaging time.
@@ -354,6 +354,14 @@ var STRINGS = {
       "out.ffmpegHeaderOk":      "⚙️ ffmpeg detected",
       "out.ffmpegHeaderMissing": "⚠️ ffmpeg not found",
       "out.ffmpegHeaderOffer":   "⚠️ ffmpeg found, not selected",
+      "out.ffmpegLegacy":  "Old ffmpeg copy, no longer used: %1. Session Cinema 1.2.x or earlier downloaded it outside the PixInsight update system, so it is no longer run. Install ffmpeg yourself as described above, then delete this copy, unless another program of yours uses it.",
+      "out.ffmpegLegacyRemove":  "Delete this copy…",
+      "out.ffmpegLegacyConfirm": "Delete %1?\n\nOnly this file is deleted, then its folder if nothing else is left in it.",
+      "out.ffmpegLegacyRemoved": "Old ffmpeg copy deleted: %1",
+      "out.ffmpegLegacyKeptDir": "The folder %1 holds other files and was kept.",
+      "out.ffmpegLegacyFailed":  "Could not delete %1. Delete it yourself, together with its folder %2.",
+      "out.ffmpegLegacyChosen":  "%1 is the copy Session Cinema 1.2.x or earlier downloaded. It is no longer used: install ffmpeg yourself and choose that one.",
+      "run.ffmpegLegacy":  "Session Cinema no longer uses the ffmpeg that version 1.2.x or earlier installed at %1. The Output section offers to delete it.",
       "out.clearCache":    "Clear caches…",
       "out.clearCacheHint": "Registered subs, survey cutouts and alignment images kept in %1. Deleting them is safe; the next render rebuilds what it needs, more slowly.",
       "out.clearCacheConfirm": "Delete Session Cinema's caches in %1 (%2)? The next render rebuilds what it needs, more slowly.",
@@ -600,6 +608,14 @@ var STRINGS = {
       "out.ffmpegHeaderOk":      "⚙️ ffmpeg détecté",
       "out.ffmpegHeaderMissing": "⚠️ ffmpeg introuvable",
       "out.ffmpegHeaderOffer":   "⚠️ ffmpeg trouvé, non sélectionné",
+      "out.ffmpegLegacy":  "Ancienne copie de ffmpeg, plus utilisée : %1. Session Cinema 1.2.x ou antérieur l'a téléchargée hors du système de mise à jour de PixInsight ; elle n'est donc plus lancée. Installez ffmpeg vous-même comme indiqué ci-dessus, puis supprimez cette copie, sauf si un autre de vos programmes s'en sert.",
+      "out.ffmpegLegacyRemove":  "Supprimer cette copie…",
+      "out.ffmpegLegacyConfirm": "Supprimer %1 ?\n\nSeul ce fichier est supprimé, puis son dossier s'il ne contient plus rien d'autre.",
+      "out.ffmpegLegacyRemoved": "Ancienne copie de ffmpeg supprimée : %1",
+      "out.ffmpegLegacyKeptDir": "Le dossier %1 contient d'autres fichiers ; il a été conservé.",
+      "out.ffmpegLegacyFailed":  "Impossible de supprimer %1. Supprimez-le vous-même, ainsi que son dossier %2.",
+      "out.ffmpegLegacyChosen":  "%1 est la copie téléchargée par Session Cinema 1.2.x ou antérieur. Elle n'est plus utilisée : installez ffmpeg vous-même et choisissez celui-là.",
+      "run.ffmpegLegacy":  "Session Cinema n'utilise plus le ffmpeg que la version 1.2.x ou antérieure a installé dans %1. La section Sortie propose de le supprimer.",
       "out.clearCache":    "Vider les caches…",
       "out.clearCacheHint": "Brutes recalées, découpes de relevé et images d'alignement conservées dans %1. Les supprimer est sans risque ; le prochain rendu reconstruit ce dont il a besoin, plus lentement.",
       "out.clearCacheConfirm": "Supprimer les caches de Session Cinema dans %1 (%2) ? Le prochain rendu reconstruit ce dont il a besoin, plus lentement.",
@@ -1134,10 +1150,11 @@ function ffmpegInstalledName( platform )
    return ( platform == "windows" ) ? "ffmpeg.exe" : "ffmpeg";
 }
 
-// Per-user directory where versions before 1.3.0 installed ffmpeg from the
-// CaeloWorks mirror. Nothing writes there any more (CPD Program Rules 5.2); an
-// ffmpeg already there is still offered, like any other one found on disk.
-function ffmpegInstallDir( platform, getEnv )
+// Per-user directory where versions 1.1.0 to 1.2.1 installed ffmpeg, downloaded
+// outside the PixInsight update system. That copy is never offered, run or written
+// into the encode script (CPD Program Rules 5.1, 5.2): it is only looked for with
+// File.exists, so the user can be told about it and offered to delete it.
+function legacyFfmpegDir( platform, getEnv )
 {
    function env( name ) { return envPath( getEnv, name ); }
    if ( platform == "windows" )
@@ -1157,8 +1174,31 @@ function ffmpegInstallDir( platform, getEnv )
    return ( xdg.length ? xdg : ( home + "/.local/share" ) ) + "/caeloworks/ffmpeg";
 }
 
+function legacyFfmpegPath( platform, getEnv )
+{
+   return legacyFfmpegDir( platform, getEnv ) + "/" + ffmpegInstalledName( platform );
+}
+
+// Comparison key for a file path: forward slashes, no trailing slash, and case
+// folded where the file system usually ignores case (Windows, macOS).
+function filePathKey( path, platform )
+{
+   var s = String( path || "" ).split( "\\" ).join( "/" ).replace( /\/+$/, "" );
+   return ( platform == "windows" || platform == "macos" ) ? s.toLowerCase() : s;
+}
+
+// True for the copy versions 1.1.0 to 1.2.1 installed, however it is reached: the
+// candidate list, a PATH entry, a saved setting, or a file the user browsed to.
+function isLegacyFfmpeg( path, platform, getEnv )
+{
+   if ( !path || !String( path ).length )
+      return false;
+   return filePathKey( path, platform ) == filePathKey( legacyFfmpegPath( platform, getEnv ), platform );
+}
+
 // Ordered list of ffmpeg locations to look for: every PATH directory, then the
-// legacy auto-install, then the usual package managers. Absolute paths only, so
+// usual package managers. The copy earlier versions installed is never one of
+// them, even through PATH. Absolute paths only, so
 // finding one is a File.exists, never a launch: nothing is run until the user
 // has chosen it (CPD Program Rules 5.3).
 function ffmpegCandidatePaths( platform, getEnv )
@@ -1173,7 +1213,6 @@ function ffmpegCandidatePaths( platform, getEnv )
       if ( dir.length && ( platform == "windows" ? /^[A-Za-z]:[\/]/.test( dir ) : dir.charAt( 0 ) == "/" ) )
          list.push( dir + "/" + name );
    }
-   list.push( ffmpegInstallDir( platform, getEnv ) + "/" + name );
    if ( platform == "windows" )
    {
       var la = env( "LOCALAPPDATA" );
@@ -1202,9 +1241,10 @@ function ffmpegCandidatePaths( platform, getEnv )
       }
    }
    var seen = {}, out = [];
+   seen[ filePathKey( legacyFfmpegPath( platform, getEnv ), platform ) ] = true;
    for ( var k = 0; k < list.length; ++k )
    {
-      var key = ( platform == "windows" ) ? list[ k ].toLowerCase() : list[ k ];
+      var key = filePathKey( list[ k ], platform );
       if ( !seen[ key ] ) { seen[ key ] = true; out.push( list[ k ] ); }
    }
    return out;
@@ -3378,6 +3418,10 @@ function runExternal( program, args, timeoutMs, keepUiAlive, onTick )
 // stops asking and the run continues on the catalogue.
 var gNoNetwork = false;
 
+// Set once the console has said that the ffmpeg earlier versions installed is
+// no longer used, so reopening the dialog does not repeat it.
+var gLegacyFfmpegWarned = false;
+
 function isHttpsUrl( url )
 {
    return /^https:\/\/[^\/\s]/i.test( String( url || "" ) );
@@ -3437,9 +3481,44 @@ function verifyFfmpeg( path )
 {
    if ( !path || !path.length || !File.exists( path ) )
       return false;
+   if ( isLegacyFfmpeg( path, platformKind(), getEnvironmentVariable ) )
+      return false;
    var r = runExternal( path, [ "-version" ], 10000, false );
    return r.started && r.exitCode == 0 &&
           String( r.output || "" ).toLowerCase().indexOf( "ffmpeg version" ) >= 0;
+}
+
+// Delete the copy versions 1.1.0 to 1.2.1 installed, on the user's explicit
+// request only: that one file, then its folder if nothing else is left in it.
+// Nothing else is ever touched, not even the parent CaeloWorks folder.
+function removeLegacyFfmpeg()
+{
+   var kind = platformKind();
+   var file = legacyFfmpegPath( kind, getEnvironmentVariable );
+   var dir = legacyFfmpegDir( kind, getEnvironmentVariable );
+   var result = { file: file, dir: dir, removed: false, dirRemoved: false };
+   try { if ( File.exists( file ) ) File.remove( file ); } catch ( e ) {}
+   result.removed = !File.exists( file );
+   if ( !result.removed )
+      return result;
+   var empty = true;
+   try
+   {
+      var ff = new FileFind;
+      if ( ff.begin( dir + "/*" ) )
+         do
+            if ( ff.name != "." && ff.name != ".." )
+               empty = false;
+         while ( empty && ff.next() );
+   }
+   catch ( e1 )
+   {
+      empty = false;
+   }
+   if ( empty )
+      try { File.removeDirectory( dir ); } catch ( e2 ) {}
+   result.dirRemoved = !File.directoryExists( dir );
+   return result;
 }
 
 // How to run the generated encode script. Not executable on macOS/Linux — no
@@ -6723,6 +6802,20 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegButtonsSizer.add( this.ffmpegBrowse );
       this.ffmpegButtonsSizer.add( this.ffmpegDetect );
 
+      // The copy versions 1.1.0 to 1.2.1 installed: never used, shown only while
+      // it exists, deleted only by this button (see removeLegacyFfmpeg).
+      this.ffmpegLegacyLabel = new Label( this );
+      this.ffmpegLegacyLabel.text = "";
+      this.ffmpegLegacyLabel.wordWrapping = true;
+      this.ffmpegLegacyLabel.visible = false;
+      this.ffmpegLegacyRemove = new PushButton( this );
+      this.ffmpegLegacyRemove.text = tr( "out.ffmpegLegacyRemove" );
+      this.ffmpegLegacyRemove.onClick = () => this.onRemoveLegacyFfmpeg();
+      this.ffmpegLegacySizer = new HorizontalSizer;
+      this.ffmpegLegacySizer.addStretch();
+      this.ffmpegLegacySizer.add( this.ffmpegLegacyRemove );
+      this.ffmpegLegacyRemove.visible = false;
+
       // Everything ffmpeg lives in a collapsible sub-section: a one-line
       // clickable header carrying the essential state, and a body that only
       // needs to be open while something is wrong or in progress.
@@ -6738,6 +6831,8 @@ class SessionCinemaDialog extends Dialog
       this.ffmpegBody.sizer.add( this.ffmpegSizer );
       this.ffmpegBody.sizer.add( this.ffmpegStatus );
       this.ffmpegBody.sizer.add( this.ffmpegButtonsSizer );
+      this.ffmpegBody.sizer.add( this.ffmpegLegacyLabel );
+      this.ffmpegBody.sizer.add( this.ffmpegLegacySizer );
 
       this.outGroup = new GroupBox( this );
       this.outGroup.title = tr( "out.title" );
@@ -7432,35 +7527,108 @@ class SessionCinemaDialog extends Dialog
    // chosen: the user clicked Detect or picked a file, so the program may be
    // run to check it. Otherwise (dialog opening) nothing is launched: a chosen
    // path that exists is trusted until the render, and one found on disk is only
-   // offered (CPD Program Rules 5.3).
+   // offered (CPD Program Rules 5.3). The copy earlier versions installed is
+   // never accepted, whichever way it arrives (see isLegacyFfmpeg).
    onDetectFfmpeg( chosen )
    {
+      var kind = platformKind();
       var path = String( this.cfg.ffmpegPath || "" );
+      var legacyChosen = isLegacyFfmpeg( path, kind, getEnvironmentVariable );
+      if ( legacyChosen )
+      {
+         // 1.2.x saved this path after its one-click install: forget it.
+         this.cfg.ffmpegPath = "";
+         this.ffmpegEdit.text = "";
+         path = "";
+      }
+      var state, text;
       if ( !chosen )
       {
          if ( path.length && File.exists( path ) )
          {
-            this.ffmpegStatus.text = tr( "out.ffmpegFound", path );
-            this.setFfmpegSection( "ok", false );
-            return;
+            state = "ok";
+            text = tr( "out.ffmpegFound", path );
          }
-         var offer = findFfmpegOnDisk( ffmpegCandidatePaths( platformKind(), getEnvironmentVariable ), File.exists );
-         this.ffmpegStatus.text = offer.length ? tr( "out.ffmpegOffer", offer ) : tr( "out.ffmpegMissing" );
-         this.setFfmpegSection( offer.length ? "offer" : "missing", true );
-         return;
+         else
+         {
+            var offer = findFfmpegOnDisk( ffmpegCandidatePaths( kind, getEnvironmentVariable ), File.exists );
+            state = offer.length ? "offer" : "missing";
+            text = offer.length ? tr( "out.ffmpegOffer", offer ) : tr( "out.ffmpegMissing" );
+         }
       }
-      if ( !path.length || !File.exists( path ) )
-         path = findFfmpegOnDisk( ffmpegCandidatePaths( platformKind(), getEnvironmentVariable ), File.exists );
-      if ( path.length && verifyFfmpeg( path ) )
+      else if ( legacyChosen )
       {
-         this.cfg.ffmpegPath = path;
-         this.ffmpegEdit.text = path;
-         this.ffmpegStatus.text = tr( "out.ffmpegFound", path );
-         this.setFfmpegSection( "ok", true );
+         state = "missing";
+         text = tr( "out.ffmpegLegacyChosen", legacyFfmpegPath( kind, getEnvironmentVariable ) ) +
+                "\n" + tr( "out.ffmpegMissing" );
+      }
+      else
+      {
+         if ( !path.length || !File.exists( path ) )
+            path = findFfmpegOnDisk( ffmpegCandidatePaths( kind, getEnvironmentVariable ), File.exists );
+         if ( path.length && verifyFfmpeg( path ) )
+         {
+            this.cfg.ffmpegPath = path;
+            this.ffmpegEdit.text = path;
+            state = "ok";
+            text = tr( "out.ffmpegFound", path );
+         }
+         else
+         {
+            state = "missing";
+            text = path.length ? tr( "out.ffmpegNotFfmpeg", path ) : tr( "out.ffmpegMissing" );
+         }
+      }
+      this.ffmpegStatus.text = text;
+      var legacyHere = this.updateLegacyFfmpegNotice();
+      // Open while there is something to do: no usable ffmpeg yet, a fresh
+      // choice to confirm, or an old copy to deal with.
+      this.setFfmpegSection( state, state != "ok" || chosen || legacyHere );
+   }
+
+   // Shows or hides the notice about the copy earlier versions installed, and
+   // says so once per session in the console. Returns whether it exists.
+   updateLegacyFfmpegNotice()
+   {
+      var legacy = legacyFfmpegPath( platformKind(), getEnvironmentVariable );
+      var here = false;
+      try { here = File.exists( legacy ); } catch ( e ) {}
+      this.ffmpegLegacyLabel.text = here ? tr( "out.ffmpegLegacy", legacy ) : "";
+      this.ffmpegLegacyLabel.visible = here;
+      this.ffmpegLegacyRemove.visible = here;
+      if ( here && !gLegacyFfmpegWarned )
+      {
+         gLegacyFfmpegWarned = true;
+         console.warningln( tr( "run.ffmpegLegacy", legacy ) );
+      }
+      return here;
+   }
+
+   onRemoveLegacyFfmpeg()
+   {
+      var legacy = legacyFfmpegPath( platformKind(), getEnvironmentVariable );
+      if ( !File.exists( legacy ) )
+      {
+         this.onDetectFfmpeg( false );
          return;
       }
-      this.ffmpegStatus.text = path.length ? tr( "out.ffmpegNotFfmpeg", path ) : tr( "out.ffmpegMissing" );
-      this.setFfmpegSection( "missing", true );
+      if ( ( new MessageBox( tr( "out.ffmpegLegacyConfirm", legacy ), SC_TITLE,
+                             StdIcon.Question, StdButton.Yes, StdButton.No ) ).execute() != StdButton.Yes )
+         return;
+      var r = removeLegacyFfmpeg();
+      var msg;
+      if ( !r.removed )
+         msg = tr( "out.ffmpegLegacyFailed", r.file, r.dir );
+      else
+      {
+         msg = tr( "out.ffmpegLegacyRemoved", r.file );
+         if ( !r.dirRemoved )
+            msg += "\n" + tr( "out.ffmpegLegacyKeptDir", r.dir );
+         console.writeln( tr( "out.ffmpegLegacyRemoved", r.file ) );
+      }
+      ( new MessageBox( msg, SC_TITLE, r.removed ? StdIcon.Information : StdIcon.Warning,
+                        StdButton.Ok ) ).execute();
+      this.onDetectFfmpeg( false );
    }
 
    onClearCaches()

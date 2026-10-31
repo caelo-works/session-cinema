@@ -3,9 +3,9 @@
 **This is written for a support agent, not for a user.** Quote it, do not
 paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Applies to **1.3.0**. To check what the user is running: the version is printed
-under the script's name in the top-left of its window (`v1.3.0`). A version
-followed by `(dev)` — `v1.3.0 (dev)` — means the file did not come from a package:
+Applies to **1.3.1**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.3.1`). A version
+followed by `(dev)` — `v1.3.1 (dev)` — means the file did not come from a package:
 it was copied by hand. That is worth knowing before anything else.
 
 **Ask for that number early.** 1.2.0 fixed seventy-two defects, many of which a
@@ -37,12 +37,13 @@ down to the user's image.
 
 | | |
 |---|---|
-| Version | 1.3.0 |
+| Version | 1.3.1 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 to 1.9.99** — Windows, macOS, Linux |
 | Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
 | Where it appears | **Script → CaeloWorks → Session Cinema** |
-| Video encoding | ffmpeg — detected, installed in one click, or done afterwards by a generated script |
+| Video encoding | ffmpeg the user installed — detected, or done afterwards by a generated script |
+| Code signature | Signed by CaeloWorks (Certified PixInsight Developer); runs with unsigned scripts disallowed |
 
 ### Privacy: what leaves the machine, and what the video reveals about the site
 
@@ -123,21 +124,27 @@ Two routes. The first is the one to recommend.
 
 Updates then arrive automatically through the same channel.
 
-### "PixInsight warns me about an unsigned repository"
+### "PixInsight says the script is unsigned" or "unsigned repository"
 
-**Expected, and harmless.** The CaeloWorks repository is not CPD-signed yet;
-signing is underway. It is a signature on the *repository*, not a virus warning.
-Tell the user it is safe to accept.
+**Not expected.** Since 1.3.1 the script itself is signed by CaeloWorks, and the
+CaeloWorks update repository is signed too. Session Cinema runs with
+**Allow execution of unsigned scripts** turned off. A warning usually means one of
+three things: a version older than 1.3.1 (ask for the version), a copy whose
+`SessionCinema.js` was edited (any change to the code voids the signature), or a
+manual install where `SessionCinema.xsgn` was not kept next to the script. Ask for
+the version, the install route and a screenshot of the warning, and escalate if
+none of those explains it.
 
 ### Manual install
 
-1. Download **both** `SessionCinema.js` and `SessionCinema.svg` from the releases
-   page: https://github.com/caelo-works/session-cinema/releases
-2. Put the two files in the same folder. The `.svg` is the emblem the dialog
-   header looks for next to the script; without it the header shows no icon.
-3. In PixInsight: **Script → Feature Scripts… → Add**, and select the **folder**
-   containing the files (not a file itself).
-4. Alternatively, run the `.js` once with **Script → Execute Script File…**
+1. Download `SessionCinema-<version>.zip` from the releases page:
+   https://github.com/caelo-works/session-cinema/releases
+2. Unzip it anywhere. The script is in `src/scripts/CaeloWorks/SessionCinema/`,
+   with `SessionCinema.xsgn` (its signature) and `SessionCinema.svg` (the emblem
+   the dialog header looks for). Keep the three files together: without the
+   `.xsgn` PixInsight treats the script as unsigned.
+3. In PixInsight: **Script → Feature Scripts… → Add**, and select **that folder**
+   (not a file itself).
 
 ### "I installed it and I can't find it in the menus"
 
@@ -175,6 +182,7 @@ words on the left are the **exact** strings the dialog shows.
 - **Align…** = **Aligner…**
 - **Auto** = **Auto**
 - **Detect** = **Détecter**
+- **Delete this copy…** = **Supprimer cette copie…**
 - **Clear caches…** = **Vider les caches…**
 - **Generate** = **Générer**
 - **Colour composite — map filters to R / G / B** = **Composite couleur — associer les filtres à R / V / B**
@@ -398,8 +406,8 @@ user asks where the button went, that is the answer — it is not a bug.
 on Windows, `brew install ffmpeg` on macOS, their package manager on Linux, or a
 build from ffmpeg.org — then click **Detect** or point at it with **Browse**.
 
-**Where it is looked for:** every directory of the system `PATH`, then the folder
-where earlier versions installed it, then the usual package managers — winget,
+**Where it is looked for:** every directory of the system `PATH`, then the usual
+package managers — winget,
 Chocolatey and Scoop on Windows; Homebrew and MacPorts on macOS; snap and
 Linuxbrew on Linux. Looking only checks that the file exists. **Nothing is run
 until the user has chosen it**: when one is found at start-up, the panel shows
@@ -408,14 +416,8 @@ Browse) then runs `ffmpeg -version` once to check it is ffmpeg, and remembers th
 path. A file that does not answer as ffmpeg is refused with
 **"… does not answer as ffmpeg (ffmpeg -version). Choose another file."**
 
-**The ffmpeg that 1.2.x and earlier installed** is still found and offered,
-like any other, and nothing writes there any more. It lives in:
-
-- **Windows**: `%LOCALAPPDATA%\CaeloWorks\ffmpeg`
-- **macOS**: `~/Library/Application Support/CaeloWorks/ffmpeg`
-- **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg`, or `~/.local/share/caeloworks/ffmpeg`
-
-A user who wants it gone can delete that folder; they then need their own ffmpeg.
+**The ffmpeg that 1.1.0 to 1.2.1 installed is no longer used** — see
+*Upgrading from 1.2.x or earlier: the old ffmpeg copy*.
 
 **If there is no ffmpeg at all, nothing is lost.** The script writes the **BMP
 frame sequence** plus a ready-to-run **`encode.sh`** (or **`encode.bat`**) next to
@@ -628,13 +630,43 @@ any of these descriptions is confirmation, not a mystery — tell them to update
 
 
 
+### Upgrading from 1.2.x or earlier: the old ffmpeg copy
+
+Versions 1.1.0 to 1.2.1 could install ffmpeg in one click, downloaded into:
+
+- **Windows**: `%LOCALAPPDATA%\CaeloWorks\ffmpeg\ffmpeg.exe`
+- **macOS**: `~/Library/Application Support/CaeloWorks/ffmpeg/ffmpeg`
+- **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg/ffmpeg`, by default
+  `~/.local/share/caeloworks/ffmpeg/ffmpeg`
+
+**Since 1.3.1 that copy is never run and no longer offered**, even when the
+settings, the `PATH` or a file picked with **Browse** point at it: it was
+downloaded outside PixInsight's update system, which PixInsight's developer rules
+forbid. This is deliberate, not a bug. A path saved by 1.2.x that pointed at it is
+forgotten.
+
+While the copy is still on disk, the ffmpeg panel of the **Output** group says:
+**"Old ffmpeg copy, no longer used: …"** / *« Ancienne copie de ffmpeg, plus
+utilisée : … »* with a button **Delete this copy…** / *« Supprimer cette
+copie… »*. After a confirmation it deletes that one file, then its folder if
+nothing else is left in it — nothing else, and never without the click. If the
+user browses to that file: **"… is the copy Session Cinema 1.2.x or earlier
+downloaded."** / *« … est la copie téléchargée par Session Cinema 1.2.x ou
+antérieur. »*
+
+What to tell them: install ffmpeg yourself (`winget install ffmpeg`,
+`brew install ffmpeg`, your package manager, or ffmpeg.org), click **Detect** or
+**Browse**, then delete the old copy with the button. Keeping it is harmless if
+another program uses it. If deleting fails, they can delete the folder by hand.
+
 ### Changed in 1.3.0 — "where is the Install ffmpeg button?"
 
 Not a bug. It was removed on purpose: PixInsight's developer rules (CPD Program
 Rules v1.0) forbid a script from downloading and running a program outside
 PixInsight's own update system. The user installs ffmpeg themselves and clicks
 **Detect** — the full answer is in *ffmpeg: the user installs it, the script
-finds it*. An ffmpeg that an earlier version installed keeps working.
+finds it*. Since 1.3.1, the ffmpeg an earlier version installed is no longer
+used either: see *Upgrading from 1.2.x or earlier: the old ffmpeg copy*.
 
 Also new in 1.3.0, so a user may ask: the panel can say **⚠️ ffmpeg found, not
 selected** at start-up. One click on **Detect**. The script no longer runs any
@@ -702,9 +734,15 @@ The frames are safe: the script keeps the BMP sequence and an `encode.sh` /
 `encode.bat` next to them. Have the user run that script. Ask for the exit code
 and escalate.
 
-**"PixInsight says the repository is unsigned."**
-Not expected: the CaeloWorks repository is CPD-signed. Ask for a screenshot of the
-warning and the repository URL they added, and escalate.
+**"PixInsight says the script or the repository is unsigned."**
+Not expected from 1.3.1 on: both the script and the CaeloWorks repository are
+signed. Ask for the version (older than 1.3.1 is unsigned), whether the script was
+edited or installed by hand without `SessionCinema.xsgn`, a screenshot of the
+warning and the repository URL they added, then escalate.
+
+**"Session Cinema no longer uses my ffmpeg" after updating from 1.2.x.**
+Expected if it was the copy the one-click install downloaded. See *Upgrading from
+1.2.x or earlier: the old ffmpeg copy*.
 
 **"I installed it but I can't find it."**
 It is at **Script → CaeloWorks → Session Cinema**, and **PixInsight must be

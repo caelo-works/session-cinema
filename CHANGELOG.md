@@ -4,6 +4,46 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-10-31
+
+The PixInsight Development Team asked for two more points under the CPD Program
+Rules: the ffmpeg that earlier versions downloaded must no longer run, and the
+script itself must be signed.
+
+### Upgrading from 1.2.x or earlier
+
+Versions 1.1.0 to 1.2.1 could install ffmpeg in one click, into
+`%LOCALAPPDATA%\CaeloWorks\ffmpeg` (Windows),
+`~/Library/Application Support/CaeloWorks/ffmpeg` (macOS) or
+`$XDG_DATA_HOME/caeloworks/ffmpeg`, by default `~/.local/share/caeloworks/ffmpeg`
+(Linux). That copy came from outside the PixInsight update system, so Session
+Cinema no longer runs or offers it. Install ffmpeg yourself (`winget install
+ffmpeg`, `brew install ffmpeg`, your package manager, or ffmpeg.org) and pick it
+with **Detect** or **Browse**. The README has the details.
+
+### Changed
+
+- The ffmpeg that versions 1.1.0 to 1.2.1 installed is never run or offered,
+  however it is reached: the candidate list, a `PATH` entry, a path saved by
+  1.2.x (forgotten on start) or a file picked with **Browse**. It is only checked
+  with a file-exists test, never launched.
+- The package is signed with the CaeloWorks identity of the Certified PixInsight
+  Developer program: it runs with **Allow execution of unsigned scripts** off.
+- A release carries the zip and `update-package.json` only. A manual install
+  unzips the package, which keeps the signature next to the script.
+
+### Added
+
+- While that old copy is on disk, the ffmpeg panel says where it is and offers
+  **Delete this copy…**. After a confirmation it deletes that file, then its
+  folder if nothing else is left in it. Nothing is ever deleted without the click.
+- `scripts/sign-package.sh`, `scripts/verify-signature.sh` and
+  `scripts/check-package.sh` for the release signing.
+
+### Removed
+
+- `docs/ffmpeg-mirror.md` and every mention of the retired download mirror.
+
 ## [1.3.0] - 2026-10-13
 
 Compliance with the CPD Program Rules v1.0 that PixInsight published on
@@ -265,9 +305,8 @@ said and said nothing about it.
   "Opening…" while the images load, and the popup's Auto button reports its
   attempt progress.
 - One-click ffmpeg install: when detection comes up empty, the output row
-  offers to download a static build from the CaeloWorks mirror
-  (`pixinsight-scripts.caelo.works/ffmpeg/`, contract in
-  `docs/ffmpeg-mirror.md`) into a per-user directory. Every candidate is
+  offers to download a static build from a CaeloWorks mirror (retired since
+  1.3.1) into a per-user directory. Every candidate is
   validated by running `-version`, which doubles as the architecture selector
   on macOS/Linux (arm64/x64 tried in order); the resulting path is persisted
   like a hand-picked one.
@@ -295,15 +334,14 @@ said and said nothing about it.
 
 <!-- 1.1.0 validation: logic tests pass (tests/run.sh, incl. the new
      tests/ffmpeg.test.js covering candidate paths, install locations and the
-     mirror name contract, and tests/align.test.js covering the shared
+     download name contract, and tests/align.test.js covering the shared
      placement matrix, the SA-matrix -> placement decomposition incl. mirror
      equivalence and degenerate inputs, and the render==preview cross-path
      invariant). PixInsight runtime gates PASSED (PI 1.9.x, Windows):
      - ffmpeg install: headless — empty detection -> mirror download ->
        -version gate -> persisted path -> re-detection finds the install;
        GUI flow (button, confirm, collapse) validated interactively by the
-       author. macOS gate still to run once the production mirror serves
-       the binaries.
+       author. macOS gate still to run.
      - auto-align: synthetic 140-star pairs with known transforms; recovered
        plain (scale .8501/.85, rot 15.03/15, c at 0.1 px) and mirrored
        (1.0986/1.10, -31.95/-32, flip) through the real autoAlignReveal path,
@@ -424,6 +462,7 @@ set and its validation evidence).
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.3.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.1
 [1.3.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.0
 [1.2.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.2.1
 [1.2.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.2.0
