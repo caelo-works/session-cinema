@@ -112,6 +112,7 @@ module.exports = {
    legacyFfmpegDir: legacyFfmpegDir,
    legacyFfmpegPath: legacyFfmpegPath,
    isLegacyFfmpeg: isLegacyFfmpeg,
+   imageModuleForPath: imageModuleForPath,
    filePathKey: filePathKey,
    ffmpegCandidatePaths: ffmpegCandidatePaths,
    findFfmpegOnDisk: findFfmpegOnDisk,

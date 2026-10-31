@@ -3,9 +3,9 @@
 **This is written for a support agent, not for a user.** Quote it, do not
 paraphrase it: the sentences here are checked, a paraphrase is not.
 
-Applies to **1.3.1**. To check what the user is running: the version is printed
-under the script's name in the top-left of its window (`v1.3.1`). A version
-followed by `(dev)` — `v1.3.1 (dev)` — means the file did not come from a package:
+Applies to **1.3.2**. To check what the user is running: the version is printed
+under the script's name in the top-left of its window (`v1.3.2`). A version
+followed by `(dev)` — `v1.3.2 (dev)` — means the file did not come from a package:
 it was copied by hand. That is worth knowing before anything else.
 
 **Ask for that number early.** 1.2.0 fixed seventy-two defects, many of which a
@@ -37,7 +37,7 @@ down to the user's image.
 
 | | |
 |---|---|
-| Version | 1.3.1 |
+| Version | 1.3.2 |
 | Licence | GPL-3.0 — free and open source |
 | Requires | **PixInsight 1.9.4 to 1.9.99** — Windows, macOS, Linux |
 | Also uses | **AnnotateImage**'s constellation data files, which ship with PixInsight |
@@ -331,7 +331,7 @@ usually `/tmp` or `$TMPDIR` elsewhere):
 
 - `sc-reg/` — registered subs and their stretch cache;
 - `sc-hips-*.jpg` — survey cutouts;
-- `sc-autoalign-*.png` — images written while **Auto** aligns a reveal.
+- `sc-autoalign-*.bmp` — images written while **Auto** aligns a reveal (`.png` before 1.3.2).
 
 **Clear caches…** (*« Vider les caches… »*), next to **Keep the BMP frame
 sequence**, deletes those three after a confirmation that shows the size. It is
@@ -484,6 +484,16 @@ solved — see *Fixed in 1.2.1* below.
 The finished image is unreadable or in an unsupported format. This one is raised
 **before the render starts**. Do not confuse it with the next entry, which looks
 like it and comes from a different place.
+
+**"PixInsight has no module to read … files. Since PixInsight 1.9.6 they need
+the … module"** / *« PixInsight n'a aucun module pour lire les fichiers …. Depuis
+PixInsight 1.9.6, il leur faut le module … »*
+Added under the two messages above, or printed in the console when the end image
+of a progressive stack is skipped. Not a Session Cinema bug: PixInsight 1.9.6 moved
+PNG and WebP out of its BMP module into separate **PNG** and **WEBP** modules, and an
+upgraded installation may not have them. Tell the user to install them with
+**Process > Modules > Install Modules** and restart PixInsight, or to save the image
+as TIFF or XISF. Since 1.3.2 the automatic alignment no longer depends on them.
 
 **"Could not load the solved or reveal image for alignment."** / *« Impossible de
 charger l'image résolue ou l'image à révéler pour l'alignement. »*

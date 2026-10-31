@@ -233,3 +233,18 @@ console.log( "ffmpeg.test.js OK" );
 }
 
 console.log( "ffmpeg.test.js OK (encode script, coordinates)" );
+
+// --- PixInsight 1.9.6: PNG and WebP need their own format modules ----------
+{
+   const fs = require( "fs" ), path = require( "path" );
+   assert.strictEqual( M.imageModuleForPath( "C:/x/final.PNG" ), "PNG" );
+   assert.strictEqual( M.imageModuleForPath( "/x/final.webp" ), "WEBP" );
+   for ( const p of [ "/x/final.jpg", "/x/final.tif", "/x/final.xisf", "/x/png", "", null ] )
+      assert.strictEqual( M.imageModuleForPath( p ), "", "no extra module for " + p );
+   // StarAlignment reads the auto-align temp files through the format modules:
+   // they must be in a format every installation reads.
+   const SRC = fs.readFileSync( path.join( __dirname, "..", "pjsr", "SessionCinema.js" ), "utf8" );
+   assert.ok( /"\/sc-autoalign-" \+ tag \+ "\.bmp"/.test( SRC ), "auto-align temp files are BMP" );
+   assert.ok( !/sc-autoalign-[^"]*"[^;]*\.png/.test( SRC ), "no PNG temp file left for StarAlignment" );
+   console.log( "image modules OK" );
+}

@@ -4,6 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - unreleased
+
+Compatibility with PixInsight 1.9.6, which moved PNG and WebP support out of the
+BMP module into separate PNG and WEBP modules that an upgraded installation may
+not have.
+
+### Fixed
+
+- **Auto** alignment no longer depends on the PNG module. Its temporary files
+  were PNG images, which StarAlignment reads through PixInsight's format modules;
+  without the PNG module every attempt failed and was reported as "no reliable
+  star match". They are now BMP files (`sc-autoalign-*.bmp`).
+
+### Changed
+
+- When a reveal or end image in PNG or WebP cannot be loaded because PixInsight
+  has no module for it, the message names the module to install
+  (**Process > Modules > Install Modules**).
+
 ## [1.3.1] - 2026-10-31
 
 The PixInsight Development Team asked for two more points under the CPD Program
@@ -462,6 +481,7 @@ set and its validation evidence).
      (StarAlignment.mode, ChannelCombination.colorSpace) are not reliably
      resolvable — rely on defaults. -->
 
+[1.3.2]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.2
 [1.3.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.1
 [1.3.0]: https://github.com/caelo-works/session-cinema/releases/tag/v1.3.0
 [1.2.1]: https://github.com/caelo-works/session-cinema/releases/tag/v1.2.1
