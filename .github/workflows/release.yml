@@ -2,8 +2,10 @@ name: Release
 
 # Push a semver tag (e.g. `v1.0.0`) to cut a release: this runs the full test
 # suite against the tagged commit, builds the distribution artifact and publishes
-# it as a DRAFT release. Promoting the draft is the deliberate gesture that lets
-# the CaeloWorks update site ingest it.
+# it as a DRAFT release, unsigned, carrying the zip and update-package.json only.
+# CI has neither PixInsight nor the keys: the CaeloWorks signing run signs the zip
+# with scripts/sign-package.sh, uploads it over the draft's, and promoting the
+# draft is the deliberate gesture that lets the CaeloWorks update site ingest it.
 on:
   push:
     tags: ['v*']
@@ -48,7 +50,7 @@ jobs:
         run: bash tests/packaging.sh
 
   release:
-    name: Build and publish
+    name: Build and open the draft
     needs: tests
     runs-on: ubuntu-latest
     permissions:
@@ -65,16 +67,10 @@ jobs:
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
       - name: Build the distribution artifact
         run: bash scripts/build-update-package.sh "${{ steps.v.outputs.version }}"
-      - name: Loose files for the manual install path
-        run: |
-          # The manual install needs the script AND the icon the dialog header
-          # looks for beside it — that copy is the only one findable outside the
-          # PixInsight tree. Extracted from the zip just built, so they carry the
-          # same build stamp as the package.
-          unzip -j dist/*.zip \
-            'src/scripts/CaeloWorks/SessionCinema/SessionCinema.js' \
-            'src/scripts/CaeloWorks/SessionCinema/SessionCinema.svg' \
-            -d dist/manual
+      - name: Package contract (unsigned)
+        # Signing happens after this, outside CI: sign-package.sh checks the
+        # result again with --signed.
+        run: bash scripts/check-package.sh dist/*.zip
       - name: Publish release + assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,6 +91,18 @@ jobs:
             --generate-notes \
             $prerelease \
             dist/*.zip \
-            dist/update-package.json \
-            dist/manual/SessionCinema.js \
-            dist/manual/SessionCinema.svg
+            dist/update-package.json
+          {
+            echo "### Draft opened for $GITHUB_REF_NAME, unsigned"
+            echo
+            echo "Nothing is public yet. To sign and publish, from a machine with PixInsight and the keys:"
+            echo
+            echo '```'
+            echo "gh release download $GITHUB_REF_NAME -R $GITHUB_REPOSITORY -D dist"
+            echo "XSSK_PATH=/path/to/keys.xssk scripts/sign-package.sh dist/SessionCinema-$VERSION.zip"
+            echo "gh release upload $GITHUB_REF_NAME -R $GITHUB_REPOSITORY --clobber dist/SessionCinema-$VERSION.zip dist/update-package.json"
+            echo "gh release edit $GITHUB_REF_NAME -R $GITHUB_REPOSITORY --draft=false"
+            echo '```'
+            echo
+            echo "A signed zip is not reproducible: give the site the sha1 from the signed update-package.json."
+          } >> "$GITHUB_STEP_SUMMARY"

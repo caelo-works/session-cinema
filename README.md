@@ -4,7 +4,7 @@
 
 ### Turn a night of raw subs into a colour "watch your stack build itself" video
 
-[![Version](https://img.shields.io/badge/version-1.3.0-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
+[![Version](https://img.shields.io/badge/version-1.3.1-22d3ee?style=for-the-badge&labelColor=0f172a)](https://github.com/caelo-works/session-cinema/releases/latest)
 [![PixInsight](https://img.shields.io/badge/PixInsight-%E2%89%A5%201.9.4-67e8f9?style=for-the-badge&labelColor=0f172a)](https://pixinsight.com/)
 [![Status](https://img.shields.io/badge/status-stable-34d399?style=for-the-badge&labelColor=0f172a)](https://pixinsight-scripts.caelo.works/en/scripts/session-cinema)
 [![License](https://img.shields.io/badge/license-GPL--3.0-94a3b8?style=for-the-badge&labelColor=0f172a)](LICENSE)
@@ -77,12 +77,50 @@ updates are delivered automatically through the same channel.
 
 ### Manual install
 
-Download `SessionCinema.js` **and** `SessionCinema.svg` from the
-**[Releases](https://github.com/caelo-works/session-cinema/releases)** and put
-both in the same folder — the `.svg` is the emblem the dialog header looks for
-beside the script. Then in PixInsight use **Script → Feature Scripts…**, click
-**Add** and select that folder. Alternatively, run it once via
-**Script → Execute Script File…**.
+Download `SessionCinema-<version>.zip` from the
+**[Releases](https://github.com/caelo-works/session-cinema/releases)** and unzip
+it anywhere. The script is in `src/scripts/CaeloWorks/SessionCinema/`, next to
+its signature (`SessionCinema.xsgn`) and the emblem the dialog header looks for
+(`SessionCinema.svg`): keep the three together. Then in PixInsight use
+**Script → Feature Scripts…**, click **Add** and select that folder.
+
+### Code signature
+
+Session Cinema is signed with the CaeloWorks identity of the Certified PixInsight
+Developer program. It runs with **Allow execution of unsigned scripts** turned
+off. The signature covers the script as published: an edited copy is no longer
+signed, and PixInsight treats it as unsigned code.
+
+### Upgrading from 1.2.x or earlier
+
+Versions 1.1.0 to 1.2.1 could install ffmpeg in one click by downloading it into
+a per-user folder:
+
+- **Windows**: `%LOCALAPPDATA%\CaeloWorks\ffmpeg\ffmpeg.exe`
+- **macOS**: `~/Library/Application Support/CaeloWorks/ffmpeg/ffmpeg`
+- **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg/ffmpeg`, by default
+  `~/.local/share/caeloworks/ffmpeg/ffmpeg`
+
+That copy was downloaded outside the PixInsight update system, so from 1.3.1 on
+Session Cinema **never runs it and no longer offers it**, even if your settings,
+your PATH or a file you browse to point at it. While it is still on disk, the
+ffmpeg panel of the **Output** group tells you where it is and offers
+**Delete this copy…**. After you confirm, that button deletes that one file, then
+its folder if nothing else is left in it. Nothing is deleted without that click.
+You can also delete the folder yourself, or keep it if another program uses it.
+
+To encode videos, install ffmpeg yourself:
+
+- **Windows**: `winget install ffmpeg` (or Chocolatey, Scoop, or a build from
+  ffmpeg.org)
+- **macOS**: `brew install ffmpeg` (or MacPorts)
+- **Linux**: your distribution's package manager, e.g. `sudo apt install ffmpeg`
+  or `sudo dnf install ffmpeg`
+
+Then click **Detect** to use the ffmpeg on your PATH, or **Browse** to choose
+the executable yourself. Without ffmpeg, Session Cinema still writes the BMP
+frames and an `encode.sh` / `encode.bat` script you can run later.
+
 
 > **Requires PixInsight 1.9.4 to 1.9.99** — Windows, macOS and Linux. That upper
 > bound is what the published package declares to the updater; the script itself
@@ -107,8 +145,8 @@ beside the script. Then in PixInsight use **Script → Feature Scripts…**, cli
    and the manual controls are there when it can't (or to fine-tune it) — see
    [reveal alignment](docs/reveal-alignment.md).
 4. Click **Generate**: the frame sequence is rendered, then encoded to MP4 if
-   ffmpeg is available. If it isn't, the script offers to install one in a
-   click — or run the `encode` script written next to the frames.
+   ffmpeg is available. If it isn't, the BMP frames are kept with an `encode`
+   script written next to them, to run once you have installed ffmpeg.
 
 ## Documentation
 
@@ -191,13 +229,32 @@ This produces two files under `dist/`:
 - **`SessionCinema-<version>.zip`** — the install tree extracted as-is by the
   PixInsight updater (`src/scripts/CaeloWorks/SessionCinema/SessionCinema.js`
   plus the script icon, shipped both under `rsc/icons/script/` for the menu
-  entry and next to the script for the dialog emblem). The archive is
+  entry and next to the script for the dialog emblem). The unsigned archive is
   reproducible: entries are sorted, timestamps and permissions are fixed, and
   nothing is compressed, so the same content rebuilt on any machine yields the
-  same sha1 — which is how a published package can be checked after the fact.
+  same sha1. The released package is then signed (below), and a signature
+  carries a timestamp, so the signed zip is not reproducible.
 - **`update-package.json`** — the metadata contract for the site: name, slug,
   version, `fileName`, `sha1`, type, `releaseDate`, `piVersionRange`, title
   and `descriptionHtml`.
+
+`scripts/check-package.sh [--signed] <zip>` checks a package against that
+contract. A tag `vX.Y.Z` on `main` runs the tests and opens a **draft** release
+carrying the unsigned zip and `update-package.json`, nothing else.
+
+Signing happens afterwards, outside CI, on a machine with PixInsight and the
+CaeloWorks keys:
+
+```bash
+XSSK_PATH=/path/to/keys.xssk scripts/sign-package.sh dist/SessionCinema-<version>.zip
+```
+
+It signs only the entry script, as the zip carries it after the version stamp
+(its `.xsgn` covers everything it includes), re-zips, writes the new sha1 into
+the `update-package.json` next to the zip, then runs `check-package.sh --signed`
+and `verify-signature.sh`. The key password is read from stdin and never stored.
+The signing PixInsight must keep **Allow execution of unsigned scripts** on: the
+small runners these scripts hand it are unsigned.
 
 ## Network, programs and files
 
@@ -218,9 +275,10 @@ network connection at all. Nothing else is ever downloaded, and no program.
 - **ffmpeg**, to encode the video — the one *you* installed and chose with
   **Detect** or **Browse**. Session Cinema does not ship or download it. It looks
   for one on disk (PATH, then winget, Chocolatey, Scoop, Homebrew, MacPorts,
-  snap, Linuxbrew, and the folder where versions before 1.3.0 installed it) by
-  checking that the file exists, and runs nothing until you have chosen it: then
-  `ffmpeg -version` once to check it, and ffmpeg itself for each encode.
+  snap, Linuxbrew) by checking that the file exists, and runs nothing until you
+  have chosen it: then `ffmpeg -version` once to check it, and ffmpeg itself for
+  each encode. The copy that versions 1.1.0 to 1.2.1 downloaded is never run, see
+  *Upgrading from 1.2.x or earlier*.
 - **The system file browser** — `explorer.exe`, `open` or `xdg-open` — only when
   you click to show the output folder or the video.
 
@@ -239,10 +297,10 @@ Session Cinema never runs it.
   `SessionCinema/config`.
 - Only in headless mode, the result file named by `SESSIONCINEMA_AUTORUN`.
 
-Versions before 1.3.0 could download ffmpeg into `%LOCALAPPDATA%\CaeloWorks\ffmpeg`
-(Windows), `~/Library/Application Support/CaeloWorks/ffmpeg` (macOS) or
-`~/.local/share/caeloworks/ffmpeg` (Linux). Nothing writes there any more; delete
-the folder if you do not use it.
+**Files deleted outside the PixInsight installation.** Only on your click: the
+caches above with **Clear caches…**, and the ffmpeg copy that versions 1.1.0 to
+1.2.1 downloaded, with **Delete this copy…** (see *Upgrading from 1.2.x or
+earlier*). Nothing writes into that folder any more.
 
 ## License and credits
 

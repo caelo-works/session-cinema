@@ -87,4 +87,7 @@ if grep -q "__BUILD__" "$OUT_DIR/.packaged.js"; then
 fi
 grep -q "SESSIONCINEMA_BUILD \"$VERSION\"" "$OUT_DIR/.packaged.js"
 
+echo "--- package contract (unsigned development build)"
+scripts/check-package.sh "$ZIP"
+
 echo "packaging battery passed"
