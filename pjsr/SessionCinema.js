@@ -5960,6 +5960,13 @@ class SessionCinemaDialog extends Dialog
    constructor( cfg, frames )
    {
       super();
+      // Return must never start a render. PixInsight 1.9.6 hosts dialogs in the
+      // main window by default, where Return presses the default button, and
+      // Generate was that button: typing a title and pressing Return launched a
+      // render of several minutes. No button here is the default, and none
+      // becomes one by taking the focus. On 1.9.4/1.9.5 this property does not
+      // exist and the assignment is a harmless expando.
+      this.autoDefaultButton = false;
       var self = this;
       this.cfg = cfg;
       this.frames = frames;
@@ -6910,7 +6917,6 @@ class SessionCinemaDialog extends Dialog
 
       this.generateButton = new PushButton( this );
       this.generateButton.text = tr( "btn.generate" );
-      this.generateButton.defaultButton = true;
       this.generateButton.onClick = () => this.onGenerate();
 
       this.closeButton = new PushButton( this );

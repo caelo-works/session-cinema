@@ -750,6 +750,12 @@ signed. Ask for the version (older than 1.3.2 is unsigned), whether the script w
 edited or installed by hand without `SessionCinema.xsgn`, a screenshot of the
 warning and the repository URL they added, then escalate.
 
+**"Pressing Enter started a render."**
+Expected on 1.3.1 and earlier under PixInsight 1.9.6: PixInsight now shows dialogs
+inside its main window, where Enter presses the default button, and that was
+**Generate**. Fixed in 1.3.2: Enter no longer starts anything in the main window.
+On an older version the user stops the render with **Cancel** and updates.
+
 **"Session Cinema no longer uses my ffmpeg" after updating from 1.2.x.**
 Expected if it was the copy the one-click install downloaded. See *Upgrading from
 1.2.x or earlier: the old ffmpeg copy*.

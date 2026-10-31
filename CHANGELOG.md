@@ -17,6 +17,12 @@ not have.
   without the PNG module every attempt failed and was reported as "no reliable
   star match". They are now BMP files (`sc-autoalign-*.bmp`).
 
+- Pressing Return in the main window no longer starts a render. PixInsight
+  1.9.6 hosts dialogs inside its main window by default, where Return presses
+  the default button, which was **Generate**: typing a title and pressing
+  Return launched a render. The main window now has no default button; in the
+  alignment and result windows, Return still confirms or closes.
+
 ### Changed
 
 - When a reveal or end image in PNG or WebP cannot be loaded because PixInsight
