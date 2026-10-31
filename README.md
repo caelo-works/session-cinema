@@ -101,7 +101,7 @@ a per-user folder:
 - **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg/ffmpeg`, by default
   `~/.local/share/caeloworks/ffmpeg/ffmpeg`
 
-That copy was downloaded outside the PixInsight update system, so from 1.3.1 on
+That copy was downloaded outside the PixInsight update system, so from 1.3.2 on
 Session Cinema **never runs it and no longer offers it**, even if your settings,
 your PATH or a file you browse to point at it. While it is still on disk, the
 ffmpeg panel of the **Output** group tells you where it is and offers

@@ -25,6 +25,9 @@ not have.
 
 ## [1.3.1] - 2026-10-31
 
+Tagged but never published: PixInsight 1.9.6 came out before it was signed, and
+its changes ship in 1.3.2.
+
 The PixInsight Development Team asked for two more points under the CPD Program
 Rules: the ffmpeg that earlier versions downloaded must no longer run, and the
 script itself must be signed.
@@ -325,7 +328,7 @@ said and said nothing about it.
   attempt progress.
 - One-click ffmpeg install: when detection comes up empty, the output row
   offers to download a static build from a CaeloWorks mirror (retired since
-  1.3.1) into a per-user directory. Every candidate is
+  1.3.2) into a per-user directory. Every candidate is
   validated by running `-version`, which doubles as the architecture selector
   on macOS/Linux (arm64/x64 tried in order); the resulting path is persisted
   like a hand-picked one.

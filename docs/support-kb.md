@@ -126,10 +126,10 @@ Updates then arrive automatically through the same channel.
 
 ### "PixInsight says the script is unsigned" or "unsigned repository"
 
-**Not expected.** Since 1.3.1 the script itself is signed by CaeloWorks, and the
+**Not expected.** Since 1.3.2 the script itself is signed by CaeloWorks, and the
 CaeloWorks update repository is signed too. Session Cinema runs with
 **Allow execution of unsigned scripts** turned off. A warning usually means one of
-three things: a version older than 1.3.1 (ask for the version), a copy whose
+three things: a version older than 1.3.2 (ask for the version), a copy whose
 `SessionCinema.js` was edited (any change to the code voids the signature), or a
 manual install where `SessionCinema.xsgn` was not kept next to the script. Ask for
 the version, the install route and a screenshot of the warning, and escalate if
@@ -649,7 +649,7 @@ Versions 1.1.0 to 1.2.1 could install ffmpeg in one click, downloaded into:
 - **Linux**: `$XDG_DATA_HOME/caeloworks/ffmpeg/ffmpeg`, by default
   `~/.local/share/caeloworks/ffmpeg/ffmpeg`
 
-**Since 1.3.1 that copy is never run and no longer offered**, even when the
+**Since 1.3.2 that copy is never run and no longer offered**, even when the
 settings, the `PATH` or a file picked with **Browse** point at it: it was
 downloaded outside PixInsight's update system, which PixInsight's developer rules
 forbid. This is deliberate, not a bug. A path saved by 1.2.x that pointed at it is
@@ -675,7 +675,7 @@ Not a bug. It was removed on purpose: PixInsight's developer rules (CPD Program
 Rules v1.0) forbid a script from downloading and running a program outside
 PixInsight's own update system. The user installs ffmpeg themselves and clicks
 **Detect** — the full answer is in *ffmpeg: the user installs it, the script
-finds it*. Since 1.3.1, the ffmpeg an earlier version installed is no longer
+finds it*. Since 1.3.2, the ffmpeg an earlier version installed is no longer
 used either: see *Upgrading from 1.2.x or earlier: the old ffmpeg copy*.
 
 Also new in 1.3.0, so a user may ask: the panel can say **⚠️ ffmpeg found, not
@@ -745,8 +745,8 @@ The frames are safe: the script keeps the BMP sequence and an `encode.sh` /
 and escalate.
 
 **"PixInsight says the script or the repository is unsigned."**
-Not expected from 1.3.1 on: both the script and the CaeloWorks repository are
-signed. Ask for the version (older than 1.3.1 is unsigned), whether the script was
+Not expected from 1.3.2 on: both the script and the CaeloWorks repository are
+signed. Ask for the version (older than 1.3.2 is unsigned), whether the script was
 edited or installed by hand without `SessionCinema.xsgn`, a screenshot of the
 warning and the repository URL they added, then escalate.
 
